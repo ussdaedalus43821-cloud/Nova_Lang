@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+# NovaLang v0.3.0 - a tiny language built from a hand-written lexer,
+# recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang v0.3 - Stage 3: Loops, Logic & Block Scoping
+NovaLang - Stage 3: Loops, Logic & Block Scoping
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -19,6 +21,8 @@ No eval(). No exec(). Everything is still built by hand.
 """
 
 import sys
+
+__version__ = "0.3.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -1465,12 +1469,12 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.3              ║
+║       NOVALANG v0.3.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
 
-HELP = """NovaLang v0.3 - commands and syntax
+HELP = "NovaLang v" + __version__ + """ - commands and syntax
 
   REPL commands
     vars                 list the globals you have defined
