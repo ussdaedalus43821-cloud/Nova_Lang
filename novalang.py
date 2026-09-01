@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.3.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.4.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 3: Loops, Logic & Block Scoping
+NovaLang - Stage 4: Lists, Indexing & Integer Math
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -16,13 +16,15 @@ Stage 2:  def / return, if / else, comparisons, booleans, strings,
 Stage 3:  while loops (with an optional else), for ... to / downto / step,
           break and continue, and / or / not with short-circuiting,
           and block scoping.
+Stage 4:  lists and indexing, let, % and //, for ... in, and the
+          len / append / pop / range built-ins.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
 import sys
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -119,6 +121,10 @@ TT_RPAREN  = "RPAREN"
 TT_LBRACE  = "LBRACE"
 TT_RBRACE  = "RBRACE"
 TT_COMMA   = "COMMA"
+TT_LBRACKET = "LBRACKET"    # [
+TT_RBRACKET = "RBRACKET"    # ]
+TT_PERCENT = "PERCENT"      # %   remainder
+TT_DSLASH  = "DSLASH"       # //  integer division
 TT_EQUALS  = "EQUALS"       # =   assignment
 TT_EQ      = "EQ"           # ==  equality
 TT_NE      = "NE"           # !=
@@ -146,6 +152,8 @@ TT_CONTINUE = "CONTINUE"
 TT_AND      = "AND"
 TT_OR       = "OR"
 TT_NOT      = "NOT"
+TT_LET      = "LET"         # Stage 4
+TT_IN       = "IN"
 
 KEYWORDS = {
     "def": TT_DEF,
@@ -164,6 +172,8 @@ KEYWORDS = {
     "and": TT_AND,
     "or": TT_OR,
     "not": TT_NOT,
+    "let": TT_LET,
+    "in": TT_IN,
 }
 
 COMPARISON_TOKENS = (TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE)
@@ -177,7 +187,10 @@ SINGLE_CHAR_TOKENS = {
     ")": TT_RPAREN,
     "{": TT_LBRACE,
     "}": TT_RBRACE,
+    "[": TT_LBRACKET,
+    "]": TT_RBRACKET,
     ",": TT_COMMA,
+    "%": TT_PERCENT,
 }
 
 ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'", "0": "\0"}
@@ -251,6 +264,10 @@ class Lexer:
 
             # Two-character operators must be tried before the one-char ones.
             two = self.source[self.index:self.index + 2]
+            if two == "//":
+                self.advance(); self.advance()
+                tokens.append(Token(TT_DSLASH, "//", start))
+                continue
             if two == "==":
                 self.advance(); self.advance()
                 tokens.append(Token(TT_EQ, "==", start))
@@ -428,6 +445,19 @@ class LogicalOpNode(Node):
         self.position = position
 
 
+class ListNode(Node):
+    def __init__(self, items, position):
+        self.items = items             # list of expression nodes
+        self.position = position
+
+
+class IndexNode(Node):
+    def __init__(self, target, index, position):
+        self.target = target           # the expression being indexed
+        self.index = index
+        self.position = position
+
+
 class CallNode(Node):
     def __init__(self, callee, args, position):
         self.callee = callee           # usually a VarNode
@@ -438,6 +468,25 @@ class CallNode(Node):
 # -- statements -------------------------------------------------------------
 
 class AssignNode(Node):
+    def __init__(self, name, value, position):
+        self.name = name
+        self.value = value
+        self.position = position
+
+
+class IndexAssignNode(Node):
+    """`a[i] = value`"""
+
+    def __init__(self, target, index, value, position):
+        self.target = target
+        self.index = index
+        self.value = value
+        self.position = position
+
+
+class LetNode(Node):
+    """`let x = value` - always binds in the current scope."""
+
     def __init__(self, name, value, position):
         self.name = name
         self.value = value
@@ -478,6 +527,17 @@ class ForNode(Node):
         self.position = position
 
 
+class ForInNode(Node):
+    """`for x in <list> { ... }`"""
+
+    def __init__(self, name, iterable, body, else_block, position):
+        self.name = name
+        self.iterable = iterable
+        self.body = body
+        self.else_block = else_block
+        self.position = position
+
+
 class BreakNode(Node):
     def __init__(self, position):
         self.position = position
@@ -508,7 +568,7 @@ class ProgramNode(Node):
 
 
 # Statements that end in '}' and therefore need no separator after them.
-BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, FunctionDefNode)
+BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 
 
 # ---------------------------------------------------------------------------
@@ -519,14 +579,17 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, FunctionDefNode)
 #
 #   program     := (statement SEP)* EOF
 #   statement   := funcdef | returnstmt | ifstmt | whilestmt | forstmt
-#                | 'break' | 'continue' | assignment | expression
+#                | 'break' | 'continue' | letstmt | exprstmt
+#   letstmt     := 'let' IDENT '=' exprstmt
+#   exprstmt    := expression ['=' exprstmt]     (the left side must be a
+#                  variable or a list element, checked after parsing)
 #   funcdef     := 'def' IDENT '(' [IDENT (',' IDENT)*] ')' block
 #   returnstmt  := 'return' [expression]
 #   ifstmt      := 'if' expression block ['else' (block | ifstmt)]
 #   whilestmt   := 'while' expression block ['else' block]
 #   forstmt     := 'for' IDENT '=' expression ('to' | 'downto') expression
 #                  ['step' expression] block ['else' block]
-#   assignment  := IDENT '=' (assignment | expression)
+#                | 'for' IDENT 'in' expression block ['else' block]
 #   block       := '{' (statement SEP)* '}'
 #
 #   expression  := or_expr
@@ -535,10 +598,12 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, FunctionDefNode)
 #   not_expr    := 'not' not_expr | comparison
 #   comparison  := additive [('<'|'>'|'<='|'>='|'=='|'!=') additive]
 #   additive    := term (('+'|'-') term)*
-#   term        := unary (('*'|'/') unary)*
+#   term        := unary (('*'|'/'|'%'|'//') unary)*
 #   unary       := ('+'|'-') unary | call
-#   call        := primary ('(' [expression (',' expression)*] ')')*
+#   call        := primary ('(' [expression (',' expression)*] ')'
+#                        | '[' expression ']')*
 #   primary     := NUMBER | STRING | 'true' | 'false' | IDENT
+#                | '[' [expression (',' expression)*] ']'
 #                | '(' expression ')'
 #
 # Precedence falls out of the nesting: `or` is looser than `and`, which is
@@ -659,9 +724,9 @@ class Parser:
         if token.type == TT_CONTINUE:
             self.advance()
             return ContinueNode(token.position)
-        if token.type == TT_IDENT and self.peek().type == TT_EQUALS:
-            return self.assignment()
-        return self.expression()
+        if token.type == TT_LET:
+            return self.let_statement()
+        return self.expression_statement()
 
     def function_def(self):
         keyword = self.advance()                        # 'def'
@@ -719,7 +784,16 @@ class Parser:
         keyword = self.advance()                        # 'for'
         name_token = self.expect(TT_IDENT, "a loop variable after 'for'")
         guard_name(name_token.value, name_token.position, "a loop variable")
-        self.expect(TT_EQUALS, "a '=' after the loop variable")
+
+        # `for x in <list> { ... }` - the other shape of the same keyword.
+        if self.current.type == TT_IN:
+            self.advance()
+            iterable = self.expression()
+            body = self.block()
+            else_block = self.block() if self.optional_else() else None
+            return ForInNode(name_token.value, iterable, body, else_block, keyword.position)
+
+        self.expect(TT_EQUALS, "a '=' or 'in' after the loop variable")
 
         start = self.expression()
         if self.current.type not in (TT_TO, TT_DOWNTO):
@@ -741,15 +815,35 @@ class Parser:
             name_token.value, start, end, step, descending, body, else_block, keyword.position
         )
 
-    def assignment(self):
-        name_token = self.advance()                     # the identifier
+    def let_statement(self):
+        keyword = self.advance()                        # 'let'
+        name_token = self.expect(TT_IDENT, "a name after 'let'")
         guard_name(name_token.value, name_token.position, "a variable")
-        self.advance()                                  # the '='
-        if self.current.type == TT_IDENT and self.peek().type == TT_EQUALS:
-            value = self.assignment()                   # a = b = 3
-        else:
-            value = self.expression()
-        return AssignNode(name_token.value, value, name_token.position)
+        self.expect(TT_EQUALS, "a '=' after the name in a 'let'")
+        return LetNode(name_token.value, self.expression_statement(), keyword.position)
+
+    def expression_statement(self):
+        """An expression - or an assignment, if a '=' follows it.
+
+        Parsing the left side as a full expression first is what makes both
+        `x = 1` and `a[i] = 1` work with one rule: whatever comes back simply
+        has to be something we can assign into.
+        """
+        node = self.expression()
+        if self.current.type != TT_EQUALS:
+            return node
+
+        equals = self.advance()
+        value = self.expression_statement()             # right-assoc: a = b = 3
+
+        if isinstance(node, VarNode):
+            guard_name(node.name, node.position, "a variable")
+            return AssignNode(node.name, value, node.position)
+        if isinstance(node, IndexNode):
+            return IndexAssignNode(node.target, node.index, value, node.position)
+        raise NovaError(
+            "the left side of '=' must be a variable or a list element", equals.position
+        )
 
     def expression(self):
         return self.or_expression()
@@ -796,7 +890,7 @@ class Parser:
 
     def term(self):
         node = self.unary()
-        while self.current.type in (TT_STAR, TT_SLASH):
+        while self.current.type in (TT_STAR, TT_SLASH, TT_PERCENT, TT_DSLASH):
             op_token = self.advance()
             node = BinOpNode(node, op_token.value, self.unary(), op_token.position)
         return node
@@ -809,18 +903,25 @@ class Parser:
 
     def call(self):
         node = self.primary()
-        while self.current.type == TT_LPAREN:
-            paren = self.advance()
-            args = []
-            if self.current.type != TT_RPAREN:
-                while True:
-                    args.append(self.expression())
-                    if self.current.type != TT_COMMA:
-                        break
-                    self.advance()
-            self.expect(TT_RPAREN, "a ')' to close the argument list")
-            node = CallNode(node, args, paren.position)
-        return node
+        while True:
+            if self.current.type == TT_LPAREN:
+                paren = self.advance()
+                args = []
+                if self.current.type != TT_RPAREN:
+                    while True:
+                        args.append(self.expression())
+                        if self.current.type != TT_COMMA:
+                            break
+                        self.advance()
+                self.expect(TT_RPAREN, "a ')' to close the argument list")
+                node = CallNode(node, args, paren.position)
+            elif self.current.type == TT_LBRACKET:
+                bracket = self.advance()
+                index = self.expression()
+                self.expect(TT_RBRACKET, "a ']' to close the index")
+                node = IndexNode(node, index, bracket.position)
+            else:
+                return node
 
     def primary(self):
         token = self.current
@@ -844,6 +945,21 @@ class Parser:
         if token.type == TT_IDENT:
             self.advance()
             return VarNode(token.value, token.position)
+
+        if token.type == TT_LBRACKET:
+            self.advance()
+            items = []
+            self.skip_newlines()                        # lists may span lines
+            if self.current.type != TT_RBRACKET:
+                while True:
+                    items.append(self.expression())
+                    self.skip_newlines()
+                    if self.current.type != TT_COMMA:
+                        break
+                    self.advance()
+                    self.skip_newlines()
+            self.expect(TT_RBRACKET, "a ']' to close the list")
+            return ListNode(items, token.position)
 
         if token.type == TT_LPAREN:
             self.advance()
@@ -914,14 +1030,158 @@ class BuiltinFunction:
         return "<built-in function {}>".format(self.name)
 
 
-def builtin_print(args):
+# Lists longer than this are refused, so a typo in range() or a list
+# repetition cannot eat all the memory in the machine.
+MAX_LIST_LENGTH = 1000000
+
+
+def builtin_print(args, position):
     print(" ".join(format_value(arg) for arg in args))
     return NOTHING
 
 
+def builtin_len(args, position):
+    value = args[0]
+    if isinstance(value, list) or isinstance(value, str):
+        return len(value)
+    raise NovaError("len() needs a list or a string, but got {}".format(type_name(value)),
+                    position)
+
+
+def builtin_append(args, position):
+    target, value = args
+    if not isinstance(target, list):
+        raise NovaError(
+            "append() needs a list as its first argument, but got {}".format(type_name(target)),
+            position,
+        )
+    check_element_type(target, value, position)
+    if len(target) >= MAX_LIST_LENGTH:
+        raise NovaError("a list cannot grow beyond {} items".format(MAX_LIST_LENGTH), position)
+    target.append(value)
+    return target
+
+
+def builtin_pop(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("pop() takes a list and an optional index", position)
+    target = args[0]
+    if not isinstance(target, list):
+        raise NovaError(
+            "pop() needs a list as its first argument, but got {}".format(type_name(target)),
+            position,
+        )
+    if not target:
+        raise NovaError("pop() cannot take anything from an empty list", position)
+    spot = len(target) - 1 if len(args) == 1 else normalize_index(target, args[1], position)
+    return target.pop(spot)
+
+
+def builtin_range(args, position):
+    if not 1 <= len(args) <= 3:
+        raise NovaError("range() takes 1, 2 or 3 numbers", position)
+    numbers = [whole_number(arg, "range()", position) for arg in args]
+
+    if len(numbers) == 1:
+        start, end, step = 0, numbers[0], 1
+    elif len(numbers) == 2:
+        start, end, step = numbers[0], numbers[1], 1
+    else:
+        start, end, step = numbers
+
+    if step == 0:
+        raise NovaError("range() cannot step by zero", position)
+
+    span = (end - start) if step > 0 else (start - end)
+    count = 0 if span <= 0 else (span - 1) // abs(step) + 1
+    if count > MAX_LIST_LENGTH:
+        raise NovaError(
+            "range() would build a list of {} items, which is too large".format(count), position
+        )
+    return [start + index * step for index in range(count)]
+
+
 BUILTINS = {
     "print": BuiltinFunction("print", None, builtin_print),
+    "len": BuiltinFunction("len", 1, builtin_len),
+    "append": BuiltinFunction("append", 2, builtin_append),
+    "pop": BuiltinFunction("pop", None, builtin_pop),
+    "range": BuiltinFunction("range", None, builtin_range),
 }
+
+
+def whole_number(value, who, position):
+    """Insist on an integer - 5 and 5.0 are fine, 5.5 and "5" are not."""
+    if not is_number(value):
+        raise NovaError("{} needs a whole number, but got {}".format(who, type_name(value)),
+                        position)
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise NovaError("{} needs a whole number, but got {}".format(who, format_value(value)),
+                            position)
+        return int(value)
+    return value
+
+
+def type_category(value):
+    """The coarse type a list is allowed to hold - lists stay homogeneous."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, (NovaFunction, BuiltinFunction)):
+        return "function"
+    return "nothing"
+
+
+PLURAL_TYPES = {
+    "boolean": "booleans",
+    "number": "numbers",
+    "string": "strings",
+    "list": "lists",
+    "function": "functions",
+    "nothing": "nothing",
+}
+
+
+def check_element_type(existing, value, position):
+    """A list holds one kind of thing. Items are checked on the way in."""
+    if not existing:
+        return
+    kind = type_category(existing[0])
+    if type_category(value) != kind:
+        raise NovaError(
+            "this list holds {}, so it cannot hold {}".format(
+                PLURAL_TYPES[kind], type_name(value)
+            ),
+            position,
+        )
+
+
+def normalize_index(target, index, position):
+    """Turn a NovaLang index into a Python one, with friendly errors."""
+    if not isinstance(target, list):
+        raise NovaError("{} cannot be indexed".format(type_name(target)), position)
+    spot = whole_number(index, "a list index", position)
+
+    size = len(target)
+    if size == 0:
+        raise NovaError("this list is empty, so it has no item to index", position)
+
+    original = spot
+    if spot < 0:
+        spot += size                    # a[-1] is the last item
+    if not 0 <= spot < size:
+        raise NovaError(
+            "index {} is out of range for a list of {} item(s) - valid indexes are "
+            "{} to {}".format(original, size, -size, size - 1),
+            position,
+        )
+    return spot
 
 
 def guard_name(name, position, role):
@@ -940,17 +1200,26 @@ def type_name(value):
         return "a number"
     if isinstance(value, str):
         return "a string"
+    if isinstance(value, list):
+        return "a list"
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return "a function"
     return "nothing"
 
 
-def format_value(value):
+def format_value(value, seen=None):
     """How a value prints: strings bare, booleans lowercase, ints without .0"""
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is NOTHING:
         return "nothing"
+    if isinstance(value, list):
+        # A list can contain itself, so remember what we are already inside.
+        seen = seen or set()
+        if id(value) in seen:
+            return "[...]"
+        seen = seen | {id(value)}
+        return "[" + ", ".join(format_repr(item, seen) for item in value) + "]"
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     if isinstance(value, (NovaFunction, BuiltinFunction)):
@@ -958,13 +1227,13 @@ def format_value(value):
     return str(value)
 
 
-def format_repr(value):
+def format_repr(value, seen=None):
     """How the REPL echoes a value: like format_value but strings are quoted."""
     if isinstance(value, str):
         return '"{}"'.format(
             value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
         )
-    return format_value(value)
+    return format_value(value, seen)
 
 
 # ---------------------------------------------------------------------------
@@ -1096,6 +1365,38 @@ class Interpreter:
         self.env.assign(node.name, value)
         return value
 
+    def visit_LetNode(self, node):
+        # `let` always binds here, shadowing anything outside this scope.
+        value = self.evaluate(node.value)
+        self.env.define(node.name, value)
+        return value
+
+    def visit_ListNode(self, node):
+        items = []
+        for item_node in node.items:
+            value = self.evaluate(item_node)
+            check_element_type(items, value, node.position)
+            items.append(value)
+        return items
+
+    def visit_IndexNode(self, node):
+        target = self.evaluate(node.target)
+        index = self.evaluate(node.index)
+        return target[normalize_index(target, index, node.position)]
+
+    def visit_IndexAssignNode(self, node):
+        target = self.evaluate(node.target)
+        index = self.evaluate(node.index)
+        value = self.evaluate(node.value)
+        spot = normalize_index(target, index, node.position)
+
+        # The slot being overwritten does not count towards the list's type.
+        neighbours = [item for pos, item in enumerate(target) if pos != spot][:1]
+        check_element_type(neighbours, value, node.position)
+
+        target[spot] = value
+        return value
+
     # -- operators ----------------------------------------------------------
 
     def visit_UnaryOpNode(self, node):
@@ -1151,6 +1452,34 @@ class Interpreter:
         if op == "+" and isinstance(left, str) and isinstance(right, str):
             return left + right
 
+        # Lists join with '+' and repeat with '*', always into a new list.
+        if op == "+" and isinstance(left, list) and isinstance(right, list):
+            if left and right:
+                check_element_type(left, right[0], node.position)
+            return left + right
+
+        if op == "*" and (isinstance(left, list) or isinstance(right, list)):
+            items, count = (left, right) if isinstance(left, list) else (right, left)
+            if not isinstance(items, list) or not is_number(count):
+                raise NovaError(
+                    "a list can only be repeated by a whole number, not by {}".format(
+                        type_name(right if isinstance(left, list) else left)
+                    ),
+                    node.position,
+                )
+            times = whole_number(count, "list repetition", node.position)
+            if times < 0:
+                raise NovaError("a list cannot be repeated a negative number of times",
+                                node.position)
+            if len(items) * times > MAX_LIST_LENGTH:
+                raise NovaError(
+                    "repeating that list {} times would exceed {} items".format(
+                        times, MAX_LIST_LENGTH
+                    ),
+                    node.position,
+                )
+            return items * times
+
         if not is_number(left) or not is_number(right):
             raise NovaError(
                 "cannot use '{}' on {} and {}".format(op, type_name(left), type_name(right)),
@@ -1171,6 +1500,15 @@ class Interpreter:
             if isinstance(left, int) and isinstance(right, int) and result.is_integer():
                 return int(result)
             return result
+        if op == "//":
+            if right == 0:
+                raise NovaError("integer division by zero", node.position)
+            return left // right            # rounds towards negative infinity
+        if op == "%":
+            if right == 0:
+                raise NovaError("cannot take the remainder of a division by zero",
+                                node.position)
+            return left % right             # the sign follows the right-hand side
 
         raise NovaError("unknown operator {!r}".format(op), node.position)
 
@@ -1286,6 +1624,39 @@ class Interpreter:
             self.execute_scoped_block(node.else_block)
         return NOTHING
 
+    def visit_ForInNode(self, node):
+        iterable = self.evaluate(node.iterable)
+        if not isinstance(iterable, list):
+            raise NovaError(
+                "'for ... in' needs a list, but this is {}".format(type_name(iterable)),
+                node.position,
+            )
+
+        # Iterate over a snapshot, so appending inside the loop cannot make
+        # it run forever.
+        items = list(iterable)
+
+        loop_env = Environment(parent=self.env)
+        saved = self.env
+        self.env = loop_env
+        broke = False
+        try:
+            for item in items:
+                loop_env.define(node.name, item)
+                try:
+                    self.execute_scoped_block(node.body, parent=loop_env)
+                except ContinueSignal:
+                    continue
+                except BreakSignal:
+                    broke = True
+                    break
+        finally:
+            self.env = saved
+
+        if node.else_block is not None and not broke:
+            self.execute_scoped_block(node.else_block)
+        return NOTHING
+
     def loop_number(self, node, role, fallback_position):
         """Evaluate one part of a `for` header, insisting on a number."""
         value = self.evaluate(node)
@@ -1325,7 +1696,7 @@ class Interpreter:
                     ),
                     node.position,
                 )
-            return callee.implementation(args)
+            return callee.implementation(args, node.position)
 
         if not isinstance(callee, NovaFunction):
             raise NovaError(
@@ -1398,6 +1769,12 @@ def nova_equals(left, right):
         return True
     if is_number(left) != is_number(right):
         return False
+    if isinstance(left, list) or isinstance(right, list):
+        if not (isinstance(left, list) and isinstance(right, list)):
+            return False
+        if len(left) != len(right):
+            return False
+        return all(nova_equals(a, b) for a, b in zip(left, right))
     return left == right
 
 
@@ -1469,7 +1846,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.3.0            ║
+║       NOVALANG v0.4.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -1485,18 +1862,32 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Values
     numbers              1, 42, 3.14      strings  "hi", 'hi'
     booleans             true, false      comments # to end of line
+    lists                [1, 2, 3], []    one kind of item per list
 
   Expressions
     + - * /              arithmetic, and "a" + "b" joins strings
+    % //                 remainder and integer division: 10 % 3, 10 // 3
     < > <= >= == !=      comparisons, producing true or false
     and or not           short-circuit logic: `not done and i < 10`
+    a[0]  a[-1]          index a list; -1 is the last item
+    [1, 2] + [3]         join lists;  [1, 2] * 3 repeats one
+
+  Built-in functions
+    print(x, ...)        write a line
+    len(a)               how many items (also works on strings)
+    append(a, v)         add v to the end of a
+    pop(a) / pop(a, i)   remove and return the last item, or item i
+    range(n)             [0 .. n-1];  range(a, b) and range(a, b, step)
 
   Statements
-    x = 10               assignment
+    x = 10               assignment (updates an outer x if one exists)
+    let x = 10           declare x in this block, shadowing any outer x
+    a[0] = 10            replace a list item
     if c { } else { }    conditionals; `else if` chains
     while c { }          loop while c is true
     for i = 0 to 10 { }  count up; `downto` counts down
     for i = 0 to 100 step 10 { }
+    for x in a { }       walk a list; `for i in range(5) { }` counts
     break | continue     leave the loop / jump to the next turn
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in
@@ -1512,8 +1903,9 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
 
 # Tokens that clearly cannot end a statement, so the REPL keeps reading.
 CONTINUATION_TOKENS = (
-    TT_DEF, TT_ELSE, TT_LBRACE, TT_COMMA, TT_LPAREN, TT_EQUALS,
-    TT_PLUS, TT_MINUS, TT_STAR, TT_SLASH,
+    TT_DEF, TT_ELSE, TT_LBRACE, TT_COMMA, TT_LPAREN, TT_LBRACKET, TT_EQUALS,
+    TT_PLUS, TT_MINUS, TT_STAR, TT_SLASH, TT_PERCENT, TT_DSLASH,
+    TT_LET, TT_IN,
     TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE,
     TT_WHILE, TT_FOR, TT_IF, TT_TO, TT_DOWNTO, TT_STEP,
     TT_AND, TT_OR, TT_NOT,
@@ -1530,13 +1922,17 @@ def needs_more_input(source):
     except NovaError:
         return False                    # let the real error surface
 
-    depth = 0
+    braces = brackets = 0
     for token in tokens:
         if token.type == TT_LBRACE:
-            depth += 1
+            braces += 1
         elif token.type == TT_RBRACE:
-            depth -= 1
-    if depth > 0:
+            braces -= 1
+        elif token.type == TT_LBRACKET:
+            brackets += 1
+        elif token.type == TT_RBRACKET:
+            brackets -= 1
+    if braces > 0 or brackets > 0:
         return True
 
     meaningful = [t for t in tokens if t.type not in (TT_NEWLINE, TT_EOF)]
