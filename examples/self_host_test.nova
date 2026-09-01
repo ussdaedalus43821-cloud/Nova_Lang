@@ -1,0 +1,152 @@
+# examples/self_host_test.nova - Stage 10 verification.
+#
+# This file is meant to be run two ways and compared:
+#
+#   python3 novalang.py examples/self_host_test.nova              (host)
+#   python3 novalang.py --bootstrap examples/self_host_test.nova  (self-hosted)
+#
+# The two must print identical output: the second run's Lexer, Parser and
+# Interpreter are themselves NovaLang programs (novalang.nova), loaded and
+# executed by the host, then used to lex, parse and run *this* file - so
+# if this passes under --bootstrap, the language written in the language
+# genuinely works, not just parses.
+#
+# A stricter, "does it really run" version of this same check is:
+#   python3 bootstrap.py novalang.nova
+# which hands novalang.nova to itself as the target program, so the
+# self-hosted interpreter lexes, parses and executes its own ~1900-line
+# source file.
+
+# A plain counter variable can't be updated from inside check() below -
+# assignment never reaches through a function call's own scope barrier,
+# only the contents of a shared, mutable container can (the same rule
+# this whole interpreter is built on top of). So state is a dict, mutated
+# in place rather than reassigned.
+let state = {checks: 0, failures: []}
+
+def check(label, actual, expected) {
+    state["checks"] = state["checks"] + 1
+    if actual != expected {
+        append(state["failures"], label + ": expected " + str(expected) + ", got " + str(actual))
+    }
+}
+
+# ---- arithmetic and precedence ----
+check("arithmetic", 5 + 10 * 2, 25)
+check("parens", (5 + 10) * 2, 30)
+check("modulo", 10 % 3, 1)
+check("floordiv", 10 // 3, 3)
+check("division stays int", 10 / 2, 5)
+
+# ---- strings ----
+check("concat", "Hello" + " " + "World", "Hello World")
+check("repeat", "Ha" * 3, "HaHaHa")
+check("index", "Hello"[0], "H")
+check("negative index", "Hello"[-1], "o")
+check("slice", "Hello"[1:4], "ell")
+check("upper", upper("hi"), "HI")
+check("compare", "apple" < "banana", true)
+
+let name = "Nova"
+check("f-string", f"Hello, {name}! {1 + 1}", "Hello, Nova! 2")
+
+# ---- lists ----
+let a = [1, 2, 3, 4, 5]
+check("list index", a[2], 3)
+check("list slice", a[1:3], [2, 3])
+check("list concat", [1, 2] + [3, 4], [1, 2, 3, 4])
+check("list repeat", [1, 2] * 2, [1, 2, 1, 2])
+check("mixed list", len([1, "two", true, [3]]), 4)
+
+append(a, 6)
+check("append", a, [1, 2, 3, 4, 5, 6])
+check("pop", pop(a), 6)
+
+# ---- dictionaries ----
+let d = {name: "Ada", age: 36}
+check("dict read", d.name, "Ada")
+d.city = "London"
+check("dict write", d["city"], "London")
+delete d.age
+check("delete", "age" in d, false)
+check("merge", {x: 1} + {x: 2, y: 3}, {x: 2, y: 3})
+
+# ---- control flow ----
+def classify(n) {
+    if n < 0 {
+        return "negative"
+    } else if n == 0 {
+        return "zero"
+    } else {
+        return "positive"
+    }
+}
+check("if/elif/else a", classify(-5), "negative")
+check("if/elif/else b", classify(0), "zero")
+check("if/elif/else c", classify(5), "positive")
+
+let total = 0
+for i = 1 to 10 {
+    if i % 2 == 0 {
+        continue
+    }
+    if i > 7 {
+        break
+    }
+    total = total + i
+}
+check("for/break/continue", total, 1 + 3 + 5 + 7)
+
+let seen = []
+for k, v in {a: 1, b: 2} {
+    append(seen, k + str(v))
+}
+check("for-in pairs", seen, ["a1", "b2"])
+
+# ---- functions, recursion, closures within one call ----
+def fib(n) {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+check("recursion", fib(15), 610)
+
+def adder(x) {
+    def add(y) {
+        return x + y
+    }
+    return add
+}
+let add5 = adder(5)
+check("closures", add5(3), 8)
+
+# ---- error handling ----
+def safe_div(x, y) {
+    try {
+        return x / y
+    } catch e {
+        return -1
+    }
+}
+check("try/catch", safe_div(10, 0), -1)
+
+let cleaned_up = false
+try {
+    throw("boom")
+} catch e {
+    check("catch binds message", e, "boom")
+} finally {
+    cleaned_up = true
+}
+check("finally ran", cleaned_up, true)
+
+# ---- report ----
+if len(state["failures"]) == 0 {
+    print(f"ALL {state["checks"]} SELF-HOST TESTS PASSED")
+} else {
+    print(f"{len(state["failures"])} of {state["checks"]} SELF-HOST TESTS FAILED:")
+    for message in state["failures"] {
+        print("  " + message)
+    }
+}

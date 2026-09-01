@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.9.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.10.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 9: Modules & Imports
+NovaLang - Stage 10: Self-Hosting
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -29,6 +29,11 @@ Stage 8:  try / catch / finally and throw, so a program can recover from
 Stage 9:  modules - import "file.nova" [as name | with a, b], export def /
           export let, relative paths, a module cache, and circular-import
           detection.
+Stage 10: self-hosting - novalang.nova is a second Lexer/Parser/Interpreter
+          for this same language, written in NovaLang itself. bootstrap.py
+          (or `novalang.py --bootstrap file.nova`) loads it and uses it to
+          run a target file, instead of running that file with this Python
+          engine directly.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -36,13 +41,19 @@ No eval(). No exec(). Everything is still built by hand.
 import os
 import sys
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
-sys.setrecursionlimit(10000)
+# Both are set generously enough to also cover Stage 10's self-hosted
+# interpreter (novalang.nova), where each level of *target*-program
+# recursion costs several *host* NovaLang calls in turn - a target
+# recursion of 20 (fib(20), say) costs on the order of 200 host-level
+# calls. 1200 was tested empirically to stay well clear of where CPython's
+# own stack becomes a concern at this recursion limit.
+sys.setrecursionlimit(20000)
 
-MAX_CALL_DEPTH = 200
+MAX_CALL_DEPTH = 1200
 
 # How many call-stack frames an error report shows before it elides the middle.
 MAX_TRACE_FRAMES = 8
@@ -1611,6 +1622,18 @@ def builtin_exists(args, position):
     return os.path.exists(text_argument(args[0], "exists()", position))
 
 
+def builtin_abspath(args, position):
+    # Path canonicalization for novalang.nova's own module resolver
+    # (Stage 10, self-hosting) - the same job Python's os.path already does
+    # for the host's own import machinery, exposed so the self-hosted
+    # implementation does not have to reinvent it by hand.
+    return os.path.abspath(text_argument(args[0], "abspath()", position))
+
+
+def builtin_dirname(args, position):
+    return os.path.dirname(text_argument(args[0], "dirname()", position))
+
+
 def builtin_listdir(args, position):
     path = text_argument(args[0], "listdir()", position)
     try:
@@ -1767,6 +1790,8 @@ BUILTINS = {
     "exists": BuiltinFunction("exists", 1, builtin_exists),
     "listdir": BuiltinFunction("listdir", 1, builtin_listdir),
     "input": BuiltinFunction("input", None, builtin_input),
+    "abspath": BuiltinFunction("abspath", 1, builtin_abspath),
+    "dirname": BuiltinFunction("dirname", 1, builtin_dirname),
 }
 
 
@@ -2867,7 +2892,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.9.0            ║
+║       NOVALANG v0.10.0           ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2952,7 +2977,13 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
 
   Multi-line input: an unclosed '{' keeps the prompt open as '  ... '.
   Finish the block with '}' (or press Ctrl-C to throw the draft away).
-  Ctrl-C also stops a runaway loop."""
+  Ctrl-C also stops a runaway loop.
+
+  Self-hosting: `novalang.py --bootstrap file.nova` runs file.nova through
+  novalang.nova - a second Lexer, Parser and Interpreter for this same
+  language, written in NovaLang and loaded by this Python engine, rather
+  than through this engine's own implementation. It is a command-line
+  flag, not something typed here at the prompt."""
 
 # Tokens that clearly cannot end a statement, so the REPL keeps reading.
 CONTINUATION_TOKENS = (
@@ -3117,11 +3148,25 @@ def run_source(source, origin):
     return 0
 
 
+def run_bootstrap(args):
+    """`--bootstrap program.nova` - run program.nova through novalang.nova,
+    NovaLang's own self-hosted Lexer/Parser/Interpreter (Stage 10), instead
+    of through this Python engine directly. See bootstrap.py."""
+    if not args:
+        print("usage: novalang.py --bootstrap <target.nova> [engine.nova]", file=sys.stderr)
+        return 2
+    import bootstrap
+    return bootstrap.run_bootstrap(*args)
+
+
 def main(argv):
     args = argv[1:]
 
     if not args:
         return repl()
+
+    if args[0] == "--bootstrap":
+        return run_bootstrap(args[1:])
 
     # `python3 novalang.py program.nova`  or  `python3 novalang.py "1 + 2"`
     try:
