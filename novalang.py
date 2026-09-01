@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.4.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.5.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 4: Lists, Indexing & Integer Math
+NovaLang - Stage 5: Strings & Text Processing
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -18,13 +18,15 @@ Stage 3:  while loops (with an optional else), for ... to / downto / step,
           and block scoping.
 Stage 4:  lists and indexing, let, % and //, for ... in, and the
           len / append / pop / range built-ins.
+Stage 5:  string indexing and slicing, f-strings, the `in` operator, and
+          upper / lower / trim / split / join / str / num / type.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
 import sys
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -111,6 +113,7 @@ class ContinueSignal(Exception):
 
 TT_NUMBER  = "NUMBER"
 TT_STRING  = "STRING"
+TT_FSTRING = "FSTRING"      # f"a {b} c" - value is a list of parts
 TT_IDENT   = "IDENT"
 TT_PLUS    = "PLUS"
 TT_MINUS   = "MINUS"
@@ -123,6 +126,7 @@ TT_RBRACE  = "RBRACE"
 TT_COMMA   = "COMMA"
 TT_LBRACKET = "LBRACKET"    # [
 TT_RBRACKET = "RBRACKET"    # ]
+TT_COLON   = "COLON"        # :   inside a slice
 TT_PERCENT = "PERCENT"      # %   remainder
 TT_DSLASH  = "DSLASH"       # //  integer division
 TT_EQUALS  = "EQUALS"       # =   assignment
@@ -176,7 +180,9 @@ KEYWORDS = {
     "in": TT_IN,
 }
 
-COMPARISON_TOKENS = (TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE)
+# `in` sits at the same precedence as the comparisons: `x in a == true`
+# is a chained comparison and is rejected, exactly like `a < b < c`.
+COMPARISON_TOKENS = (TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE, TT_IN)
 
 SINGLE_CHAR_TOKENS = {
     "+": TT_PLUS,
@@ -190,6 +196,7 @@ SINGLE_CHAR_TOKENS = {
     "[": TT_LBRACKET,
     "]": TT_RBRACKET,
     ",": TT_COMMA,
+    ":": TT_COLON,
     "%": TT_PERCENT,
 }
 
@@ -252,6 +259,12 @@ class Lexer:
 
             if char.isdigit() or (char == "." and (self.peek(1) or "").isdigit()):
                 tokens.append(self.read_number())
+                continue
+
+            # f"..." is a formatted string. This has to come before the
+            # identifier rule, which would otherwise read the 'f' as a name.
+            if char == "f" and self.peek(1) in ('"', "'"):
+                tokens.append(self.read_fstring())
                 continue
 
             if char.isalpha() or char == "_":
@@ -339,6 +352,103 @@ class Lexer:
         if name in KEYWORDS:
             return Token(KEYWORDS[name], name, start)
         return Token(TT_IDENT, name, start)
+
+    def read_fstring(self):
+        """Read f"text {expression} more", splitting it into parts.
+
+        Text parts come back as ("text", value). A placeholder comes back as
+        ("expr", source, offset) - the source is parsed later, and the offset
+        lets error carets point back at the right column of the real line.
+        Write {{ and }} for literal braces.
+        """
+        start = self.index
+        self.advance()                                  # the 'f'
+        quote = self.advance()
+        parts = []
+        text = ""
+
+        while True:
+            char = self.peek()
+            if char is None or char == "\n":
+                raise NovaError("this f-string is never closed", start)
+
+            if char == quote:
+                self.advance()
+                break
+
+            if char == "\\":
+                self.advance()
+                escape = self.peek()
+                if escape is None:
+                    raise NovaError("this f-string is never closed", start)
+                self.advance()
+                if escape not in ESCAPES:
+                    raise NovaError("unknown escape '\\{}'".format(escape), self.index - 1)
+                text += ESCAPES[escape]
+                continue
+
+            if char in "{}" and self.peek(1) == char:   # {{ and }} are literals
+                self.advance()
+                self.advance()
+                text += char
+                continue
+
+            if char == "}":
+                raise NovaError("a '}' inside an f-string must be written '}}'", self.index)
+
+            if char == "{":
+                if text:
+                    parts.append(("text", text))
+                    text = ""
+                self.advance()
+                parts.append(self.read_placeholder())
+                continue
+
+            self.advance()
+            text += char
+
+        if text:
+            parts.append(("text", text))
+        return Token(TT_FSTRING, parts, start)
+
+    def read_placeholder(self):
+        """Scan from just after '{' to its matching '}', quotes respected."""
+        begin = self.index
+        depth = 1
+        inside = None                                   # the open quote, if any
+
+        while True:
+            char = self.peek()
+            if char is None or char == "\n":
+                raise NovaError("this f-string placeholder needs a closing '}'", begin)
+
+            if inside is not None:
+                if char == "\\":
+                    self.advance()
+                    if self.peek() is None:
+                        raise NovaError("this f-string placeholder needs a closing '}'", begin)
+                    self.advance()
+                    continue
+                if char == inside:
+                    inside = None
+                self.advance()
+                continue
+
+            if char in ('"', "'"):
+                inside = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            self.advance()
+
+        source = self.source[begin:self.index]
+        self.advance()                                  # the closing '}'
+        if not source.strip():
+            raise NovaError("this f-string placeholder is empty", begin)
+        return ("expr", source, begin)
 
     def read_string(self):
         """Read "text" or 'text', honouring \\n, \\t and \\\" escapes."""
@@ -455,6 +565,24 @@ class IndexNode(Node):
     def __init__(self, target, index, position):
         self.target = target           # the expression being indexed
         self.index = index
+        self.position = position
+
+
+class SliceNode(Node):
+    """`a[1:4]`, `a[2:]`, `a[:3]`, `a[:]` - either end may be missing."""
+
+    def __init__(self, target, start, end, position):
+        self.target = target
+        self.start = start
+        self.end = end
+        self.position = position
+
+
+class InterpolationNode(Node):
+    """An f-string: a run of pieces whose values are joined into one string."""
+
+    def __init__(self, parts, position):
+        self.parts = parts             # StringNodes and expression nodes
         self.position = position
 
 
@@ -596,14 +724,15 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 #   or_expr     := and_expr ('or' and_expr)*
 #   and_expr    := not_expr ('and' not_expr)*
 #   not_expr    := 'not' not_expr | comparison
-#   comparison  := additive [('<'|'>'|'<='|'>='|'=='|'!=') additive]
+#   comparison  := additive [('<'|'>'|'<='|'>='|'=='|'!='|'in') additive]
 #   additive    := term (('+'|'-') term)*
 #   term        := unary (('*'|'/'|'%'|'//') unary)*
 #   unary       := ('+'|'-') unary | call
 #   call        := primary ('(' [expression (',' expression)*] ')'
-#                        | '[' expression ']')*
+#                        | '[' expression ']'
+#                        | '[' [expression] ':' [expression] ']')*
 #   primary     := NUMBER | STRING | 'true' | 'false' | IDENT
-#                | '[' [expression (',' expression)*] ']'
+#                | '[' [expression (',' expression)*] ']' | FSTRING
 #                | '(' expression ')'
 #
 # Precedence falls out of the nesting: `or` is looser than `and`, which is
@@ -917,11 +1046,49 @@ class Parser:
                 node = CallNode(node, args, paren.position)
             elif self.current.type == TT_LBRACKET:
                 bracket = self.advance()
-                index = self.expression()
-                self.expect(TT_RBRACKET, "a ']' to close the index")
-                node = IndexNode(node, index, bracket.position)
+                node = self.index_or_slice(node, bracket)
             else:
                 return node
+
+    def index_or_slice(self, node, bracket):
+        """Just past a '[': either `a[i]` or a slice such as `a[1:4]`."""
+        start = None
+        if self.current.type not in (TT_COLON, TT_RBRACKET):
+            start = self.expression()
+
+        if self.current.type == TT_COLON:
+            self.advance()
+            end = None
+            if self.current.type != TT_RBRACKET:
+                end = self.expression()
+            self.expect(TT_RBRACKET, "a ']' to close the slice")
+            return SliceNode(node, start, end, bracket.position)
+
+        if start is None:
+            raise NovaError("an index cannot be empty", bracket.position)
+        self.expect(TT_RBRACKET, "a ']' to close the index")
+        return IndexNode(node, start, bracket.position)
+
+    def interpolation(self, token):
+        """Turn the lexer's f-string parts into nodes, parsing each hole."""
+        parts = []
+        for part in token.value:
+            if part[0] == "text":
+                parts.append(StringNode(part[1]))
+                continue
+
+            _, source, offset = part
+            inner_tokens = Lexer(source).tokenize()
+            for inner_token in inner_tokens:            # point at the real line
+                inner_token.position += offset
+            inner = Parser(inner_tokens)
+            parts.append(inner.expression())
+            if inner.current.type != TT_EOF:
+                raise NovaError(
+                    "unexpected {} inside this f-string".format(describe(inner.current)),
+                    inner.current.position,
+                )
+        return InterpolationNode(parts, token.position)
 
     def primary(self):
         token = self.current
@@ -933,6 +1100,10 @@ class Parser:
         if token.type == TT_STRING:
             self.advance()
             return StringNode(token.value)
+
+        if token.type == TT_FSTRING:
+            self.advance()
+            return self.interpolation(token)
 
         if token.type == TT_TRUE:
             self.advance()
@@ -981,6 +1152,8 @@ def describe(token):
         return "the end of the line"
     if token.type == TT_STRING:
         return "the string {!r}".format(token.value)
+    if token.type == TT_FSTRING:
+        return "an f-string"
     return "{!r}".format(token.value)
 
 
@@ -1101,12 +1274,90 @@ def builtin_range(args, position):
     return [start + index * step for index in range(count)]
 
 
+def text_argument(value, who, position):
+    """Most of the string built-ins take exactly one string."""
+    if not isinstance(value, str):
+        raise NovaError("{} needs a string, but got {}".format(who, type_name(value)), position)
+    return value
+
+
+def builtin_upper(args, position):
+    return text_argument(args[0], "upper()", position).upper()
+
+
+def builtin_lower(args, position):
+    return text_argument(args[0], "lower()", position).lower()
+
+
+def builtin_trim(args, position):
+    return text_argument(args[0], "trim()", position).strip()
+
+
+def builtin_split(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("split() takes a string and an optional separator", position)
+    text = text_argument(args[0], "split()", position)
+    if len(args) == 1:
+        return text.split()                     # split on runs of whitespace
+    separator = text_argument(args[1], "the separator of split()", position)
+    if separator == "":
+        raise NovaError("split() cannot use an empty separator", position)
+    return text.split(separator)
+
+
+def builtin_join(args, position):
+    items, separator = args
+    if not isinstance(items, list):
+        raise NovaError(
+            "join() needs a list as its first argument, but got {}".format(type_name(items)),
+            position,
+        )
+    separator = text_argument(separator, "the separator of join()", position)
+    return separator.join(format_value(item) for item in items)
+
+
+def builtin_str(args, position):
+    return format_value(args[0])
+
+
+def builtin_num(args, position):
+    value = args[0]
+    if is_number(value):
+        return value
+    if not isinstance(value, str):
+        raise NovaError("num() needs a string, but got {}".format(type_name(value)), position)
+
+    text = value.strip()
+    digits = text[1:] if text[:1] in ("+", "-") else text
+    readable = (
+        digits
+        and digits.count(".") <= 1
+        and any(char.isdigit() for char in digits)
+        and all(char.isdigit() or char == "." for char in digits)
+    )
+    if not readable:
+        raise NovaError('num() cannot read a number from "{}"'.format(value), position)
+    return float(text) if "." in digits else int(text)
+
+
+def builtin_type(args, position):
+    return type_category(args[0])
+
+
 BUILTINS = {
     "print": BuiltinFunction("print", None, builtin_print),
     "len": BuiltinFunction("len", 1, builtin_len),
     "append": BuiltinFunction("append", 2, builtin_append),
     "pop": BuiltinFunction("pop", None, builtin_pop),
     "range": BuiltinFunction("range", None, builtin_range),
+    "upper": BuiltinFunction("upper", 1, builtin_upper),
+    "lower": BuiltinFunction("lower", 1, builtin_lower),
+    "trim": BuiltinFunction("trim", 1, builtin_trim),
+    "split": BuiltinFunction("split", None, builtin_split),
+    "join": BuiltinFunction("join", 2, builtin_join),
+    "str": BuiltinFunction("str", 1, builtin_str),
+    "num": BuiltinFunction("num", 1, builtin_num),
+    "type": BuiltinFunction("type", 1, builtin_type),
 }
 
 
@@ -1164,21 +1415,31 @@ def check_element_type(existing, value, position):
 
 def normalize_index(target, index, position):
     """Turn a NovaLang index into a Python one, with friendly errors."""
-    if not isinstance(target, list):
+    if not isinstance(target, (list, str)):
         raise NovaError("{} cannot be indexed".format(type_name(target)), position)
-    spot = whole_number(index, "a list index", position)
+    what = "string" if isinstance(target, str) else "list"
+    spot = whole_number(index, "a {} index".format(what), position)
 
     size = len(target)
     if size == 0:
-        raise NovaError("this list is empty, so it has no item to index", position)
+        raise NovaError(
+            "this {} is empty, so it has no {} to index".format(
+                what, "character" if what == "string" else "item"
+            ),
+            position,
+        )
 
     original = spot
     if spot < 0:
         spot += size                    # a[-1] is the last item
     if not 0 <= spot < size:
         raise NovaError(
-            "index {} is out of range for a list of {} item(s) - valid indexes are "
-            "{} to {}".format(original, size, -size, size - 1),
+            "index {} is out of range for a {} of {} {} - valid indexes are "
+            "{} to {}".format(
+                original, what, size,
+                "character(s)" if what == "string" else "item(s)",
+                -size, size - 1,
+            ),
             position,
         )
     return spot
@@ -1384,8 +1645,30 @@ class Interpreter:
         index = self.evaluate(node.index)
         return target[normalize_index(target, index, node.position)]
 
+    def visit_SliceNode(self, node):
+        target = self.evaluate(node.target)
+        if not isinstance(target, (list, str)):
+            raise NovaError("{} cannot be sliced".format(type_name(target)), node.position)
+
+        bound = "a slice bound"
+        start = None if node.start is None else whole_number(
+            self.evaluate(node.start), bound, node.position)
+        end = None if node.end is None else whole_number(
+            self.evaluate(node.end), bound, node.position)
+
+        # Slices clamp instead of failing: "Hello"[1:99] is "ello".
+        return target[start:end]
+
+    def visit_InterpolationNode(self, node):
+        return "".join(format_value(self.evaluate(part)) for part in node.parts)
+
     def visit_IndexAssignNode(self, node):
         target = self.evaluate(node.target)
+        if isinstance(target, str):
+            raise NovaError(
+                "strings cannot be changed in place - build a new one instead",
+                node.position,
+            )
         index = self.evaluate(node.index)
         value = self.evaluate(node.value)
         spot = normalize_index(target, index, node.position)
@@ -1451,6 +1734,22 @@ class Interpreter:
         # "abc" + "def" is the one non-numeric arithmetic we allow.
         if op == "+" and isinstance(left, str) and isinstance(right, str):
             return left + right
+
+        # "Ha" * 3 repeats a string; the number may be on either side.
+        if op == "*" and (isinstance(left, str) or isinstance(right, str)):
+            text, count = (left, right) if isinstance(left, str) else (right, left)
+            if isinstance(text, str) and is_number(count):
+                times = whole_number(count, "string repetition", node.position)
+                if times < 0:
+                    raise NovaError(
+                        "a string cannot be repeated a negative number of times", node.position
+                    )
+                if len(text) * times > MAX_LIST_LENGTH:
+                    raise NovaError(
+                        "repeating that string {} times would be too long".format(times),
+                        node.position,
+                    )
+                return text * times
 
         # Lists join with '+' and repeat with '*', always into a new list.
         if op == "+" and isinstance(left, list) and isinstance(right, list):
@@ -1521,6 +1820,8 @@ class Interpreter:
             return nova_equals(left, right)
         if op == "!=":
             return not nova_equals(left, right)
+        if op == "in":
+            return nova_contains(left, right, node.position)
 
         ordered = (is_number(left) and is_number(right)) or (
             isinstance(left, str) and isinstance(right, str)
@@ -1757,6 +2058,25 @@ def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def nova_contains(needle, haystack, position):
+    """`x in y` - a substring of a string, or an item of a list."""
+    if isinstance(haystack, str):
+        if not isinstance(needle, str):
+            raise NovaError(
+                "'in' can only look for a string inside a string, not {}".format(
+                    type_name(needle)
+                ),
+                position,
+            )
+        return needle in haystack
+    if isinstance(haystack, list):
+        return any(nova_equals(needle, item) for item in haystack)
+    raise NovaError(
+        "'in' needs a list or a string on its right, but got {}".format(type_name(haystack)),
+        position,
+    )
+
+
 def nova_equals(left, right):
     """Equality never crosses types: true == 1 is false, not an error."""
     if isinstance(left, bool) != isinstance(right, bool):
@@ -1846,7 +2166,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.4.0            ║
+║       NOVALANG v0.5.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -1863,21 +2183,30 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     numbers              1, 42, 3.14      strings  "hi", 'hi'
     booleans             true, false      comments # to end of line
     lists                [1, 2, 3], []    one kind of item per list
+    f-strings            f"Hello, {name}!"   {{ and }} are literal braces
+    escapes              \n  \t  \\  \"  \'
 
   Expressions
-    + - * /              arithmetic, and "a" + "b" joins strings
+    + - * /              arithmetic; "a" + "b" joins, "Ha" * 3 repeats
     % //                 remainder and integer division: 10 % 3, 10 // 3
-    < > <= >= == !=      comparisons, producing true or false
+    < > <= >= == !=      comparisons; strings compare alphabetically
+    in                   "ell" in "Hello",  3 in [1, 2, 3]
     and or not           short-circuit logic: `not done and i < 10`
-    a[0]  a[-1]          index a list; -1 is the last item
+    a[0]  a[-1]          index a list or a string; -1 is the last item
+    a[1:4] a[2:] a[:3]   slice a list or a string; out-of-range ends clamp
     [1, 2] + [3]         join lists;  [1, 2] * 3 repeats one
 
   Built-in functions
     print(x, ...)        write a line
-    len(a)               how many items (also works on strings)
+    len(a)               how many items or characters
     append(a, v)         add v to the end of a
     pop(a) / pop(a, i)   remove and return the last item, or item i
     range(n)             [0 .. n-1];  range(a, b) and range(a, b, step)
+    upper(s) lower(s)    change case;  trim(s) removes outer spaces
+    split(s, sep)        cut a string into a list; split(s) uses spaces
+    join(a, sep)         glue a list into a string
+    str(x) num(s)        convert between numbers and strings
+    type(x)              "number", "string", "list", "boolean", ...
 
   Statements
     x = 10               assignment (updates an outer x if one exists)

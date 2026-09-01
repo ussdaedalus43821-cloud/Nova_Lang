@@ -1,0 +1,95 @@
+# ---- literals and escapes ----
+let single = 'single quoted'
+let double = "double quoted"
+print(single, double)
+print("Hello\nWorld")
+print("Hello\tWorld")
+print("Hello\\World")
+print("Hello\"World")
+
+# ---- indexing and slicing (read only) ----
+let greeting = "Hello"
+print(greeting[0], greeting[-1], greeting[4])
+print(greeting[1:4], greeting[2:], greeting[:3], greeting[:])
+print(greeting[1:99])          # slices clamp instead of failing
+
+# ---- concatenation and repetition ----
+print("Hello" + " " + "World")
+print("Ha" * 3, 3 * "Ha")
+
+# ---- case and whitespace ----
+print(upper("hello"), lower("HELLO"), "[" + trim("   hello   ") + "]", len("hello"))
+
+# ---- f-strings ----
+let name = "Alice"
+let age = 30
+print(f"Hello, {name}!")
+print(f"{name} is {age} years old, and next year {age + 1}.")
+print(f"Nested: {upper(name)} has {len(name)} letters")
+print(f"Braces are written {{like this}}")
+print(f"A list interpolates too: {[1, 2, 3]}")
+
+# ---- the in operator ----
+print("ell" in "Hello", "xyz" in "Hello")
+print(3 in [1, 2, 3], 9 in [1, 2, 3])
+print("a" in ["a", "b"], not ("z" in ["a", "b"]))
+
+# ---- lexicographic comparison ----
+print("apple" < "banana", "Zebra" < "apple", "abc" == "abc")
+
+# ---- split and join ----
+print(split("a,b,c", ","))
+print(split("one two  three"))
+print(join([1, 2, 3], "-"))
+print(join(["red", "green", "blue"], ", "))
+
+# ---- conversions ----
+print(str(42), str(3.5), str(true), str([1, 2]))
+print(num("42") + 1, num("3.14"), num("-7"))
+print(type(42), type("hello"), type([1]), type(true), type(print))
+
+# ---- putting it together: a tiny text pipeline ----
+def title_case(text) {
+    let out = []
+    for word in split(text) {
+        append(out, upper(word[0]) + lower(word[1:]))
+    }
+    return join(out, " ")
+}
+print(title_case("the QUICK brown fOx"))
+
+def vowels(text) {
+    let found = 0
+    for i in range(len(text)) {
+        if lower(text[i]) in "aeiou" {
+            found = found + 1
+        }
+    }
+    return found
+}
+print(f"'programming' has {vowels("programming")} vowels")
+
+def reverse(text) {
+    let out = ""
+    for i in range(len(text)) {
+        out = text[i] + out
+    }
+    return out
+}
+print(reverse("NovaLang"))
+
+def is_palindrome(text) {
+    let clean = lower(join(split(text), ""))
+    return clean == reverse(clean)
+}
+print(is_palindrome("Never odd or even"), is_palindrome("hello"))
+
+# ---- numbers in, strings out ----
+def commas(numbers) {
+    let parts = []
+    for n in numbers {
+        append(parts, str(n))
+    }
+    return join(parts, ", ")
+}
+print(f"[{commas(range(1, 6))}]")
