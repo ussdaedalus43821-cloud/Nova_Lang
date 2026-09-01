@@ -63,24 +63,23 @@ def evens(limit) {
 print(evens(12))
 
 def fizzbuzz(limit) {
-    # Lists hold one kind of item, so this prints instead of collecting a
-    # mixed list - and returns how many landed on fizzbuzz.
-    let hits = 0
+    # Lists hold any mix of values, so the numbers and the words can live
+    # in the same list.
+    let out = []
     for n in range(1, limit + 1) {
         if n % 15 == 0 {
-            print("fizzbuzz")
-            hits = hits + 1
+            append(out, "fizzbuzz")
         } else if n % 3 == 0 {
-            print("fizz")
+            append(out, "fizz")
         } else if n % 5 == 0 {
-            print("buzz")
+            append(out, "buzz")
         } else {
-            print(n)
+            append(out, n)
         }
     }
-    return hits
+    return out
 }
-print("fizzbuzzes:", fizzbuzz(15))
+print(fizzbuzz(15))
 
 # ---- lists are references; let shadows, plain assignment updates ----
 let shared = [1, 2, 3]

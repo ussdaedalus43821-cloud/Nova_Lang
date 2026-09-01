@@ -18,6 +18,31 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.6.1] - 2026-09-01 — Lists Hold Anything
+
+### Changed
+
+- **Lists may now hold a mix of value types.** The one-type rule introduced
+  in v0.4.0 is gone: a list literal can mix kinds, an item can be replaced by
+  a value of a different kind, `append` accepts anything, and two lists of
+  different kinds join with `+`.
+  ```
+  let mixed = [1, "two", true, [3], {k: "v"}]
+  append(mixed, 3.5)
+  print([1, 2] + ["a", true])     # [1, 2, "a", true]
+  ```
+  Dictionaries already held any mix of values, and this removes the seam
+  between the two: `values(d)` now returns an ordinary list that behaves like
+  any other, including through `join`, `in`, `==`, indexing and iteration.
+- `help` describes lists as holding any mix of values.
+
+### Removed
+
+- The internal element-type check that enforced the one-type rule, along with
+  the four error sites that reported it.
+
+---
+
 ## [0.6.0] - 2026-09-01 — Dictionaries
 
 Stage 6. Named fields, so a value can be a record rather than a position in
@@ -63,9 +88,9 @@ a list.
 ### Note
 
 `values()` returns whatever the dictionary holds, so the list it hands back
-can be mixed even though a list you build yourself must hold one kind of
-item. The one-type rule from v0.4.0 is enforced where a list is created or
-extended, not on lists produced by a built-in.
+could be mixed even though a list you built yourself had to hold one kind of
+item. That seam was removed one release later — see v0.6.1, which lets every
+list hold a mix.
 
 ---
 
@@ -312,6 +337,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.6.1]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.5.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.4.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
