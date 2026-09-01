@@ -1,0 +1,45 @@
+# The example from the spec
+def fib(n) {
+    if n < 2 {
+        return n
+    } else {
+        return fib(n - 1) + fib(n - 2)
+    }
+}
+
+print("fib(10) =")
+print(fib(10))
+print(fib(20))
+
+# locals must not leak
+def scoped(n) {
+    hidden = n * 2
+    return hidden
+}
+print(scoped(21))
+
+def grade(score) {
+    if score >= 90 {
+        return "A"
+    } else if score >= 80 {
+        return "B"
+    } else {
+        return "C"
+    }
+}
+print(grade(95), grade(85), grade(10))
+
+print(1 < 2, 2 <= 2, 3 > 4, 3 != 4, 3 == 3, true, false)
+print("nova" + "lang")
+
+def add(a, b) { return a + b }
+print(add(2, 3) * add(4, 5))
+
+def counts(n) {
+    total = 0
+    if n > 0 {
+        total = n + counts(n - 1)
+    }
+    return total
+}
+print(counts(10))
