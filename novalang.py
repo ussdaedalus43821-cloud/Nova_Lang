@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.6.1 - a tiny language built from a hand-written lexer,
+# NovaLang v0.7.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 6: Dictionaries
+NovaLang - Stage 7: File I/O
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -22,13 +22,16 @@ Stage 5:  string indexing and slicing, f-strings, the `in` operator, and
           upper / lower / trim / split / join / str / num / type.
 Stage 6:  dictionaries - literals, dot and bracket access, delete,
           merging, pair iteration, and the keys / values built-ins.
+Stage 7:  files - read / write / append / exists / listdir, delete(path),
+          and input() for reading a line from the person at the keyboard.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
+import os
 import sys
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -47,10 +50,11 @@ MAX_TRACE_FRAMES = 8
 class NovaError(Exception):
     """A NovaLang error that points at the offending character."""
 
-    def __init__(self, message, position=None):
+    def __init__(self, message, position=None, label="NovaError"):
         super().__init__(message)
         self.message = message
         self.position = position
+        self.label = label      # file trouble reports itself as FileNotFoundError
         self.stack = None       # filled in by the interpreter on a call error
 
     def render(self, source):
@@ -69,7 +73,7 @@ class NovaError(Exception):
             lines.append(gutter + text)
             lines.append(" " * len(gutter) + " " * min(offset, len(text)) + "^")
 
-        lines.append("NovaError: " + self.message)
+        lines.append(self.label + ": " + self.message)
 
         # Deep recursion produces a very long stack; show both ends of it.
         frames = self.stack or []
@@ -665,6 +669,14 @@ class DeleteNode(Node):
         self.position = position
 
 
+class DeleteFileNode(Node):
+    """`delete("temp.txt")` - the parenthesised form of delete."""
+
+    def __init__(self, path, position):
+        self.path = path
+        self.position = position
+
+
 class LetNode(Node):
     """`let x = value` - always binds in the current scope."""
 
@@ -774,6 +786,7 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 #                | 'for' IDENT [',' IDENT] 'in' expression block
 #                  ['else' block]
 #   delstmt     := 'delete' (expression '.' NAME | expression '[' expression ']')
+#                | 'delete' '(' expression ')'          (removes a file)
 #   block       := '{' (statement SEP)* '}'
 #
 #   expression  := or_expr
@@ -1030,13 +1043,24 @@ class Parser:
 
     def delete_statement(self):
         keyword = self.advance()                        # 'delete'
+
+        # `delete(path)` looks like a call and removes a file; `delete d.key`
+        # removes a dictionary entry. The '(' is what tells them apart, so
+        # `delete(files[0])` deletes the named file rather than the entry.
+        if self.current.type == TT_LPAREN:
+            self.advance()
+            path = self.expression()
+            self.expect(TT_RPAREN, "a ')' after the file name")
+            return DeleteFileNode(path, keyword.position)
+
         target = self.expression()
         if isinstance(target, MemberNode):
             return DeleteNode(target.target, StringNode(target.name), keyword.position)
         if isinstance(target, IndexNode):
             return DeleteNode(target.target, target.index, keyword.position)
         raise NovaError(
-            "delete needs a dictionary entry, as in `delete d.key` or `delete d[\"key\"]`",
+            "delete needs a dictionary entry, as in `delete d.key` or `delete d[\"key\"]`, "
+            "or a file, as in `delete(\"temp.txt\")`",
             keyword.position,
         )
 
@@ -1382,16 +1406,91 @@ def builtin_values(args, position):
 
 
 def builtin_append(args, position):
+    """append(list, value) grows a list; append(path, text) grows a file."""
     target, value = args
+
+    if isinstance(target, str):
+        text = text_argument(value, "the text appended to a file", position)
+        with open_file(target, "a", position) as handle:
+            handle.write(text)
+        return NOTHING
+
     if not isinstance(target, list):
         raise NovaError(
-            "append() needs a list as its first argument, but got {}".format(type_name(target)),
+            "append() needs a list or a file name as its first argument, but got {}".format(
+                type_name(target)
+            ),
             position,
         )
     if len(target) >= MAX_LIST_LENGTH:
         raise NovaError("a list cannot grow beyond {} items".format(MAX_LIST_LENGTH), position)
     target.append(value)
     return target
+
+
+def open_file(path, mode, position):
+    """Open a file, turning the operating system's complaint into a NovaError."""
+    try:
+        return open(path, mode, encoding="utf-8")
+    except FileNotFoundError:
+        raise NovaError(path, position, label="FileNotFoundError")
+    except IsADirectoryError:
+        raise NovaError("{} is a directory, not a file".format(path), position,
+                        label="FileError")
+    except OSError as problem:
+        raise NovaError(
+            "{}: {}".format(path, problem.strerror or "cannot be opened"), position,
+            label="FileError",
+        )
+
+
+def builtin_read(args, position):
+    path = text_argument(args[0], "read()", position)
+    with open_file(path, "r", position) as handle:
+        try:
+            return handle.read()
+        except (OSError, UnicodeDecodeError) as problem:
+            raise NovaError(
+                "{}: {}".format(path, problem), position, label="FileError"
+            )
+
+
+def builtin_write(args, position):
+    path = text_argument(args[0], "the file name for write()", position)
+    text = text_argument(args[1], "the text for write()", position)
+    with open_file(path, "w", position) as handle:
+        handle.write(text)
+    return NOTHING
+
+
+def builtin_exists(args, position):
+    return os.path.exists(text_argument(args[0], "exists()", position))
+
+
+def builtin_listdir(args, position):
+    path = text_argument(args[0], "listdir()", position)
+    try:
+        return sorted(os.listdir(path))             # sorted, so runs match
+    except FileNotFoundError:
+        raise NovaError(path, position, label="FileNotFoundError")
+    except NotADirectoryError:
+        raise NovaError("{} is a file, not a directory".format(path), position,
+                        label="FileError")
+    except OSError as problem:
+        raise NovaError(
+            "{}: {}".format(path, problem.strerror or "cannot be listed"), position,
+            label="FileError",
+        )
+
+
+def builtin_input(args, position):
+    if len(args) > 1:
+        raise NovaError("input() takes an optional prompt and nothing else", position)
+    prompt = text_argument(args[0], "input()", position) if args else ""
+    try:
+        return input(prompt)
+    except EOFError:
+        raise NovaError("input() found no more input to read", position)
 
 
 def builtin_pop(args, position):
@@ -1519,6 +1618,11 @@ BUILTINS = {
     "type": BuiltinFunction("type", 1, builtin_type),
     "keys": BuiltinFunction("keys", 1, builtin_keys),
     "values": BuiltinFunction("values", 1, builtin_values),
+    "read": BuiltinFunction("read", 1, builtin_read),
+    "write": BuiltinFunction("write", 2, builtin_write),
+    "exists": BuiltinFunction("exists", 1, builtin_exists),
+    "listdir": BuiltinFunction("listdir", 1, builtin_listdir),
+    "input": BuiltinFunction("input", None, builtin_input),
 }
 
 
@@ -1853,6 +1957,28 @@ class Interpreter:
         value = self.evaluate(node.value)
         target[node.name] = value                       # a new key is fine
         return value
+
+    def visit_DeleteFileNode(self, node):
+        path = self.evaluate(node.path)
+        if not isinstance(path, str):
+            raise NovaError(
+                "delete() needs a file name, but got {}".format(type_name(path)), node.position
+            )
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass                                    # deleting twice is harmless
+        except IsADirectoryError:
+            raise NovaError(
+                "{} is a directory - delete() only removes files".format(path),
+                node.position, label="FileError",
+            )
+        except OSError as problem:
+            raise NovaError(
+                "{}: {}".format(path, problem.strerror or "cannot be deleted"),
+                node.position, label="FileError",
+            )
+        return NOTHING
 
     def visit_DeleteNode(self, node):
         target = self.evaluate(node.target)
@@ -2414,7 +2540,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.6.1            ║
+║       NOVALANG v0.7.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2459,6 +2585,15 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     str(x) num(s)        convert between numbers and strings
     type(x)              "number", "string", "list", "dict", "boolean", ...
     keys(d) values(d)    a dictionary's keys or values, as a list
+
+  Files and input
+    read(path)           the whole file, as one string
+    write(path, text)    write text, replacing whatever was there
+    append(path, text)   add text to the end of a file
+    exists(path)         true if the path is there
+    listdir(path)        the names inside a directory, sorted
+    delete(path)         remove a file (missing is fine) - note the ()
+    input(prompt)        print the prompt, read one typed line
 
   Statements
     x = 10               assignment (updates an outer x if one exists)
