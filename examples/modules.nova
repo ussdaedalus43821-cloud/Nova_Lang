@@ -1,0 +1,44 @@
+# examples/modules.nova - every way to bring in examples/math.nova.
+#
+# Run this from the repository root: python3 novalang.py examples/modules.nova
+
+# ---- plain import: access via the inferred module name ----
+import "math.nova"
+print(math.fib(10))
+print(math.PI)
+
+# ---- import with an alias ----
+import "math.nova" as m
+print(m.factorial(5))
+
+# ---- import specific names directly into scope ----
+import "math.nova" with fib, PI
+print(fib(6), PI)
+
+# ---- relative import: "./math.nova" resolves the same file as "math.nova"
+# does here, because both are relative to this file's own directory. The
+# module cache means it is only ever loaded and run once, and every importer
+# shares the same namespace. ----
+import "./math.nova" as m2
+print(m2.PI == math.PI, m2.fib(10) == math.fib(10))
+
+# ---- private names stay private: `secret` was never exported ----
+try {
+    math.secret()
+} catch e {
+    print("caught:", e)
+}
+print("secret" in math)
+
+# ---- a module namespace is an ordinary dictionary under the hood, so
+# everything Stage 6 taught it works here too: keys(), values(), 'in',
+# dot and bracket access meaning the same thing. ----
+print(type(math), keys(math))
+print(math["fib"](7))
+
+# ---- circular imports are caught, not crashed on ----
+try {
+    import "./circular_a.nova"
+} catch e {
+    print("circular import caught: it happened")
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.8.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.9.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 8: Error Handling
+NovaLang - Stage 9: Modules & Imports
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -26,6 +26,9 @@ Stage 7:  files - read / write / append / exists / listdir, delete(path),
           and input() for reading a line from the person at the keyboard.
 Stage 8:  try / catch / finally and throw, so a program can recover from
           an error instead of stopping at it.
+Stage 9:  modules - import "file.nova" [as name | with a, b], export def /
+          export let, relative paths, a module cache, and circular-import
+          detection.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -33,7 +36,7 @@ No eval(). No exec(). Everything is still built by hand.
 import os
 import sys
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -172,6 +175,10 @@ TT_TRY      = "TRY"         # Stage 8
 TT_CATCH    = "CATCH"
 TT_FINALLY  = "FINALLY"
 TT_THROW    = "THROW"
+TT_IMPORT   = "IMPORT"      # Stage 9
+TT_EXPORT   = "EXPORT"
+TT_AS       = "AS"
+TT_WITH     = "WITH"
 
 KEYWORDS = {
     "def": TT_DEF,
@@ -197,6 +204,10 @@ KEYWORDS = {
     "catch": TT_CATCH,
     "finally": TT_FINALLY,
     "throw": TT_THROW,
+    "import": TT_IMPORT,
+    "export": TT_EXPORT,
+    "as": TT_AS,
+    "with": TT_WITH,
 }
 
 # Keywords may still be used as dictionary keys and field names, so the
@@ -705,6 +716,24 @@ class DeleteFileNode(Node):
         self.position = position
 
 
+class ImportNode(Node):
+    """`import "path.nova"`, optionally `as name` or `with a, b, ...`."""
+
+    def __init__(self, path, alias, names, position):
+        self.path = path        # the raw text as written, e.g. "./math.nova"
+        self.alias = alias      # a name, or None
+        self.names = names      # a list of names for 'with', or None
+        self.position = position
+
+
+class ExportNode(Node):
+    """`export def f() { }` or `export let x = 1` - wraps the real statement."""
+
+    def __init__(self, inner, position):
+        self.inner = inner      # a FunctionDefNode or a LetNode
+        self.position = position
+
+
 class LetNode(Node):
     """`let x = value` - always binds in the current scope."""
 
@@ -805,6 +834,8 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode, TryN
 #   letstmt     := 'let' IDENT '=' exprstmt
 #   trystmt     := 'try' block ['catch' [IDENT] block] ['finally' block]
 #   throwstmt   := 'throw' expression
+#   importstmt  := 'import' STRING ['as' IDENT | 'with' IDENT (',' IDENT)*]
+#   exportstmt  := 'export' (funcdef | letstmt)
 #   exprstmt    := expression ['=' exprstmt]     (the left side must be a
 #                  variable or a list element, checked after parsing)
 #   funcdef     := 'def' IDENT '(' [IDENT (',' IDENT)*] ')' block
@@ -884,7 +915,8 @@ class Parser:
         A statement that already ends in '}' is self-terminating, so
         `if x { ... } return 5` on one line is fine.
         """
-        if isinstance(statement, BLOCK_STATEMENTS):
+        target = statement.inner if isinstance(statement, ExportNode) else statement
+        if isinstance(target, BLOCK_STATEMENTS):
             self.skip_newlines()
             return
         if self.current.type in closers:
@@ -966,6 +998,10 @@ class Parser:
             return self.try_statement()
         if token.type == TT_THROW:
             return self.throw_statement()
+        if token.type == TT_IMPORT:
+            return self.import_statement()
+        if token.type == TT_EXPORT:
+            return self.export_statement()
         return self.expression_statement()
 
     def function_def(self):
@@ -1105,6 +1141,49 @@ class Parser:
         if self.current.type in (TT_NEWLINE, TT_RBRACE, TT_EOF):
             raise NovaError("throw needs a message to throw", keyword.position)
         return ThrowNode(self.expression(), keyword.position)
+
+    def import_statement(self):
+        keyword = self.advance()                        # 'import'
+        path_token = self.expect(TT_STRING, "a quoted module path after 'import'")
+
+        alias = None
+        names = None
+        if self.current.type == TT_AS:
+            self.advance()
+            alias_token = self.expect(TT_IDENT, "a name after 'as'")
+            guard_name(alias_token.value, alias_token.position, "a module alias")
+            alias = alias_token.value
+        elif self.current.type == TT_WITH:
+            self.advance()
+            names = []
+            while True:
+                name_token = self.expect(TT_IDENT, "a name to import")
+                guard_name(name_token.value, name_token.position, "an imported name")
+                if name_token.value in names:
+                    raise NovaError(
+                        "{!r} is imported twice".format(name_token.value), name_token.position
+                    )
+                names.append(name_token.value)
+                if self.current.type != TT_COMMA:
+                    break
+                self.advance()
+
+        return ImportNode(path_token.value, alias, names, keyword.position)
+
+    def export_statement(self):
+        keyword = self.advance()                        # 'export'
+        if self.current.type == TT_DEF:
+            inner = self.function_def()
+        elif self.current.type == TT_LET:
+            inner = self.let_statement()
+        else:
+            raise NovaError(
+                "'export' must be followed by 'def' or 'let', found {}".format(
+                    describe(self.current)
+                ),
+                keyword.position,
+            )
+        return ExportNode(inner, keyword.position)
 
     def delete_statement(self):
         keyword = self.advance()                        # 'delete'
@@ -1918,6 +1997,14 @@ class Interpreter:
         self.env = self.globals
         self.call_stack = []            # function names, innermost last
 
+        # Module machinery (Stage 9). file_stack tracks the directory of
+        # whichever file is currently executing, for resolving a relative
+        # import; it starts empty, meaning "no current file - use cwd only".
+        self.file_stack = []
+        self.import_stack = []          # resolved paths currently loading
+        self.modules = {}               # resolved path -> its exports dict
+        self.current_exports = {}       # name -> value, for the module now loading
+
     # -- dispatch -----------------------------------------------------------
 
     def evaluate(self, node):
@@ -2061,6 +2148,113 @@ class Interpreter:
             )
         # label "Error" so a thrown message reads as its own kind of trouble.
         raise NovaError(value, node.position, label="Error")
+
+    def visit_ImportNode(self, node):
+        resolved = self.resolve_import(node.path, node.position)
+        exports = self.load_module(resolved, node.path, node.position)
+
+        if node.names is not None:
+            for name in node.names:
+                if name not in exports:
+                    raise NovaError(
+                        'module "{}" has no exported {!r} - it exports {}'.format(
+                            node.path, name, ", ".join(exports) or "nothing"
+                        ),
+                        node.position,
+                    )
+                self.env.define(name, exports[name])
+        else:
+            module_name = node.alias or default_module_name(node.path, node.position)
+            self.env.define(module_name, exports)
+        return NOTHING
+
+    def visit_ExportNode(self, node):
+        value = self.evaluate(node.inner)
+        self.current_exports[node.inner.name] = value
+        return value
+
+    def resolve_import(self, raw_path, position):
+        """Search relative to the importing file, then the current directory."""
+        current_dir = self.file_stack[-1] if self.file_stack else None
+        candidates = []
+        if current_dir is not None:
+            candidates.append(os.path.normpath(os.path.join(current_dir, raw_path)))
+        candidates.append(os.path.normpath(os.path.join(os.getcwd(), raw_path)))
+
+        tried = []
+        seen = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            tried.append(candidate)
+            if os.path.isfile(candidate):
+                return os.path.abspath(candidate)
+
+        raise NovaError(
+            'cannot find module "{}" - looked in:\n{}'.format(
+                raw_path, "\n".join("  " + path for path in tried)
+            ),
+            position, label="ImportError",
+        )
+
+    def load_module(self, resolved_path, raw_path, position):
+        """Run a file once and cache its exports, keyed by resolved path.
+
+        A second `import` of the same file - by any name, from anywhere -
+        reuses this cache, so modules behave like singletons: two importers
+        share the same dictionary and see each other's changes to it.
+        """
+        if resolved_path in self.modules:
+            return self.modules[resolved_path]
+
+        if resolved_path in self.import_stack:
+            cycle = self.import_stack[self.import_stack.index(resolved_path):] + [resolved_path]
+            chain = " -> ".join(os.path.basename(path) for path in cycle)
+            raise NovaError(
+                "circular import: {}".format(chain), position, label="ImportError"
+            )
+
+        try:
+            with open(resolved_path, "r", encoding="utf-8") as handle:
+                source = handle.read()
+        except OSError as problem:
+            raise NovaError(
+                'cannot read module "{}": {}'.format(
+                    raw_path, problem.strerror or "cannot be opened"
+                ),
+                position, label="ImportError",
+            )
+
+        # A module gets its own top-level scope, its own call stack and its
+        # own set of exports - it is a fresh program, not a shared block.
+        saved = (self.globals, self.env, self.call_stack, self.current_exports)
+        self.globals = Environment(barrier=True)
+        self.env = self.globals
+        self.call_stack = []
+        self.current_exports = {}
+        self.import_stack.append(resolved_path)
+        self.file_stack.append(os.path.dirname(resolved_path))
+
+        try:
+            try:
+                run(source, self)
+            except NovaError as error:
+                raise NovaError(
+                    'while loading module "{}":\n{}'.format(
+                        raw_path, indent_lines(error.render(source))
+                    ),
+                    position, label="ImportError",
+                ) from None
+            else:
+                exports = self.current_exports
+        finally:
+            self.file_stack.pop()
+            self.import_stack.pop()
+            self.globals, self.env, self.call_stack, self.current_exports = saved
+
+        self.modules[resolved_path] = exports
+        return exports
 
     def visit_DeleteFileNode(self, node):
         path = self.evaluate(node.path)
@@ -2525,6 +2719,26 @@ def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def default_module_name(raw_path, position):
+    """The name a bare `import "path.nova"` binds, absent an alias."""
+    stem = os.path.splitext(os.path.basename(raw_path))[0]
+    valid = stem and (stem[0].isalpha() or stem[0] == "_") and all(
+        char.isalnum() or char == "_" for char in stem
+    )
+    if not valid:
+        raise NovaError(
+            '"{}" does not make a valid module name - import it with \'as\' and choose one'
+            .format(raw_path),
+            position,
+        )
+    guard_name(stem, position, "a module")
+    return stem
+
+
+def indent_lines(text, prefix="  "):
+    return "\n".join(prefix + line for line in text.split("\n"))
+
+
 def error_text(error):
     """What `catch e` binds: the message, with a label only when it adds
     something. `throw("boom")` gives "boom"; a missing file gives
@@ -2653,7 +2867,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.8.0            ║
+║       NOVALANG v0.9.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2724,6 +2938,10 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     try { } catch e { }  run anyway; e holds the message as a string
     try { } finally { }  the finally block always runs
     throw("gone wrong")  raise an error of your own
+    import "f.nova"      run a file once; its exports are in f.<name>
+    import "f.nova" as g       ...under the name g instead
+    import "f.nova" with a, b  ...or bring specific names straight in
+    export def f() { }   export let x = 1   mark a name as importable
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in
 
@@ -2746,8 +2964,8 @@ CONTINUATION_TOKENS = (
     TT_AND, TT_OR, TT_NOT,
 )
 
-# Statements whose header is followed by a '{' block.
-BLOCK_OPENERS = (TT_DEF, TT_IF, TT_WHILE, TT_FOR)
+# A statement whose *first* token is one of these always needs a block.
+BLOCK_OPENERS = (TT_IF, TT_WHILE, TT_FOR, TT_TRY)
 
 
 def needs_more_input(source):
@@ -2756,6 +2974,16 @@ def needs_more_input(source):
         tokens = Lexer(source).tokenize()
     except NovaError:
         return False                    # let the real error surface
+
+    meaningful_for_def = [t for t in tokens if t.type not in (TT_NEWLINE, TT_EOF)]
+    # `def` (bare, or after `export`) always needs a block; `if`/`while`/
+    # `for`/`try` need one only when they open the statement, so that
+    # `export let x = 5` - which never gets a '{' - does not wait forever.
+    needs_block = any(t.type == TT_DEF for t in meaningful_for_def) or (
+        meaningful_for_def and meaningful_for_def[0].type in BLOCK_OPENERS
+    )
+    if needs_block and not any(t.type == TT_LBRACE for t in meaningful_for_def):
+        return True
 
     braces = brackets = 0
     for token in tokens:
@@ -2770,13 +2998,9 @@ def needs_more_input(source):
     if braces > 0 or brackets > 0:
         return True
 
-    meaningful = [t for t in tokens if t.type not in (TT_NEWLINE, TT_EOF)]
+    meaningful = meaningful_for_def
     if not meaningful:
         return False
-
-    # `while x < 10` or `def fib(n)` with the '{' still to come next line.
-    if meaningful[0].type in BLOCK_OPENERS and not any(t.type == TT_LBRACE for t in meaningful):
-        return True
 
     return meaningful[-1].type in CONTINUATION_TOKENS
 
@@ -2877,6 +3101,8 @@ def show_vars(interpreter):
 def run_source(source, origin):
     """Run a whole program (a file, or code from the command line)."""
     interpreter = Interpreter()
+    # A relative import in this file resolves against its own directory first.
+    interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
     try:
         run(source, interpreter)
     except NovaError as error:

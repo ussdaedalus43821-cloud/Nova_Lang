@@ -1,0 +1,2 @@
+import "./circular_b.nova"
+export let a_loaded = true
