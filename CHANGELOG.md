@@ -18,6 +18,56 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.5.0] - 2026-09-01 — Strings & Text Processing
+
+Stage 5. Strings stop being opaque blobs and become something you can take
+apart, measure, search and rebuild.
+
+### Added
+
+- **Indexing and slicing for strings**, sharing the syntax lists already use:
+  `"Hello"[0]` is `"H"`, `"Hello"[-1]` is `"o"`, and `"Hello"[1:4]` is
+  `"ell"`. Either end of a slice may be left out — `[2:]`, `[:3]`, `[:]` —
+  and out-of-range ends clamp rather than fail, so `"Hello"[1:99]` is
+  `"ello"`. Lists slice too, producing a new list.
+- **String repetition**: `"Ha" * 3` is `"HaHaHa"`, with the count on either
+  side.
+- **f-strings**: `f"Hello, {name}!"`. Each placeholder holds a full
+  expression — `f"{age + 1}"`, `f"{upper(name)}"`, `f"{[1, 2]}"` — and is
+  lexed into parts, then parsed through the same parser as everything else.
+  Write `{{` and `}}` for literal braces. Positions inside a placeholder are
+  mapped back to the real line, so an error caret points at the right column.
+- **The `in` operator** at comparison precedence: `"ell" in "Hello"` and
+  `3 in [1, 2, 3]`. On lists it uses the same element-wise equality as `==`.
+- **Built-in functions** `upper`, `lower`, `trim`, `split`, `join`, `str`,
+  `num` and `type`. `split(s, sep)` cuts a string into a list and `split(s)`
+  splits on whitespace; `join(a, sep)` glues a list back together, converting
+  items to text as it goes; `str` and `num` convert between numbers and
+  strings; `type` names a value's kind for debugging.
+- New AST nodes `SliceNode` and `InterpolationNode`, both rendered by `tree`;
+  new tokens for `:` and for f-strings.
+- `examples/strings.nova`, working up to title-casing, vowel counting,
+  reversal and a palindrome check.
+
+### Changed
+
+- Writing to a string index is refused with a clear message: strings are
+  immutable, so `s[0] = "J"` tells you to build a new string instead.
+- Index errors now say whether the target was a string or a list, and count
+  characters rather than items for strings.
+- The eight new built-ins are reserved like `print`, so they cannot be used
+  as variable, parameter or function names.
+- `help` covers the string syntax and every built-in; the banner reads
+  `NOVALANG v0.5.0`.
+
+### Note
+
+Lexicographic string comparison (`"apple" < "banana"`), string concatenation,
+escape sequences and `len` on a string already worked — they arrived in
+Stages 2 and 4 and are unchanged here.
+
+---
+
 ## [0.4.0] - 2026-09-01 — Lists, Indexing & Integer Math
 
 Stage 4. The language gets a data structure and the arithmetic to walk it.
@@ -211,6 +261,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.5.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.4.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.3.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.2.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
