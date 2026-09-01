@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.5.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.6.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 5: Strings & Text Processing
+NovaLang - Stage 6: Dictionaries
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -20,13 +20,15 @@ Stage 4:  lists and indexing, let, % and //, for ... in, and the
           len / append / pop / range built-ins.
 Stage 5:  string indexing and slicing, f-strings, the `in` operator, and
           upper / lower / trim / split / join / str / num / type.
+Stage 6:  dictionaries - literals, dot and bracket access, delete,
+          merging, pair iteration, and the keys / values built-ins.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
 import sys
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -126,7 +128,8 @@ TT_RBRACE  = "RBRACE"
 TT_COMMA   = "COMMA"
 TT_LBRACKET = "LBRACKET"    # [
 TT_RBRACKET = "RBRACKET"    # ]
-TT_COLON   = "COLON"        # :   inside a slice
+TT_DOT     = "DOT"          # .   field access
+TT_COLON   = "COLON"        # :   inside a slice, or between key and value
 TT_PERCENT = "PERCENT"      # %   remainder
 TT_DSLASH  = "DSLASH"       # //  integer division
 TT_EQUALS  = "EQUALS"       # =   assignment
@@ -158,6 +161,7 @@ TT_OR       = "OR"
 TT_NOT      = "NOT"
 TT_LET      = "LET"         # Stage 4
 TT_IN       = "IN"
+TT_DELETE   = "DELETE"      # Stage 6
 
 KEYWORDS = {
     "def": TT_DEF,
@@ -178,7 +182,12 @@ KEYWORDS = {
     "not": TT_NOT,
     "let": TT_LET,
     "in": TT_IN,
+    "delete": TT_DELETE,
 }
+
+# Keywords may still be used as dictionary keys and field names, so the
+# parser needs to recognise their token types as names.
+KEYWORD_TOKEN_TYPES = frozenset(KEYWORDS.values())
 
 # `in` sits at the same precedence as the comparisons: `x in a == true`
 # is a chained comparison and is rejected, exactly like `a < b < c`.
@@ -196,6 +205,7 @@ SINGLE_CHAR_TOKENS = {
     "[": TT_LBRACKET,
     "]": TT_RBRACKET,
     ",": TT_COMMA,
+    ".": TT_DOT,
     ":": TT_COLON,
     "%": TT_PERCENT,
 }
@@ -568,6 +578,30 @@ class IndexNode(Node):
         self.position = position
 
 
+class DictEntryNode(Node):
+    """One `key: value` pair inside a dictionary literal."""
+
+    def __init__(self, key, value, position):
+        self.key = key                 # a plain string, decided at parse time
+        self.value = value
+        self.position = position
+
+
+class DictNode(Node):
+    def __init__(self, entries, position):
+        self.entries = entries         # list of DictEntryNode
+        self.position = position
+
+
+class MemberNode(Node):
+    """`person.name` - the same lookup as person["name"], nicer to read."""
+
+    def __init__(self, target, name, position):
+        self.target = target
+        self.name = name
+        self.position = position
+
+
 class SliceNode(Node):
     """`a[1:4]`, `a[2:]`, `a[:3]`, `a[:]` - either end may be missing."""
 
@@ -609,6 +643,25 @@ class IndexAssignNode(Node):
         self.target = target
         self.index = index
         self.value = value
+        self.position = position
+
+
+class MemberAssignNode(Node):
+    """`person.name = value`"""
+
+    def __init__(self, target, name, value, position):
+        self.target = target
+        self.name = name
+        self.value = value
+        self.position = position
+
+
+class DeleteNode(Node):
+    """`delete person.city` or `delete person["city"]`"""
+
+    def __init__(self, target, key, position):
+        self.target = target
+        self.key = key                 # an expression giving the key
         self.position = position
 
 
@@ -658,8 +711,9 @@ class ForNode(Node):
 class ForInNode(Node):
     """`for x in <list> { ... }`"""
 
-    def __init__(self, name, iterable, body, else_block, position):
+    def __init__(self, name, second_name, iterable, body, else_block, position):
         self.name = name
+        self.second_name = second_name  # `for key, value in ...`, else None
         self.iterable = iterable
         self.body = body
         self.else_block = else_block
@@ -717,7 +771,9 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 #   whilestmt   := 'while' expression block ['else' block]
 #   forstmt     := 'for' IDENT '=' expression ('to' | 'downto') expression
 #                  ['step' expression] block ['else' block]
-#                | 'for' IDENT 'in' expression block ['else' block]
+#                | 'for' IDENT [',' IDENT] 'in' expression block
+#                  ['else' block]
+#   delstmt     := 'delete' (expression '.' NAME | expression '[' expression ']')
 #   block       := '{' (statement SEP)* '}'
 #
 #   expression  := or_expr
@@ -730,9 +786,11 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 #   unary       := ('+'|'-') unary | call
 #   call        := primary ('(' [expression (',' expression)*] ')'
 #                        | '[' expression ']'
-#                        | '[' [expression] ':' [expression] ']')*
+#                        | '[' [expression] ':' [expression] ']'
+#                        | '.' NAME)*
 #   primary     := NUMBER | STRING | 'true' | 'false' | IDENT
 #                | '[' [expression (',' expression)*] ']' | FSTRING
+#                | '{' [NAME ':' expression (',' NAME ':' expression)*] '}'
 #                | '(' expression ')'
 #
 # Precedence falls out of the nesting: `or` is looser than `and`, which is
@@ -855,6 +913,8 @@ class Parser:
             return ContinueNode(token.position)
         if token.type == TT_LET:
             return self.let_statement()
+        if token.type == TT_DELETE:
+            return self.delete_statement()
         return self.expression_statement()
 
     def function_def(self):
@@ -914,13 +974,30 @@ class Parser:
         name_token = self.expect(TT_IDENT, "a loop variable after 'for'")
         guard_name(name_token.value, name_token.position, "a loop variable")
 
-        # `for x in <list> { ... }` - the other shape of the same keyword.
+        # `for x in <thing>` and `for key, value in <thing>` - the other
+        # shape of the same keyword.
+        second_name = None
+        if self.current.type == TT_COMMA:
+            self.advance()
+            second = self.expect(TT_IDENT, "a second loop variable after the comma")
+            guard_name(second.value, second.position, "a loop variable")
+            if second.value == name_token.value:
+                raise NovaError(
+                    "both loop variables are called {!r}".format(second.value), second.position
+                )
+            second_name = second.value
+
         if self.current.type == TT_IN:
             self.advance()
             iterable = self.expression()
             body = self.block()
             else_block = self.block() if self.optional_else() else None
-            return ForInNode(name_token.value, iterable, body, else_block, keyword.position)
+            return ForInNode(
+                name_token.value, second_name, iterable, body, else_block, keyword.position
+            )
+
+        if second_name is not None:
+            raise NovaError("expected 'in' after the loop variables", self.current.position)
 
         self.expect(TT_EQUALS, "a '=' or 'in' after the loop variable")
 
@@ -951,6 +1028,18 @@ class Parser:
         self.expect(TT_EQUALS, "a '=' after the name in a 'let'")
         return LetNode(name_token.value, self.expression_statement(), keyword.position)
 
+    def delete_statement(self):
+        keyword = self.advance()                        # 'delete'
+        target = self.expression()
+        if isinstance(target, MemberNode):
+            return DeleteNode(target.target, StringNode(target.name), keyword.position)
+        if isinstance(target, IndexNode):
+            return DeleteNode(target.target, target.index, keyword.position)
+        raise NovaError(
+            "delete needs a dictionary entry, as in `delete d.key` or `delete d[\"key\"]`",
+            keyword.position,
+        )
+
     def expression_statement(self):
         """An expression - or an assignment, if a '=' follows it.
 
@@ -970,8 +1059,11 @@ class Parser:
             return AssignNode(node.name, value, node.position)
         if isinstance(node, IndexNode):
             return IndexAssignNode(node.target, node.index, value, node.position)
+        if isinstance(node, MemberNode):
+            return MemberAssignNode(node.target, node.name, value, node.position)
         raise NovaError(
-            "the left side of '=' must be a variable or a list element", equals.position
+            "the left side of '=' must be a variable, a list item or a field",
+            equals.position,
         )
 
     def expression(self):
@@ -1047,8 +1139,51 @@ class Parser:
             elif self.current.type == TT_LBRACKET:
                 bracket = self.advance()
                 node = self.index_or_slice(node, bracket)
+            elif self.current.type == TT_DOT:
+                dot = self.advance()
+                name = self.name_token("a field name after '.'")
+                node = MemberNode(node, name.value, dot.position)
             else:
                 return node
+
+    def name_token(self, what, allow_string=False):
+        """A field or key name: an identifier, a keyword, or a quoted string."""
+        token = self.current
+        if token.type == TT_IDENT or token.type in KEYWORD_TOKEN_TYPES:
+            self.advance()
+            return token
+        if allow_string and token.type == TT_STRING:
+            self.advance()
+            return token
+        raise NovaError(
+            "expected {}, found {}".format(what, describe(token)), token.position
+        )
+
+    def dict_literal(self, brace):
+        """Just past a '{' in expression position."""
+        entries = []
+        seen = set()
+        self.skip_newlines()
+
+        if self.current.type != TT_RBRACE:
+            while True:
+                key = self.name_token("a key name", allow_string=True)
+                if key.value in seen:
+                    raise NovaError(
+                        "the key {!r} appears twice in this dictionary".format(key.value),
+                        key.position,
+                    )
+                seen.add(key.value)
+                self.expect(TT_COLON, "a ':' after the key")
+                entries.append(DictEntryNode(key.value, self.expression(), key.position))
+                self.skip_newlines()
+                if self.current.type != TT_COMMA:
+                    break
+                self.advance()
+                self.skip_newlines()
+
+        self.expect(TT_RBRACE, "a '}' to close the dictionary")
+        return DictNode(entries, brace.position)
 
     def index_or_slice(self, node, bracket):
         """Just past a '[': either `a[i]` or a slice such as `a[1:4]`."""
@@ -1131,6 +1266,13 @@ class Parser:
                     self.skip_newlines()
             self.expect(TT_RBRACKET, "a ']' to close the list")
             return ListNode(items, token.position)
+
+        # A '{' here can only be a dictionary: blocks are read by block(),
+        # and '{' is never an infix operator, so `if x { ... }` still ends
+        # its condition at the brace.
+        if token.type == TT_LBRACE:
+            self.advance()
+            return self.dict_literal(token)
 
         if token.type == TT_LPAREN:
             self.advance()
@@ -1215,10 +1357,30 @@ def builtin_print(args, position):
 
 def builtin_len(args, position):
     value = args[0]
-    if isinstance(value, list) or isinstance(value, str):
+    if isinstance(value, (list, str, dict)):
         return len(value)
-    raise NovaError("len() needs a list or a string, but got {}".format(type_name(value)),
-                    position)
+    raise NovaError(
+        "len() needs a list, a string or a dictionary, but got {}".format(type_name(value)),
+        position,
+    )
+
+
+def dict_argument(value, who, position):
+    if not isinstance(value, dict):
+        raise NovaError(
+            "{} needs a dictionary, but got {}".format(who, type_name(value)), position
+        )
+    return value
+
+
+def builtin_keys(args, position):
+    return list(dict_argument(args[0], "keys()", position))
+
+
+def builtin_values(args, position):
+    # Dictionaries hold mixed values, so this list may be mixed too - the
+    # one-type rule applies to lists you build yourself.
+    return list(dict_argument(args[0], "values()", position).values())
 
 
 def builtin_append(args, position):
@@ -1358,6 +1520,8 @@ BUILTINS = {
     "str": BuiltinFunction("str", 1, builtin_str),
     "num": BuiltinFunction("num", 1, builtin_num),
     "type": BuiltinFunction("type", 1, builtin_type),
+    "keys": BuiltinFunction("keys", 1, builtin_keys),
+    "values": BuiltinFunction("values", 1, builtin_values),
 }
 
 
@@ -1384,6 +1548,8 @@ def type_category(value):
         return "string"
     if isinstance(value, list):
         return "list"
+    if isinstance(value, dict):
+        return "dict"
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return "function"
     return "nothing"
@@ -1394,6 +1560,7 @@ PLURAL_TYPES = {
     "number": "numbers",
     "string": "strings",
     "list": "lists",
+    "dict": "dictionaries",
     "function": "functions",
     "nothing": "nothing",
 }
@@ -1411,6 +1578,29 @@ def check_element_type(existing, value, position):
             ),
             position,
         )
+
+
+def dict_key(value, position):
+    """Dictionary keys are strings, and only strings."""
+    if not isinstance(value, str):
+        raise NovaError(
+            "a dictionary key must be a string, but this is {}".format(type_name(value)),
+            position,
+        )
+    return value
+
+
+def lookup_key(target, key, position):
+    """Read one entry, naming the near misses when it is not there."""
+    if key in target:
+        return target[key]
+    known = list(target)
+    if not known:
+        raise NovaError("this dictionary is empty, so it has no {!r}".format(key), position)
+    shown = ", ".join(known[:8]) + (", ..." if len(known) > 8 else "")
+    raise NovaError(
+        "this dictionary has no key {!r} - it has {}".format(key, shown), position
+    )
 
 
 def normalize_index(target, index, position):
@@ -1463,6 +1653,8 @@ def type_name(value):
         return "a string"
     if isinstance(value, list):
         return "a list"
+    if isinstance(value, dict):
+        return "a dictionary"
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return "a function"
     return "nothing"
@@ -1481,11 +1673,28 @@ def format_value(value, seen=None):
             return "[...]"
         seen = seen | {id(value)}
         return "[" + ", ".join(format_repr(item, seen) for item in value) + "]"
+    if isinstance(value, dict):
+        seen = seen or set()
+        if id(value) in seen:
+            return "{...}"
+        seen = seen | {id(value)}
+        return "{" + ", ".join(
+            "{}: {}".format(format_key(key), format_repr(item, seen))
+            for key, item in value.items()
+        ) + "}"
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return repr(value)
     return str(value)
+
+
+def format_key(key):
+    """Print a key bare when it could be typed bare, quoted otherwise."""
+    plain = key and (key[0].isalpha() or key[0] == "_") and all(
+        char.isalnum() or char == "_" for char in key
+    )
+    return key if plain else format_repr(key)
 
 
 def format_repr(value, seen=None):
@@ -1640,10 +1849,56 @@ class Interpreter:
             items.append(value)
         return items
 
+    def visit_DictNode(self, node):
+        entries = {}
+        for entry in node.entries:
+            entries[entry.key] = self.evaluate(entry.value)
+        return entries
+
     def visit_IndexNode(self, node):
         target = self.evaluate(node.target)
         index = self.evaluate(node.index)
+        if isinstance(target, dict):
+            return lookup_key(target, dict_key(index, node.position), node.position)
         return target[normalize_index(target, index, node.position)]
+
+    def visit_MemberNode(self, node):
+        target = self.evaluate(node.target)
+        if not isinstance(target, dict):
+            raise NovaError(
+                "{} has no fields, so '.{}' means nothing here".format(
+                    type_name(target), node.name
+                ),
+                node.position,
+            )
+        return lookup_key(target, node.name, node.position)
+
+    def visit_MemberAssignNode(self, node):
+        target = self.evaluate(node.target)
+        if not isinstance(target, dict):
+            raise NovaError(
+                "only a dictionary can have fields set, but this is {}".format(
+                    type_name(target)
+                ),
+                node.position,
+            )
+        value = self.evaluate(node.value)
+        target[node.name] = value                       # a new key is fine
+        return value
+
+    def visit_DeleteNode(self, node):
+        target = self.evaluate(node.target)
+        if not isinstance(target, dict):
+            raise NovaError(
+                "delete works on dictionary entries, but this is {}{}".format(
+                    type_name(target),
+                    " - use pop() to remove a list item" if isinstance(target, list) else "",
+                ),
+                node.position,
+            )
+        key = dict_key(self.evaluate(node.key), node.position)
+        target.pop(key, None)                           # deleting twice is fine
+        return NOTHING
 
     def visit_SliceNode(self, node):
         target = self.evaluate(node.target)
@@ -1664,6 +1919,11 @@ class Interpreter:
 
     def visit_IndexAssignNode(self, node):
         target = self.evaluate(node.target)
+        if isinstance(target, dict):
+            key = dict_key(self.evaluate(node.index), node.position)
+            value = self.evaluate(node.value)
+            target[key] = value                         # a new key is fine
+            return value
         if isinstance(target, str):
             raise NovaError(
                 "strings cannot be changed in place - build a new one instead",
@@ -1750,6 +2010,12 @@ class Interpreter:
                         node.position,
                     )
                 return text * times
+
+        # Two dictionaries merge with '+'; the right-hand side wins.
+        if op == "+" and isinstance(left, dict) and isinstance(right, dict):
+            merged = dict(left)
+            merged.update(right)
+            return merged
 
         # Lists join with '+' and repeat with '*', always into a new list.
         if op == "+" and isinstance(left, list) and isinstance(right, list):
@@ -1927,15 +2193,21 @@ class Interpreter:
 
     def visit_ForInNode(self, node):
         iterable = self.evaluate(node.iterable)
-        if not isinstance(iterable, list):
+
+        # Iterate over a snapshot, so changing the value inside the loop
+        # cannot make it run forever.
+        if isinstance(iterable, dict):
+            # One name walks the keys; two walk key and value together.
+            items = list(iterable.items()) if node.second_name else list(iterable)
+        elif isinstance(iterable, (list, str)):
+            items = list(enumerate(iterable)) if node.second_name else list(iterable)
+        else:
             raise NovaError(
-                "'for ... in' needs a list, but this is {}".format(type_name(iterable)),
+                "'for ... in' needs a list, a string or a dictionary, but this is {}".format(
+                    type_name(iterable)
+                ),
                 node.position,
             )
-
-        # Iterate over a snapshot, so appending inside the loop cannot make
-        # it run forever.
-        items = list(iterable)
 
         loop_env = Environment(parent=self.env)
         saved = self.env
@@ -1943,7 +2215,11 @@ class Interpreter:
         broke = False
         try:
             for item in items:
-                loop_env.define(node.name, item)
+                if node.second_name:
+                    loop_env.define(node.name, item[0])
+                    loop_env.define(node.second_name, item[1])
+                else:
+                    loop_env.define(node.name, item)
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
                 except ContinueSignal:
@@ -2071,8 +2347,13 @@ def nova_contains(needle, haystack, position):
         return needle in haystack
     if isinstance(haystack, list):
         return any(nova_equals(needle, item) for item in haystack)
+    if isinstance(haystack, dict):
+        # For a dictionary, `in` asks about its keys.
+        return dict_key(needle, position) in haystack
     raise NovaError(
-        "'in' needs a list or a string on its right, but got {}".format(type_name(haystack)),
+        "'in' needs a list, a string or a dictionary on its right, but got {}".format(
+            type_name(haystack)
+        ),
         position,
     )
 
@@ -2095,6 +2376,12 @@ def nova_equals(left, right):
         if len(left) != len(right):
             return False
         return all(nova_equals(a, b) for a, b in zip(left, right))
+    if isinstance(left, dict) or isinstance(right, dict):
+        if not (isinstance(left, dict) and isinstance(right, dict)):
+            return False
+        if set(left) != set(right):
+            return False
+        return all(nova_equals(left[key], right[key]) for key in left)
     return left == right
 
 
@@ -2166,7 +2453,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.5.0            ║
+║       NOVALANG v0.6.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2183,6 +2470,7 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     numbers              1, 42, 3.14      strings  "hi", 'hi'
     booleans             true, false      comments # to end of line
     lists                [1, 2, 3], []    one kind of item per list
+    dictionaries         {name: "Ada", age: 36},  {}  any mix of values
     f-strings            f"Hello, {name}!"   {{ and }} are literal braces
     escapes              \n  \t  \\  \"  \'
 
@@ -2190,11 +2478,13 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     + - * /              arithmetic; "a" + "b" joins, "Ha" * 3 repeats
     % //                 remainder and integer division: 10 % 3, 10 // 3
     < > <= >= == !=      comparisons; strings compare alphabetically
-    in                   "ell" in "Hello",  3 in [1, 2, 3]
+    in                   "ell" in "Hello",  3 in [1, 2, 3],  "age" in d
     and or not           short-circuit logic: `not done and i < 10`
     a[0]  a[-1]          index a list or a string; -1 is the last item
     a[1:4] a[2:] a[:3]   slice a list or a string; out-of-range ends clamp
+    d.name  d["name"]    read a dictionary entry, two ways
     [1, 2] + [3]         join lists;  [1, 2] * 3 repeats one
+    {x: 1} + {y: 2}      merge dictionaries; the right-hand side wins
 
   Built-in functions
     print(x, ...)        write a line
@@ -2206,17 +2496,21 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     split(s, sep)        cut a string into a list; split(s) uses spaces
     join(a, sep)         glue a list into a string
     str(x) num(s)        convert between numbers and strings
-    type(x)              "number", "string", "list", "boolean", ...
+    type(x)              "number", "string", "list", "dict", "boolean", ...
+    keys(d) values(d)    a dictionary's keys or values, as a list
 
   Statements
     x = 10               assignment (updates an outer x if one exists)
     let x = 10           declare x in this block, shadowing any outer x
     a[0] = 10            replace a list item
+    d.name = "Ada"       set a field; a new key is added
+    delete d.name        remove an entry (deleting twice is harmless)
     if c { } else { }    conditionals; `else if` chains
     while c { }          loop while c is true
     for i = 0 to 10 { }  count up; `downto` counts down
     for i = 0 to 100 step 10 { }
-    for x in a { }       walk a list; `for i in range(5) { }` counts
+    for x in a { }       walk a list, a string, or a dictionary's keys
+    for k, v in d { }    walk a dictionary's pairs (or a list's index, item)
     break | continue     leave the loop / jump to the next turn
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in

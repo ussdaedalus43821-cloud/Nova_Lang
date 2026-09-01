@@ -1,0 +1,108 @@
+# ---- literals ----
+let person = {name: "Alice", age: 30, city: "New York"}
+let empty = {}
+print(person)
+print(empty, len(empty))
+
+# Keys may be quoted when they are not plain names, and a literal can
+# spread over several lines.
+let odd = {
+    "first name": "Ada",
+    "last name": "Lovelace",
+    born: 1815
+}
+print(odd)
+
+# ---- reading: dot and bracket ----
+print(person.name, person.age)
+print(person["name"], person["city"])
+
+# ---- writing: dot and bracket, and adding new keys ----
+person.name = "Bob"
+person["age"] = 31
+person.country = "USA"
+print(person)
+
+# ---- delete ----
+delete person.country
+delete person["job"]          # deleting a key that is not there is harmless
+print(person)
+
+# ---- in ----
+print("name" in person, "job" in person)
+
+# ---- keys() and values() ----
+print(keys(person))
+print(values(person))
+print(len(person), type(person))
+
+# ---- iteration ----
+for key in person {
+    print("key:", key)
+}
+for key, value in person {
+    print(key + ": " + str(value))
+}
+
+# ---- nested dictionaries ----
+let address = {street: "123 Main St", zip: 10001}
+let employee = {name: "Alice", address: address, tags: ["staff", "remote"]}
+print(employee.address.street)
+print(employee["address"]["zip"])
+print(employee.tags[0], len(employee.tags))
+employee.address.zip = 10002
+print(employee.address)
+
+# ---- merging ----
+let a = {x: 1, y: 2}
+let b = {y: 3, z: 4}
+print(a + b)
+print(a, b)                   # merging leaves both originals alone
+
+# ---- equality is by content ----
+print({x: 1} == {x: 1}, {x: 1} == {x: 2}, {} == {})
+
+# ---- dictionaries are references, like lists ----
+let shared = {count: 0}
+let alias = shared
+alias.count = 7
+print("shared sees it:", shared.count)
+
+# ---- a small program: word frequencies ----
+def word_counts(text) {
+    let counts = {}
+    for word in split(lower(text)) {
+        if word in counts {
+            counts[word] = counts[word] + 1
+        } else {
+            counts[word] = 1
+        }
+    }
+    return counts
+}
+
+let tally = word_counts("the quick brown fox the lazy dog the end")
+print(tally)
+for word, times in tally {
+    if times > 1 {
+        print(f"{word} appears {times} times")
+    }
+}
+
+# ---- dictionaries as records ----
+def describe(record) {
+    let parts = []
+    for key, value in record {
+        append(parts, f"{key}={str(value)}")
+    }
+    return join(parts, ", ")
+}
+print(describe({id: 7, active: true, score: 99.5}))
+
+def with_default(record, key, fallback) {
+    if key in record {
+        return record[key]
+    }
+    return fallback
+}
+print(with_default(person, "city", "unknown"), with_default(person, "job", "unknown"))
