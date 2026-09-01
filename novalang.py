@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 """
-NovaLang v0.2 - Stage 2: Functions, Control Flow & the Call Stack
+NovaLang v0.3 - Stage 3: Loops, Logic & Block Scoping
 
-The pipeline is unchanged, only wider:
+The pipeline has not changed since Stage 1, only widened:
 
     source text  ->  Lexer       ->  tokens
     tokens       ->  Parser      ->  AST (Abstract Syntax Tree)
     AST          ->  Interpreter ->  a value
 
-New in Stage 2:
-    def name(a, b) { ... }   function definitions
-    return <expr>            return statements
-    if <cond> { } else { }   conditionals (else if chains too)
-    < > <= >= == !=          comparisons
-    true / false             boolean literals
-    "text"                   string literals
-    print(x)                 built-in function
-    recursion                via a real call stack with local scopes
+Stage 1:  numbers, + - * / ( ), variables, the REPL.
+Stage 2:  def / return, if / else, comparisons, booleans, strings,
+          print, recursion with a real call stack.
+Stage 3:  while loops (with an optional else), for ... to / downto / step,
+          break and continue, and / or / not with short-circuiting,
+          and block scoping.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -34,7 +31,7 @@ MAX_TRACE_FRAMES = 8
 
 
 # ---------------------------------------------------------------------------
-# Errors
+# Errors and the signals that unwind the interpreter
 # ---------------------------------------------------------------------------
 
 class NovaError(Exception):
@@ -86,6 +83,22 @@ class ReturnSignal(Exception):
         self.value = value
 
 
+class BreakSignal(Exception):
+    """How `break` unwinds out of the innermost loop."""
+
+    def __init__(self, position):
+        super().__init__("break")
+        self.position = position
+
+
+class ContinueSignal(Exception):
+    """How `continue` unwinds to the top of the innermost loop."""
+
+    def __init__(self, position):
+        super().__init__("continue")
+        self.position = position
+
+
 # ---------------------------------------------------------------------------
 # 1. Lexer  (source text -> tokens)
 # ---------------------------------------------------------------------------
@@ -113,12 +126,22 @@ TT_NEWLINE = "NEWLINE"      # statement separator (also ';')
 TT_EOF     = "EOF"
 
 # Keywords are lexed as identifiers first, then promoted by this table.
-TT_DEF    = "DEF"
-TT_RETURN = "RETURN"
-TT_IF     = "IF"
-TT_ELSE   = "ELSE"
-TT_TRUE   = "TRUE"
-TT_FALSE  = "FALSE"
+TT_DEF      = "DEF"
+TT_RETURN   = "RETURN"
+TT_IF       = "IF"
+TT_ELSE     = "ELSE"
+TT_TRUE     = "TRUE"
+TT_FALSE    = "FALSE"
+TT_WHILE    = "WHILE"       # Stage 3 from here down
+TT_FOR      = "FOR"
+TT_TO       = "TO"
+TT_DOWNTO   = "DOWNTO"
+TT_STEP     = "STEP"
+TT_BREAK    = "BREAK"
+TT_CONTINUE = "CONTINUE"
+TT_AND      = "AND"
+TT_OR       = "OR"
+TT_NOT      = "NOT"
 
 KEYWORDS = {
     "def": TT_DEF,
@@ -127,6 +150,16 @@ KEYWORDS = {
     "else": TT_ELSE,
     "true": TT_TRUE,
     "false": TT_FALSE,
+    "while": TT_WHILE,
+    "for": TT_FOR,
+    "to": TT_TO,
+    "downto": TT_DOWNTO,
+    "step": TT_STEP,
+    "break": TT_BREAK,
+    "continue": TT_CONTINUE,
+    "and": TT_AND,
+    "or": TT_OR,
+    "not": TT_NOT,
 }
 
 COMPARISON_TOKENS = (TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE)
@@ -244,7 +277,9 @@ class Lexer:
                 tokens.append(Token(TT_GT, ">", start))
                 continue
             if char == "!":
-                raise NovaError("'!' on its own is not an operator - did you mean '!='?", start)
+                raise NovaError(
+                    "'!' on its own is not an operator - did you mean '!=' or 'not'?", start
+                )
 
             if char in SINGLE_CHAR_TOKENS:
                 self.advance()
@@ -357,6 +392,12 @@ class UnaryOpNode(Node):
         self.position = position
 
 
+class NotNode(Node):
+    def __init__(self, operand, position):
+        self.operand = operand
+        self.position = position
+
+
 class BinOpNode(Node):
     def __init__(self, left, op, right, position):
         self.left = left
@@ -369,6 +410,16 @@ class CompareNode(Node):
     def __init__(self, left, op, right, position):
         self.left = left
         self.op = op                   # '<', '>', '<=', '>=', '==', '!='
+        self.right = right
+        self.position = position
+
+
+class LogicalOpNode(Node):
+    """`and` / `or`. Kept apart from BinOpNode because it short-circuits."""
+
+    def __init__(self, left, op, right, position):
+        self.left = left
+        self.op = op                   # 'and' or 'or'
         self.right = right
         self.position = position
 
@@ -403,6 +454,36 @@ class IfNode(Node):
         self.position = position
 
 
+class WhileNode(Node):
+    def __init__(self, condition, body, else_block, position):
+        self.condition = condition
+        self.body = body
+        self.else_block = else_block   # runs only if no `break` happened
+        self.position = position
+
+
+class ForNode(Node):
+    def __init__(self, name, start, end, step, descending, body, else_block, position):
+        self.name = name               # the loop variable
+        self.start = start
+        self.end = end
+        self.step = step               # expression node, or None for 1
+        self.descending = descending   # True for `downto`
+        self.body = body
+        self.else_block = else_block
+        self.position = position
+
+
+class BreakNode(Node):
+    def __init__(self, position):
+        self.position = position
+
+
+class ContinueNode(Node):
+    def __init__(self, position):
+        self.position = position
+
+
 class FunctionDefNode(Node):
     def __init__(self, name, params, body, position):
         self.name = name
@@ -422,6 +503,10 @@ class ProgramNode(Node):
         self.statements = statements
 
 
+# Statements that end in '}' and therefore need no separator after them.
+BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, FunctionDefNode)
+
+
 # ---------------------------------------------------------------------------
 # 3. Parser  (tokens -> AST), recursive descent
 # ---------------------------------------------------------------------------
@@ -429,14 +514,21 @@ class ProgramNode(Node):
 # The grammar, loosest first. Each rule is one method below.
 #
 #   program     := (statement SEP)* EOF
-#   statement   := funcdef | returnstmt | ifstmt | assignment | expression
+#   statement   := funcdef | returnstmt | ifstmt | whilestmt | forstmt
+#                | 'break' | 'continue' | assignment | expression
 #   funcdef     := 'def' IDENT '(' [IDENT (',' IDENT)*] ')' block
 #   returnstmt  := 'return' [expression]
 #   ifstmt      := 'if' expression block ['else' (block | ifstmt)]
+#   whilestmt   := 'while' expression block ['else' block]
+#   forstmt     := 'for' IDENT '=' expression ('to' | 'downto') expression
+#                  ['step' expression] block ['else' block]
 #   assignment  := IDENT '=' (assignment | expression)
 #   block       := '{' (statement SEP)* '}'
 #
-#   expression  := comparison
+#   expression  := or_expr
+#   or_expr     := and_expr ('or' and_expr)*
+#   and_expr    := not_expr ('and' not_expr)*
+#   not_expr    := 'not' not_expr | comparison
 #   comparison  := additive [('<'|'>'|'<='|'>='|'=='|'!=') additive]
 #   additive    := term (('+'|'-') term)*
 #   term        := unary (('*'|'/') unary)*
@@ -445,9 +537,13 @@ class ProgramNode(Node):
 #   primary     := NUMBER | STRING | 'true' | 'false' | IDENT
 #                | '(' expression ')'
 #
-# Precedence falls out of the nesting: comparison sits above + and -, which
-# sit above * and /, which sit above calls - so `fib(n - 1) + fib(n - 2) < 5`
-# groups exactly the way you would expect.
+# Precedence falls out of the nesting: `or` is looser than `and`, which is
+# looser than `not`, which is looser than a comparison, which is looser than
+# + and -, and so on down to calls. So
+#
+#     not done and i < 10 or i == 99
+#
+# groups as `((not done) and (i < 10)) or (i == 99)` with no parentheses.
 # ---------------------------------------------------------------------------
 
 class Parser:
@@ -489,7 +585,7 @@ class Parser:
         A statement that already ends in '}' is self-terminating, so
         `if x { ... } return 5` on one line is fine.
         """
-        if isinstance(statement, (IfNode, FunctionDefNode)):
+        if isinstance(statement, BLOCK_STATEMENTS):
             self.skip_newlines()
             return
         if self.current.type in closers:
@@ -501,6 +597,16 @@ class Parser:
             "expected a new line between statements, found {}".format(describe(self.current)),
             self.current.position,
         )
+
+    def optional_else(self):
+        """An `else` may sit on the same line as the '}' or on the next one."""
+        rewind = self.index
+        self.skip_newlines()
+        if self.current.type == TT_ELSE:
+            self.advance()
+            return True
+        self.index = rewind
+        return False
 
     # -- rules --------------------------------------------------------------
 
@@ -515,6 +621,8 @@ class Parser:
         return ProgramNode(statements)
 
     def block(self):
+        # The '{' may sit on the line after the header, so allow a break here.
+        self.skip_newlines()
         opening = self.expect(TT_LBRACE, "a '{' to open the block")
         statements = []
         self.skip_newlines()
@@ -537,6 +645,16 @@ class Parser:
             return self.return_statement()
         if token.type == TT_IF:
             return self.if_statement()
+        if token.type == TT_WHILE:
+            return self.while_statement()
+        if token.type == TT_FOR:
+            return self.for_statement()
+        if token.type == TT_BREAK:
+            self.advance()
+            return BreakNode(token.position)
+        if token.type == TT_CONTINUE:
+            self.advance()
+            return ContinueNode(token.position)
         if token.type == TT_IDENT and self.peek().type == TT_EQUALS:
             return self.assignment()
         return self.expression()
@@ -577,19 +695,47 @@ class Parser:
         condition = self.expression()
         then_block = self.block()
 
-        # `else` may sit on the same line as the '}' or on the next one.
-        rewind = self.index
-        self.skip_newlines()
-        if self.current.type == TT_ELSE:
-            self.advance()
+        if self.optional_else():
             if self.current.type == TT_IF:
                 else_block = self.if_statement()        # else if ... chain
             else:
                 else_block = self.block()
             return IfNode(condition, then_block, else_block, keyword.position)
 
-        self.index = rewind                             # no else after all
         return IfNode(condition, then_block, None, keyword.position)
+
+    def while_statement(self):
+        keyword = self.advance()                        # 'while'
+        condition = self.expression()
+        body = self.block()
+        else_block = self.block() if self.optional_else() else None
+        return WhileNode(condition, body, else_block, keyword.position)
+
+    def for_statement(self):
+        keyword = self.advance()                        # 'for'
+        name_token = self.expect(TT_IDENT, "a loop variable after 'for'")
+        guard_name(name_token.value, name_token.position, "a loop variable")
+        self.expect(TT_EQUALS, "a '=' after the loop variable")
+
+        start = self.expression()
+        if self.current.type not in (TT_TO, TT_DOWNTO):
+            raise NovaError(
+                "expected 'to' or 'downto', found {}".format(describe(self.current)),
+                self.current.position,
+            )
+        descending = self.advance().type == TT_DOWNTO
+        end = self.expression()
+
+        step = None
+        if self.current.type == TT_STEP:
+            self.advance()
+            step = self.expression()
+
+        body = self.block()
+        else_block = self.block() if self.optional_else() else None
+        return ForNode(
+            name_token.value, start, end, step, descending, body, else_block, keyword.position
+        )
 
     def assignment(self):
         name_token = self.advance()                     # the identifier
@@ -602,6 +748,26 @@ class Parser:
         return AssignNode(name_token.value, value, name_token.position)
 
     def expression(self):
+        return self.or_expression()
+
+    def or_expression(self):
+        node = self.and_expression()
+        while self.current.type == TT_OR:
+            op_token = self.advance()
+            node = LogicalOpNode(node, "or", self.and_expression(), op_token.position)
+        return node
+
+    def and_expression(self):
+        node = self.not_expression()
+        while self.current.type == TT_AND:
+            op_token = self.advance()
+            node = LogicalOpNode(node, "and", self.not_expression(), op_token.position)
+        return node
+
+    def not_expression(self):
+        if self.current.type == TT_NOT:
+            op_token = self.advance()
+            return NotNode(self.not_expression(), op_token.position)
         return self.comparison()
 
     def comparison(self):
@@ -802,11 +968,27 @@ def format_repr(value):
 # ---------------------------------------------------------------------------
 
 class Environment:
-    """One scope. Lookups walk outward; assignments always stay local."""
+    """One scope. Lookups walk outward; assignment walks outward too, but
+    only as far as the nearest barrier.
 
-    def __init__(self, parent=None):
+    A function call creates a *barrier* scope, and so does the global scope.
+    Blocks (loop bodies, if bodies) create ordinary, transparent scopes.
+    Those two rules together give:
+
+        x = 0
+        while x < 10 { x = x + 1 }   # updates the global x - no barrier
+                                     # between the block and the globals
+        while x < 10 { t = x }       # `t` is new, so it lands in the block
+                                     # scope and is gone after the loop
+
+        def f() { x = 99 }           # `x` stops at the function barrier,
+                                     # so the global x is untouched
+    """
+
+    def __init__(self, parent=None, barrier=False):
         self.values = {}
         self.parent = parent
+        self.barrier = barrier
 
     def get(self, name):
         scope = self
@@ -825,8 +1007,20 @@ class Environment:
         return False
 
     def define(self, name, value):
-        # Defining in the *current* scope is what keeps function locals from
-        # leaking into the global scope.
+        """Bind in *this* scope, shadowing anything outside it."""
+        self.values[name] = value
+
+    def assign(self, name, value):
+        """Update an existing binding out to the nearest barrier, else
+        create the name here."""
+        scope = self
+        while scope is not None:
+            if name in scope.values:
+                scope.values[name] = value
+                return
+            if scope.barrier:
+                break
+            scope = scope.parent
         self.values[name] = value
 
 
@@ -836,9 +1030,9 @@ class Environment:
 
 class Interpreter:
     def __init__(self):
-        self.globals = Environment()
+        self.globals = Environment(barrier=True)
         self.env = self.globals
-        self.call_stack = []            # list of (function name, position)
+        self.call_stack = []            # function names, innermost last
 
     # -- dispatch -----------------------------------------------------------
 
@@ -849,11 +1043,20 @@ class Interpreter:
         return method(node)
 
     def execute_block(self, block):
-        """Run statements in order; the last value is the block's value."""
+        """Run statements in the *current* scope; the last value wins."""
         result = NOTHING
         for statement in block.statements:
             result = self.evaluate(statement)
         return result
+
+    def execute_scoped_block(self, block, parent=None):
+        """Run a block in a fresh child scope, so its new names vanish after."""
+        saved = self.env
+        self.env = Environment(parent=parent or saved)
+        try:
+            return self.execute_block(block)
+        finally:
+            self.env = saved
 
     # -- programs and blocks ------------------------------------------------
 
@@ -864,7 +1067,7 @@ class Interpreter:
         return result
 
     def visit_BlockNode(self, node):
-        return self.execute_block(node)
+        return self.execute_scoped_block(node)
 
     # -- literals and names -------------------------------------------------
 
@@ -886,18 +1089,54 @@ class Interpreter:
 
     def visit_AssignNode(self, node):
         value = self.evaluate(node.value)
-        self.env.define(node.name, value)
+        self.env.assign(node.name, value)
         return value
 
     # -- operators ----------------------------------------------------------
 
     def visit_UnaryOpNode(self, node):
         value = self.evaluate(node.operand)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if not is_number(value):
             raise NovaError(
                 "cannot apply unary '{}' to {}".format(node.op, type_name(value)), node.position
             )
         return value if node.op == "+" else -value
+
+    def visit_NotNode(self, node):
+        value = self.evaluate(node.operand)
+        if not isinstance(value, bool):
+            raise NovaError(
+                "'not' needs true or false, but this is {}".format(type_name(value)),
+                node.position,
+            )
+        return not value
+
+    def visit_LogicalOpNode(self, node):
+        left = self.evaluate(node.left)
+        if not isinstance(left, bool):
+            raise NovaError(
+                "the left side of '{}' must be true or false, but it is {}".format(
+                    node.op, type_name(left)
+                ),
+                node.position,
+            )
+
+        # Short-circuit: the right side is never evaluated when the left
+        # side already decides the answer.
+        if node.op == "and" and not left:
+            return False
+        if node.op == "or" and left:
+            return True
+
+        right = self.evaluate(node.right)
+        if not isinstance(right, bool):
+            raise NovaError(
+                "the right side of '{}' must be true or false, but it is {}".format(
+                    node.op, type_name(right)
+                ),
+                node.position,
+            )
+        return right
 
     def visit_BinOpNode(self, node):
         left = self.evaluate(node.left)
@@ -965,21 +1204,99 @@ class Interpreter:
 
     # -- control flow -------------------------------------------------------
 
-    def visit_IfNode(self, node):
-        condition = self.evaluate(node.condition)
-        if not isinstance(condition, bool):
+    def condition_value(self, node, keyword):
+        """Conditions are strict: only true or false will do."""
+        value = self.evaluate(node.condition)
+        if not isinstance(value, bool):
             raise NovaError(
-                "an 'if' condition must be true or false, but this is {}".format(
-                    type_name(condition)
+                "a '{}' condition must be true or false, but this is {}".format(
+                    keyword, type_name(value)
                 ),
                 node.position,
             )
+        return value
 
-        if condition:
-            return self.evaluate(node.then_block)
+    def visit_IfNode(self, node):
+        if self.condition_value(node, "if"):
+            return self.execute_scoped_block(node.then_block)
         if node.else_block is not None:
-            return self.evaluate(node.else_block)
+            return self.evaluate(node.else_block)   # BlockNode or an else-if
         return NOTHING
+
+    def visit_WhileNode(self, node):
+        broke = False
+        while self.condition_value(node, "while"):
+            try:
+                self.execute_scoped_block(node.body)
+            except ContinueSignal:
+                continue
+            except BreakSignal:
+                broke = True
+                break
+
+        # Like Python: the `else` runs only if the loop was never broken out of.
+        if node.else_block is not None and not broke:
+            self.execute_scoped_block(node.else_block)
+        return NOTHING
+
+    def visit_ForNode(self, node):
+        where = node.position
+        start = self.loop_number(node.start, "the start of a 'for' range", where)
+        end = self.loop_number(node.end, "the end of a 'for' range", where)
+        step = 1 if node.step is None else self.loop_number(node.step, "a 'for' step", where)
+
+        if step <= 0:
+            raise NovaError(
+                "a 'for' step must be greater than zero (use 'downto' to count down)",
+                node.position,
+            )
+
+        # Work out the iteration count up front, the way `range` does, so the
+        # loop cannot drift on floats and cannot be confused by the body
+        # reassigning the loop variable.
+        span = (start - end) if node.descending else (end - start)
+        iterations = 0 if span < 0 else int(span / step + 1e-9) + 1
+
+        # The loop variable lives in a scope of its own, so it does not leak.
+        loop_env = Environment(parent=self.env)
+        saved = self.env
+        self.env = loop_env
+        broke = False
+        try:
+            index = 0
+            while index < iterations:
+                offset = index * step
+                loop_env.define(node.name, start - offset if node.descending else start + offset)
+                try:
+                    self.execute_scoped_block(node.body, parent=loop_env)
+                except ContinueSignal:
+                    pass
+                except BreakSignal:
+                    broke = True
+                    break
+                index += 1
+        finally:
+            self.env = saved
+
+        if node.else_block is not None and not broke:
+            self.execute_scoped_block(node.else_block)
+        return NOTHING
+
+    def loop_number(self, node, role, fallback_position):
+        """Evaluate one part of a `for` header, insisting on a number."""
+        value = self.evaluate(node)
+        if not is_number(value):
+            raise NovaError(
+                "{} must be a number, but this is {}".format(role, type_name(value)),
+                getattr(node, "position", None) or fallback_position,
+            )
+        return value
+
+    def visit_BreakNode(self, node):
+        raise BreakSignal(node.position)
+
+    def visit_ContinueNode(self, node):
+        raise ContinueSignal(node.position)
 
     def visit_ReturnNode(self, node):
         value = NOTHING if node.value is None else self.evaluate(node.value)
@@ -1028,10 +1345,11 @@ class Interpreter:
                 node.position,
             )
 
-        # A fresh scope per call: this is what makes recursion work, and what
-        # keeps locals from leaking. Its parent is where the function was
-        # defined, not where it was called from.
-        frame = Environment(parent=callee.closure)
+        # A fresh barrier scope per call: this is what makes recursion work,
+        # what keeps locals from leaking, and what stops an assignment inside
+        # a function from reaching out and rewriting a global. Its parent is
+        # where the function was defined, not where it was called from.
+        frame = Environment(parent=callee.closure, barrier=True)
         for name, value in zip(callee.params, args):
             frame.define(name, value)
 
@@ -1043,6 +1361,13 @@ class Interpreter:
             return NOTHING                      # fell off the end without return
         except ReturnSignal as signal:
             return signal.value
+        except (BreakSignal, ContinueSignal) as signal:
+            # A loop in the *caller* must not be broken by a stray keyword
+            # in the callee's body.
+            keyword = "break" if isinstance(signal, BreakSignal) else "continue"
+            raise NovaError(
+                "'{}' is not inside a loop in {}()".format(keyword, callee.name), signal.position
+            )
         except NovaError as error:
             if error.stack is None:             # the innermost frame wins
                 error.stack = ["{}()".format(name) for name in reversed(self.call_stack)]
@@ -1083,6 +1408,10 @@ def run(source, interpreter):
         value = interpreter.evaluate(ast)
     except ReturnSignal:
         raise NovaError("'return' only makes sense inside a function")
+    except BreakSignal as signal:
+        raise NovaError("'break' is not inside a loop", signal.position)
+    except ContinueSignal as signal:
+        raise NovaError("'continue' is not inside a loop", signal.position)
     return ast, value
 
 
@@ -1105,7 +1434,7 @@ def tree_lines(node, label=None, depth=0):
             continue
         if isinstance(value, Node) or (is_node_list(value) and value):
             children.append((key, value))
-        else:
+        elif value is not None or key not in ("step", "else_block"):
             scalars.append("{}={!r}".format(key, value))
 
     line = pad + head + type(node).__name__
@@ -1136,31 +1465,58 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.1              ║
+║       NOVALANG v0.3              ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
 
-HELP = """NovaLang commands
-  <expression>        evaluate, e.g.  5 + 10 * 2
-  x = 7               assign a variable, then use it:  x * 3
-  def f(a) { ... }    define a function (multi-line input is detected)
-  if c { } else { }   conditionals; comparisons are < > <= >= == !=
-  print("hi")         the one built-in function
-  vars                list the globals you have defined
-  tree <code>         show the AST instead of running it
-  help                show this message
-  exit | quit         leave the REPL
+HELP = """NovaLang v0.3 - commands and syntax
 
-Multi-line input: an unclosed '{' keeps the prompt open as '  ... '.
-Finish the block with '}' (or press Ctrl-C to throw the draft away)."""
+  REPL commands
+    vars                 list the globals you have defined
+    tree <code>          show the AST instead of running it
+    help                 show this message
+    exit | quit          leave the REPL
+
+  Values
+    numbers              1, 42, 3.14      strings  "hi", 'hi'
+    booleans             true, false      comments # to end of line
+
+  Expressions
+    + - * /              arithmetic, and "a" + "b" joins strings
+    < > <= >= == !=      comparisons, producing true or false
+    and or not           short-circuit logic: `not done and i < 10`
+
+  Statements
+    x = 10               assignment
+    if c { } else { }    conditionals; `else if` chains
+    while c { }          loop while c is true
+    for i = 0 to 10 { }  count up; `downto` counts down
+    for i = 0 to 100 step 10 { }
+    break | continue     leave the loop / jump to the next turn
+    while c { } else { } the else runs only if no break happened
+    def f(a) { return a } functions; print(...) is built in
+
+  Scoping
+    A name first assigned inside a block belongs to that block and is gone
+    when the block ends. Assigning a name that already exists updates it,
+    unless it lives outside the current function.
+
+  Multi-line input: an unclosed '{' keeps the prompt open as '  ... '.
+  Finish the block with '}' (or press Ctrl-C to throw the draft away).
+  Ctrl-C also stops a runaway loop."""
 
 # Tokens that clearly cannot end a statement, so the REPL keeps reading.
 CONTINUATION_TOKENS = (
     TT_DEF, TT_ELSE, TT_LBRACE, TT_COMMA, TT_LPAREN, TT_EQUALS,
     TT_PLUS, TT_MINUS, TT_STAR, TT_SLASH,
     TT_EQ, TT_NE, TT_LT, TT_GT, TT_LE, TT_GE,
+    TT_WHILE, TT_FOR, TT_IF, TT_TO, TT_DOWNTO, TT_STEP,
+    TT_AND, TT_OR, TT_NOT,
 )
+
+# Statements whose header is followed by a '{' block.
+BLOCK_OPENERS = (TT_DEF, TT_IF, TT_WHILE, TT_FOR)
 
 
 def needs_more_input(source):
@@ -1183,8 +1539,8 @@ def needs_more_input(source):
     if not meaningful:
         return False
 
-    # `def fib(n)` with the '{' still to come on the next line.
-    if meaningful[0].type == TT_DEF and not any(t.type == TT_LBRACE for t in meaningful):
+    # `while x < 10` or `def fib(n)` with the '{' still to come next line.
+    if meaningful[0].type in BLOCK_OPENERS and not any(t.type == TT_LBRACE for t in meaningful):
         return True
 
     return meaningful[-1].type in CONTINUATION_TOKENS
@@ -1262,6 +1618,8 @@ def repl():
                     print(format_repr(value))
         except NovaError as error:
             print(error.render(source))
+        except KeyboardInterrupt:       # Ctrl-C out of a runaway loop
+            print("\n(stopped)")
         except RecursionError:
             print("NovaError: the interpreter ran out of stack - recursion too deep")
 
@@ -1287,6 +1645,9 @@ def run_source(source, origin):
     except NovaError as error:
         print("{}\n{}".format(origin, error.render(source)), file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("\n(stopped)", file=sys.stderr)
+        return 130
     except RecursionError:
         print("NovaError: the interpreter ran out of stack - recursion too deep", file=sys.stderr)
         return 1
@@ -1313,6 +1674,9 @@ def main(argv):
     except NovaError as error:
         print(error.render(source), file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("\n(stopped)", file=sys.stderr)
+        return 130
     if value is not NOTHING:
         print(format_repr(value))
     return 0
