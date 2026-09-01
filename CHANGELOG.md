@@ -18,6 +18,57 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.6.0] - 2026-09-01 — Dictionaries
+
+Stage 6. Named fields, so a value can be a record rather than a position in
+a list.
+
+### Added
+
+- **Dictionary literals**: `{name: "Alice", age: 30}` and `{}`. Keys are
+  written bare when they are plain names, or quoted when they are not
+  (`{"first name": "Ada"}`); keywords are allowed as keys. A literal may
+  spread over several lines, and a repeated key is rejected at parse time.
+  Unlike lists, a dictionary holds any mix of value types.
+- **Dot and bracket access**, which mean the same thing: `person.name` and
+  `person["name"]`. Reading a key that is not there names the keys that are.
+- **Assignment through both forms**, including new keys: `person.name = "Bob"`,
+  `person["age"] = 31`, `person.country = "USA"`.
+- **`delete`**: `delete person.country` or `delete person["job"]`. Deleting a
+  key that is not there is harmless, so `delete` is safe to repeat.
+- **`in` for dictionaries**, asking about keys: `"name" in person`.
+- **`keys()` and `values()`** built-ins, both returning lists.
+- **Iteration**, in three shapes: `for key in d` walks the keys,
+  `for key, value in d` walks the pairs, and the same two-name form over a
+  list or string yields index and item.
+- **Nested dictionaries**, with chains like `person.address.street` and
+  `employee["address"]["zip"]` reading and writing through as expected.
+- **Merging with `+`**: `{x: 1, y: 2} + {y: 3, z: 4}` is
+  `{x: 1, y: 3, z: 4}`, leaving both operands untouched.
+- `len()` counts entries and `type()` answers `"dict"`; `==` compares
+  dictionaries by content.
+- New AST nodes `DictNode`, `DictEntryNode`, `MemberNode`,
+  `MemberAssignNode` and `DeleteNode`, all rendered by `tree`; new tokens
+  for `.` and the `delete` keyword.
+- `examples/dicts.nova`, ending with a word-frequency counter.
+
+### Changed
+
+- A `{` in expression position now opens a dictionary. Blocks are unaffected:
+  `{` is never an infix operator, so the condition in `if x { ... }` still
+  ends at the brace, and blocks are always read by the statement rules.
+- `keys` and `values` join the reserved built-in names.
+- `help` covers dictionaries; the banner reads `NOVALANG v0.6.0`.
+
+### Note
+
+`values()` returns whatever the dictionary holds, so the list it hands back
+can be mixed even though a list you build yourself must hold one kind of
+item. The one-type rule from v0.4.0 is enforced where a list is created or
+extended, not on lists produced by a built-in.
+
+---
+
 ## [0.5.0] - 2026-09-01 — Strings & Text Processing
 
 Stage 5. Strings stop being opaque blobs and become something you can take
@@ -261,6 +312,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.6.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.5.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.4.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.3.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
