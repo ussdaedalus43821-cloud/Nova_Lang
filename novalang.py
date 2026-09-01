@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# NovaLang v0.6.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.6.1 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
 NovaLang - Stage 6: Dictionaries
@@ -28,7 +28,7 @@ No eval(). No exec(). Everything is still built by hand.
 
 import sys
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -1378,8 +1378,6 @@ def builtin_keys(args, position):
 
 
 def builtin_values(args, position):
-    # Dictionaries hold mixed values, so this list may be mixed too - the
-    # one-type rule applies to lists you build yourself.
     return list(dict_argument(args[0], "values()", position).values())
 
 
@@ -1390,7 +1388,6 @@ def builtin_append(args, position):
             "append() needs a list as its first argument, but got {}".format(type_name(target)),
             position,
         )
-    check_element_type(target, value, position)
     if len(target) >= MAX_LIST_LENGTH:
         raise NovaError("a list cannot grow beyond {} items".format(MAX_LIST_LENGTH), position)
     target.append(value)
@@ -1539,7 +1536,7 @@ def whole_number(value, who, position):
 
 
 def type_category(value):
-    """The coarse type a list is allowed to hold - lists stay homogeneous."""
+    """The coarse kind of a value, as reported by type()."""
     if isinstance(value, bool):
         return "boolean"
     if isinstance(value, (int, float)):
@@ -1553,31 +1550,6 @@ def type_category(value):
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return "function"
     return "nothing"
-
-
-PLURAL_TYPES = {
-    "boolean": "booleans",
-    "number": "numbers",
-    "string": "strings",
-    "list": "lists",
-    "dict": "dictionaries",
-    "function": "functions",
-    "nothing": "nothing",
-}
-
-
-def check_element_type(existing, value, position):
-    """A list holds one kind of thing. Items are checked on the way in."""
-    if not existing:
-        return
-    kind = type_category(existing[0])
-    if type_category(value) != kind:
-        raise NovaError(
-            "this list holds {}, so it cannot hold {}".format(
-                PLURAL_TYPES[kind], type_name(value)
-            ),
-            position,
-        )
 
 
 def dict_key(value, position):
@@ -1842,12 +1814,8 @@ class Interpreter:
         return value
 
     def visit_ListNode(self, node):
-        items = []
-        for item_node in node.items:
-            value = self.evaluate(item_node)
-            check_element_type(items, value, node.position)
-            items.append(value)
-        return items
+        # A list may hold any mix of values, so nothing to check here.
+        return [self.evaluate(item_node) for item_node in node.items]
 
     def visit_DictNode(self, node):
         entries = {}
@@ -1932,11 +1900,6 @@ class Interpreter:
         index = self.evaluate(node.index)
         value = self.evaluate(node.value)
         spot = normalize_index(target, index, node.position)
-
-        # The slot being overwritten does not count towards the list's type.
-        neighbours = [item for pos, item in enumerate(target) if pos != spot][:1]
-        check_element_type(neighbours, value, node.position)
-
         target[spot] = value
         return value
 
@@ -2019,8 +1982,6 @@ class Interpreter:
 
         # Lists join with '+' and repeat with '*', always into a new list.
         if op == "+" and isinstance(left, list) and isinstance(right, list):
-            if left and right:
-                check_element_type(left, right[0], node.position)
             return left + right
 
         if op == "*" and (isinstance(left, list) or isinstance(right, list)):
@@ -2453,7 +2414,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.6.0            ║
+║       NOVALANG v0.6.1            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2469,7 +2430,7 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Values
     numbers              1, 42, 3.14      strings  "hi", 'hi'
     booleans             true, false      comments # to end of line
-    lists                [1, 2, 3], []    one kind of item per list
+    lists                [1, 2, 3], []    any mix of values
     dictionaries         {name: "Ada", age: 36},  {}  any mix of values
     f-strings            f"Hello, {name}!"   {{ and }} are literal braces
     escapes              \n  \t  \\  \"  \'
