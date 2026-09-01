@@ -18,6 +18,67 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.4.0] - 2026-09-01 — Lists, Indexing & Integer Math
+
+Stage 4. The language gets a data structure and the arithmetic to walk it.
+
+### Added
+
+- **Lists**, written `[1, 2, 3]` or `[]`, and able to span several lines.
+  A list holds one kind of item: mixing types is rejected when the list is
+  built, when an element is replaced, when `append` adds to it, and when two
+  lists are joined.
+  ```
+  let a = [1, 2, 3, 4, 5]
+  let grid = [[1, 2], [3, 4]]
+  ```
+- **Indexing**, for reading and writing, with negative indexes counting back
+  from the end: `a[0]`, `a[-1]`, `a[0] = 10`, `grid[1][0]`. Out-of-range
+  access names the index, the size, and the valid range.
+- **`let`**, which declares a name in the current block, shadowing any outer
+  one. Plain assignment keeps its v0.3 meaning — it updates an existing
+  binding out to the nearest function boundary and only creates a name when
+  none exists.
+- **Built-in functions** `len`, `append`, `pop` and `range`, joining `print`.
+  `len` also works on strings; `pop(a)` removes the last item and `pop(a, i)`
+  the item at `i`; `range(n)`, `range(a, b)` and `range(a, b, step)` build a
+  list, and `step` may be negative.
+- **`%` (remainder) and `//` (integer division)**, sharing the precedence
+  level of `*` and `/`. Both round the way Python does: `//` towards negative
+  infinity, and the sign of `%` follows the right-hand side.
+- **List concatenation and repetition**: `[1, 2] + [3, 4]` and `[1, 2] * 3`
+  (either operand order). Both produce a new list.
+- **`for x in <list>`**, alongside the numeric `for i = a to b`. It walks a
+  snapshot of the list, so appending inside the loop cannot make it run
+  forever, and it supports `break`, `continue` and the same `else` clause.
+- Equality compares lists element by element, so `[1, 2] == [1, 2]` is `true`.
+- New AST nodes `ListNode`, `IndexNode`, `IndexAssignNode`, `LetNode` and
+  `ForInNode`, all rendered by `tree`. The new built-ins are ordinary
+  functions rather than syntax, so they appear as `CallNode` in a tree.
+- New keywords `let` and `in`; new tokens `[`, `]`, `%` and `//`.
+- `examples/lists.nova`, exercising every feature above.
+
+### Changed
+
+- Assignment is parsed by reading the left side as an expression and then
+  looking for `=`, which is what lets `a[i] = v` and `x = v` share one rule.
+- `len`, `append`, `pop` and `range` are reserved alongside `print`, so they
+  cannot be used as variable, parameter or function names.
+- Built-in functions now receive the call position, so their errors carry a
+  caret like every other error.
+- `range()` and list repetition refuse to build more than 1,000,000 items.
+- Printing a list that contains itself shows `[...]` rather than recursing.
+- The REPL keeps prompting while a `[` is unclosed, so list literals can be
+  typed across several lines.
+- `help` covers the new syntax; the banner reads `NOVALANG v0.4.0`.
+
+### Note
+
+`//` is integer division, so comments remain `#` only — a line starting with
+`//` is a syntax error, not a comment.
+
+---
+
 ## [0.3.0] - 2026-09-01 — Loops, Logic & Block Scoping
 
 Stage 3. Iteration, short-circuit logic, and a real scoping model.
@@ -150,6 +211,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.4.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.3.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.2.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.1.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
