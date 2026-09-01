@@ -18,6 +18,97 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.10.0] - 2026-09-01 — Self-Hosting
+
+Stage 10. NovaLang can now run NovaLang.
+
+### Added
+
+- **`novalang.nova`**, a second complete Lexer, Parser and Interpreter for
+  the language - written in NovaLang itself, roughly 2,000 lines, with no
+  classes (the language has none), so tokens, AST nodes, scopes, and even
+  user-defined functions are represented as tagged dictionaries
+  (`{kind: "Number", value: 5}`, `{kind: "function", params:, body:,
+  closure:}`) threaded through explicit state, the same way you would write
+  an interpreter in any language without objects.
+- **`bootstrap.py`**, a small Python script that loads `novalang.nova`,
+  appends one line calling its `run_file(path)` entry point with a target
+  file's path, and hands the combined program to novalang.py's engine -
+  which only ever runs `novalang.nova` itself. `novalang.nova` then reads
+  the *target* file (through the ordinary `read()` built-in), and lexes,
+  parses and runs it using the Lexer, Parser and Interpreter defined in
+  NovaLang, not in Python.
+- **`novalang.py --bootstrap file.nova`**, the same thing from the usual
+  entry point.
+- `examples/self_host_test.nova`, 34 checks across arithmetic, strings,
+  lists, dictionaries, control flow, recursion, closures and try/catch,
+  meant to be run both ways and diffed:
+  ```
+  python3 novalang.py examples/self_host_test.nova
+  python3 novalang.py --bootstrap examples/self_host_test.nova
+  ```
+  A stricter check - the self-hosted interpreter parsing and running its
+  *own* ~2,000-line source - is `python3 bootstrap.py novalang.nova`.
+- Two small built-ins, `abspath` and `dirname`, exposed to `novalang.nova`'s
+  own module loader for canonicalizing import paths (so `"math.nova"` and
+  `"./math.nova"` are recognized as the same file for caching and circular-
+  import detection) - internal plumbing, not part of the documented
+  language surface, the same way `novalang.nova` itself is not.
+
+### Changed
+
+- **Every existing example passes under `--bootstrap` with byte-identical
+  output to running it directly** - `examples/fib.nova`, `loops.nova`,
+  `lists.nova`, `strings.nova`, `dicts.nova`, `file_demo.nova`,
+  `errors.nova` and `modules.nova` all verified.
+- `MAX_CALL_DEPTH` rises from 200 to 1200, and Python's own recursion limit
+  from 10,000 to 20,000. A self-hosted call costs several host-level calls
+  in turn (eval an argument, dispatch on its AST kind, run its body,
+  dispatch each statement...), so a target-level recursion of only 20 -
+  `fib(20)`, say - was hitting the old ceiling well before doing anything
+  unreasonable. Both numbers were raised empirically, tested against where
+  CPython's own stack actually becomes a concern, with comfortable margin
+  either side; this also means direct (non-bootstrapped) programs can now
+  recurse considerably deeper than before, a purely permissive change.
+- The banner reads `NOVALANG v0.10.0`; `help` mentions `--bootstrap`.
+
+### Note
+
+Three known compromises:
+
+- **An uncaught error in a target program run under `--bootstrap` points
+  into `novalang.nova`'s own source, not the target's.** `print(1/0)`
+  reports "division by zero" correctly, but the caret lands on the line in
+  the self-hosted interpreter that evaluates `/`, with a call stack of the
+  interpreter's own functions (`eval_binop`, `eval_expr`, ...) rather than
+  the target program's. This is a real limitation of a tree-walking
+  meta-circular interpreter without its own separate traceback machinery.
+  A *caught* error is unaffected - `catch e` binds exactly the right
+  message text either way, since that was always just the thrown string.
+
+Two more, both because NovaLang has no classes and no `nonlocal`:
+
+- A target-language function value is a plain dictionary tagged
+  `{kind: "function", ...}`. Printing one directly (not calling it) shows a
+  hand-formatted `<function name(params)>`, matching the host - but a
+  function value buried inside a *list or dictionary* that then gets
+  printed will show that raw tagged dictionary instead, since the
+  recursive formatter that handles that case is the host's own `str()`,
+  which does not know about the tagging convention. None of the example
+  files do this.
+- The interpreter's own mutable bookkeeping - the call-depth counter, the
+  module cache, the lexer and parser's position trackers - is carried in
+  dictionaries mutated in place (`state["index"] = ...`) rather than plain
+  local variables, and every helper function takes that state as an
+  explicit parameter. This is not a style choice: a plain assignment inside
+  a NovaLang function can never reach an enclosing function's locals (every
+  call is a scope barrier, by design since v0.3.0), so a shared, mutated
+  container is the only way to carry state across calls - `novalang.nova`
+  is simply the largest program yet to run into that rule, and the fix a
+  target program would already need to reach for.
+
+---
+
 ## [0.9.0] - 2026-09-01 — Modules & Imports
 
 Stage 9. A NovaLang program can now be split across files.
@@ -500,6 +591,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.10.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.9.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.8.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.7.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
