@@ -18,6 +18,75 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.9.0] - 2026-09-01 — Modules & Imports
+
+Stage 9. A NovaLang program can now be split across files.
+
+### Added
+
+- **`import "path.nova"`** runs a file once and binds its exports under a
+  name inferred from the filename: `import "math.nova"` gives you `math.fib`,
+  `math.PI`, and so on.
+- **`import "path.nova" as name`** binds the same exports under a chosen
+  name instead of the inferred one.
+- **`import "path.nova" with a, b`** skips the module namespace and binds
+  the named exports directly into scope, so `fib(10)` works with no prefix.
+  Importing a name that was not exported names what was.
+- **`export def f() { }` and `export let x = 1`** mark a definition as
+  visible to importers. Anything not marked `export` is private to the file
+  it is written in, even though it is a perfectly ordinary function or
+  variable while that file runs.
+- **Relative imports**: `import "./utils.nova"` resolves against the
+  importing file's own directory. `import "utils.nova"` (no `./`) resolves
+  the same way when there is a current file, and both then fall back to the
+  process's current directory - this is the one search order the language
+  uses, so an explicit `./` and a bare name behave alike when they name the
+  same file.
+- **A module cache, keyed by resolved path.** A file is read and run at most
+  once per program, however many places import it or under however many
+  names; every importer shares the same exports, so a module behaves like a
+  singleton the way it does in Python or JavaScript, not like a fresh copy
+  per import.
+- **Circular import detection.** Importing a file that is already in the
+  middle of loading is reported as `circular import: a.nova -> b.nova ->
+  a.nova` rather than recursing forever.
+- New AST nodes `ImportNode` and `ExportNode`, both rendered by `tree`; new
+  keywords `import`, `export`, `as` and `with`.
+- `examples/math.nova`, a module exporting `fib`, `factorial` and `PI` with
+  one private helper; `examples/modules.nova`, importing it all four ways and
+  catching a circular import; `examples/circular_a.nova` and
+  `examples/circular_b.nova`, which exist only to import each other.
+
+### Changed
+
+- **`NovaError` can now carry a fully-rendered inner report as its message.**
+  An error raised while loading a module - a syntax error in it, or a
+  runtime error at its top level - is caught at the import boundary and
+  re-reported as `while loading module "path": <the module's own error,
+  correctly captioned against the module's own source>`, so a caret always
+  points into the file it belongs to, never into the importer's. A runtime
+  error from *calling* an already-loaded module's function is unaffected and
+  reports exactly as it would for a local function.
+- The REPL's rule for waiting on an unfinished statement is more precise: it
+  now recognizes `export def f()` as needing an eventual `{` without
+  mistaking `export let x = 5` for the same thing, and a bug from v0.8.0 is
+  fixed along the way - `try` followed by `{` on the next line now correctly
+  waits for the block, matching `if`, `while`, `for` and `def`.
+- `help` covers import and export; the banner reads `NOVALANG v0.9.0`.
+
+### Note
+
+A module namespace is, under the hood, an ordinary dictionary of its
+exports - `math.fib` is exactly the dot access Stage 6 already had, `type(math)`
+answers `"dict"`, and `keys(math)` lists what it exports. Nothing new was
+built for that part; Stage 6 already covered it.
+
+`import` and `export` are one-line statements, like `let` and `throw`: unlike
+a block header, `as name` and `with a, b` do not wait for more input if left
+unfinished on one line - they simply report what is missing.
+
+---
+
 ## [0.8.0] - 2026-09-01 — Error Handling
 
 Stage 8. A program can now recover from an error instead of stopping at it.
@@ -431,6 +500,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.9.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.8.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.7.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.1]: https://github.com/ussdaedalus43821-cloud/Nova_Lang

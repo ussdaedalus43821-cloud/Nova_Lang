@@ -1,0 +1,29 @@
+# examples/math.nova - a small math module for Stage 9.
+#
+# Only names marked `export` are visible to whoever imports this file;
+# everything else is a private implementation detail.
+
+export let PI = 3.14159
+
+def is_base_case(n) {
+    return n < 2
+}
+
+export def fib(n) {
+    if is_base_case(n) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+export def factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+# Not exported - only usable inside this file.
+def secret() {
+    return "you cannot see this from outside math.nova"
+}
