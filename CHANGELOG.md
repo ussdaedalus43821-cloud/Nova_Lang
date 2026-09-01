@@ -18,6 +18,51 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.7.0] - 2026-09-01 — File I/O
+
+Stage 7. NovaLang programs can now read and write the world outside the
+process.
+
+### Added
+
+- **`read(path)`** returns a whole file as one string, and **`write(path,
+  text)`** replaces a file's contents. Both use UTF-8.
+- **`append(path, text)`** adds to the end of a file. This is the same
+  `append` that grows a list — a list first argument grows the list, a string
+  first argument grows the file.
+- **`exists(path)`** answers `true` or `false` for any path.
+- **`listdir(path)`** returns the names inside a directory, sorted so two
+  runs agree.
+- **`delete(path)`** removes a file, and does nothing if it is already gone.
+  The parentheses are what separate it from the Stage 6 statement:
+  `delete(x)` removes the file named by `x`, while `delete d.key` and
+  `delete d["key"]` remove a dictionary entry. That distinction is made at
+  parse time, so `delete(files[0])` deletes the named file rather than trying
+  to remove a list entry.
+- **`input(prompt)`** prints a prompt and reads one typed line, returning it
+  as a string. The prompt is optional.
+- **Errors carry their own label.** A missing file reports itself as
+  `FileNotFoundError: data.txt`, with the usual caret and call stack beneath
+  it; other trouble reports as `FileError` with the operating system's
+  reason. Everything else still reports as `NovaError`.
+- New AST node `DeleteFileNode`, rendered by `tree`.
+- `examples/file_demo.nova`, which writes a scratch file, appends to it,
+  lists the directory, round-trips a list through a file, builds a log line
+  by line, counts words in what it wrote, and deletes everything it made.
+
+### Changed
+
+- `read`, `write`, `exists`, `listdir` and `input` join the reserved built-in
+  names.
+- `help` gains a Files and input section; the banner reads `NOVALANG v0.7.0`.
+
+### Note
+
+`delete` on a missing file is harmless, matching the Stage 6 decision that
+deleting an absent dictionary key is not an error.
+
+---
+
 ## [0.6.1] - 2026-09-01 — Lists Hold Anything
 
 ### Changed
@@ -337,6 +382,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.7.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.1]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.5.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang

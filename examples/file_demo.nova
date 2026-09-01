@@ -1,0 +1,95 @@
+# NovaLang file I/O. This demo writes into a scratch folder next to wherever
+# you run it, then tidies up after itself.
+#
+# Set this to true to try input() at the end; leave it false to run the file
+# straight through without waiting for anyone to type.
+let interactive = false
+
+let notes = "nova_demo_notes.txt"
+let log = "nova_demo_log.txt"
+
+# ---- write ----
+write(notes, "NovaLang can write files.\n")
+print("wrote", notes)
+
+# ---- read ----
+print("--- contents ---")
+print(read(notes))
+
+# ---- append ----
+append(notes, "And it can add to them.\n")
+append(notes, "One line at a time.\n")
+print("--- after appending ---")
+print(read(notes))
+
+# ---- exists ----
+if exists(notes) {
+    print("File found!")
+}
+print("missing file exists?", exists("definitely_not_here.txt"))
+
+# ---- listdir ----
+let here = listdir(".")
+print(f"this directory holds {len(here)} entries")
+let mine = []
+for name in here {
+    if "nova_demo" in name {
+        append(mine, name)
+    }
+}
+print("my demo files:", mine)
+
+# ---- a small round trip: write a list, read it back ----
+let planets = ["Mercury", "Venus", "Earth", "Mars"]
+write("nova_demo_planets.txt", join(planets, "\n"))
+let loaded = split(read("nova_demo_planets.txt"), "\n")
+print("read back:", loaded, len(loaded) == len(planets))
+
+# ---- a log file built line by line ----
+delete(log)                       # start clean; deleting a missing file is fine
+for number in range(1, 4) {
+    append(log, f"step {str(number)} finished\n")
+}
+print("--- log ---")
+for line in split(trim(read(log)), "\n") {
+    print("|", line)
+}
+
+# ---- counting words in a file we just wrote ----
+def word_counts(text) {
+    let counts = {}
+    for word in split(lower(text)) {
+        if word in counts {
+            counts[word] = counts[word] + 1
+        } else {
+            counts[word] = 1
+        }
+    }
+    return counts
+}
+print("word counts:", word_counts(read(notes)))
+
+# ---- a file only read when it is really there ----
+def read_or(path, fallback) {
+    if exists(path) {
+        return read(path)
+    }
+    return fallback
+}
+print(read_or("nova_demo_absent.txt", "(no such file)"))
+
+# ---- input ----
+if interactive {
+    let name = input("What is your name? ")
+    print(f"Hello, {name}!")
+    let answer = input("Pick a number: ")
+    print(f"{answer} doubled is {str(num(answer) * 2)}")
+} else {
+    print("(set interactive = true at the top to try input())")
+}
+
+# ---- delete: tidy up ----
+delete(notes)
+delete(log)
+delete("nova_demo_planets.txt")
+print("cleaned up:", exists(notes), exists(log), exists("nova_demo_planets.txt"))
