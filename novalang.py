@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.10.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.11.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 10: Self-Hosting
+NovaLang - Stage 11: Standard Library
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -34,14 +34,25 @@ Stage 10: self-hosting - novalang.nova is a second Lexer/Parser/Interpreter
           (or `novalang.py --bootstrap file.nova`) loads it and uses it to
           run a target file, instead of running that file with this Python
           engine directly.
+Stage 11: a standard library - time, random, math, the OS and filesystem,
+          JSON, string utilities, assert/log, and map/filter/reduce - all
+          global, no import needed, and identical under --bootstrap.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
+import json as json_module
+import math
 import os
+import platform
+import random
+import re
+import shutil
 import sys
+import time
+from datetime import datetime, timezone
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -1515,10 +1526,14 @@ class NovaFunction:
 class BuiltinFunction:
     """A function written in Python and exposed to NovaLang, such as print."""
 
-    def __init__(self, name, arity, implementation):
+    def __init__(self, name, arity, implementation, needs_interpreter=False):
         self.name = name
         self.arity = arity              # an int, or None for "any number"
         self.implementation = implementation
+        # map/filter/reduce call back into a NovaLang function value passed
+        # as an argument, which only the interpreter can do; every other
+        # built-in is a plain function of (args, position).
+        self.needs_interpreter = needs_interpreter
 
     def __repr__(self):
         return "<built-in function {}>".format(self.name)
@@ -1769,6 +1784,431 @@ def builtin_type(args, position):
     return type_category(args[0])
 
 
+# ---------------------------------------------------------------------------
+# Stage 11: standard library
+# ---------------------------------------------------------------------------
+#
+# Every function here is global, with no import needed. Each type-checks
+# its own arguments and raises a NovaError labelled "TypeError" for a bad
+# one, so `catch e` sees e.g. "TypeError: sqrt() needs a number, but got
+# a string" - consistent with FileNotFoundError/FileError from Stage 7.
+
+SCRIPT_ARGS = []            # set by main()/run_source(): argv after the file
+
+
+def numeric_argument(value, who, position):
+    if not is_number(value):
+        raise NovaError(
+            "{} needs a number, but got {}".format(who, type_name(value)), position, label="TypeError"
+        )
+    return value
+
+
+def list_argument(value, who, position):
+    if not isinstance(value, list):
+        raise NovaError(
+            "{} needs a list, but got {}".format(who, type_name(value)), position, label="TypeError"
+        )
+    return value
+
+
+# ---- time -----------------------------------------------------------------
+
+def builtin_time(args, position):
+    return time.time()
+
+
+def builtin_sleep(args, position):
+    ms = numeric_argument(args[0], "sleep()", position)
+    if ms < 0:
+        raise NovaError("sleep() cannot pause for a negative time", position, label="TypeError")
+    time.sleep(ms / 1000.0)
+    return NOTHING
+
+
+def builtin_now(args, position):
+    return datetime.now(timezone.utc).isoformat()
+
+
+def builtin_format_time(args, position):
+    timestamp, fmt = args
+    timestamp = numeric_argument(timestamp, "format_time()", position)
+    fmt = text_argument(fmt, "the format for format_time()", position)
+    try:
+        return datetime.fromtimestamp(timestamp).strftime(fmt)
+    except (ValueError, OSError, OverflowError) as problem:
+        raise NovaError("format_time(): {}".format(problem), position, label="TypeError")
+
+
+# ---- random -----------------------------------------------------------------
+
+def builtin_random(args, position):
+    return random.random()
+
+
+def builtin_randint(args, position):
+    low = whole_number(args[0], "randint()", position)
+    high = whole_number(args[1], "randint()", position)
+    if low > high:
+        raise NovaError(
+            "randint() needs its first argument no greater than its second", position, label="TypeError"
+        )
+    return random.randint(low, high)
+
+
+def builtin_choice(args, position):
+    target = list_argument(args[0], "choice()", position)
+    if not target:
+        raise NovaError("choice() cannot pick from an empty list", position)
+    return random.choice(target)
+
+
+def builtin_shuffle(args, position):
+    target = list_argument(args[0], "shuffle()", position)
+    random.shuffle(target)
+    return target
+
+
+# ---- math -----------------------------------------------------------------
+
+def builtin_abs(args, position):
+    return abs(numeric_argument(args[0], "abs()", position))
+
+
+def builtin_round(args, position):
+    value = numeric_argument(args[0], "round()", position)
+    if len(args) == 1:
+        return round(value)
+    return round(value, whole_number(args[1], "round()", position))
+
+
+def builtin_floor(args, position):
+    return math.floor(numeric_argument(args[0], "floor()", position))
+
+
+def builtin_ceil(args, position):
+    return math.ceil(numeric_argument(args[0], "ceil()", position))
+
+
+def builtin_sqrt(args, position):
+    value = numeric_argument(args[0], "sqrt()", position)
+    if value < 0:
+        raise NovaError("sqrt() needs a number that is not negative", position, label="TypeError")
+    return math.sqrt(value)
+
+
+def builtin_pow(args, position):
+    base = numeric_argument(args[0], "pow()", position)
+    exponent = numeric_argument(args[1], "pow()", position)
+    try:
+        result = base ** exponent
+    except (ValueError, OverflowError, ZeroDivisionError) as problem:
+        raise NovaError("pow(): {}".format(problem), position, label="TypeError")
+    if isinstance(result, complex):
+        raise NovaError(
+            "pow() produced a complex result, which NovaLang cannot represent", position, label="TypeError"
+        )
+    return result
+
+
+def builtin_sin(args, position):
+    return math.sin(numeric_argument(args[0], "sin()", position))
+
+
+def builtin_cos(args, position):
+    return math.cos(numeric_argument(args[0], "cos()", position))
+
+
+def builtin_tan(args, position):
+    return math.tan(numeric_argument(args[0], "tan()", position))
+
+
+def builtin_ln(args, position):
+    value = numeric_argument(args[0], "ln()", position)
+    if value <= 0:
+        raise NovaError("ln() needs a number greater than zero", position, label="TypeError")
+    return math.log(value)
+
+
+def builtin_log10(args, position):
+    value = numeric_argument(args[0], "log10()", position)
+    if value <= 0:
+        raise NovaError("log10() needs a number greater than zero", position, label="TypeError")
+    return math.log10(value)
+
+
+def numbers_from_args(args, who, position):
+    """min/max/sum take either several numbers, or one list of numbers."""
+    items = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+    if not items:
+        raise NovaError("{} needs at least one number".format(who), position, label="TypeError")
+    for item in items:
+        numeric_argument(item, who, position)
+    return items
+
+
+def builtin_min(args, position):
+    return min(numbers_from_args(args, "min()", position))
+
+
+def builtin_max(args, position):
+    return max(numbers_from_args(args, "max()", position))
+
+
+def builtin_sum(args, position):
+    total = 0
+    for item in numbers_from_args(args, "sum()", position):
+        total = total + item
+    return total
+
+
+# ---- system -----------------------------------------------------------------
+
+def builtin_env(args, position):
+    value = os.environ.get(text_argument(args[0], "env()", position))
+    return NOTHING if value is None else value
+
+
+def builtin_exit(args, position):
+    code = whole_number(args[0], "exit()", position) if args else 0
+    sys.exit(code)
+
+
+def builtin_args(args, position):
+    return list(SCRIPT_ARGS)
+
+
+def builtin_platform(args, position):
+    return platform.system()
+
+
+# ---- json -----------------------------------------------------------------
+
+def to_jsonable(value, position):
+    if value is NOTHING:
+        return None
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [to_jsonable(item, position) for item in value]
+    if isinstance(value, dict):
+        return {key: to_jsonable(item, position) for key, item in value.items()}
+    raise NovaError(
+        "json.dumps() cannot represent {}".format(type_name(value)), position, label="TypeError"
+    )
+
+
+def from_jsonable(value):
+    if value is None:
+        return NOTHING
+    if isinstance(value, list):
+        return [from_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: from_jsonable(item) for key, item in value.items()}
+    return value
+
+
+def builtin_json_dumps(args, position):
+    return json_module.dumps(to_jsonable(args[0], position))
+
+
+def builtin_json_loads(args, position):
+    text = text_argument(args[0], "json.loads()", position)
+    try:
+        return from_jsonable(json_module.loads(text))
+    except json_module.JSONDecodeError as problem:
+        raise NovaError("json.loads(): {}".format(problem), position, label="TypeError")
+
+
+def builtin_json_pretty(args, position):
+    return json_module.dumps(to_jsonable(args[0], position), indent=2)
+
+
+# ---- OS / filesystem -----------------------------------------------------------------
+
+def builtin_cwd(args, position):
+    return os.getcwd()
+
+
+def builtin_mkdir(args, position):
+    path = text_argument(args[0], "mkdir()", position)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as problem:
+        raise NovaError(
+            "mkdir(): {}: {}".format(path, problem.strerror or problem), position, label="FileError"
+        )
+    return NOTHING
+
+
+def builtin_remove(args, position):
+    path = text_argument(args[0], "remove()", position)
+    try:
+        if os.path.isdir(path):
+            os.rmdir(path)
+        else:
+            os.remove(path)
+    except FileNotFoundError:
+        raise NovaError(path, position, label="FileNotFoundError")
+    except OSError as problem:
+        raise NovaError(
+            "remove(): {}: {}".format(path, problem.strerror or problem), position, label="FileError"
+        )
+    return NOTHING
+
+
+def builtin_rename(args, position):
+    old = text_argument(args[0], "the old name for rename()", position)
+    new = text_argument(args[1], "the new name for rename()", position)
+    try:
+        os.rename(old, new)
+    except OSError as problem:
+        raise NovaError("rename(): {}".format(problem.strerror or problem), position, label="FileError")
+    return NOTHING
+
+
+def builtin_copy(args, position):
+    src = text_argument(args[0], "the source for copy()", position)
+    dst = text_argument(args[1], "the destination for copy()", position)
+    try:
+        shutil.copy2(src, dst)
+    except OSError as problem:
+        raise NovaError("copy(): {}".format(problem.strerror or problem), position, label="FileError")
+    return NOTHING
+
+
+# ---- string utilities -----------------------------------------------------------------
+
+def builtin_regex(args, position):
+    pattern = text_argument(args[0], "the pattern for regex()", position)
+    text = text_argument(args[1], "the text for regex()", position)
+    try:
+        return re.search(pattern, text) is not None
+    except re.error as problem:
+        raise NovaError("regex(): bad pattern: {}".format(problem), position, label="TypeError")
+
+
+def builtin_replace_all(args, position):
+    text = text_argument(args[0], "the text for replace_all()", position)
+    old = text_argument(args[1], "the target for replace_all()", position)
+    new = text_argument(args[2], "the replacement for replace_all()", position)
+    return text.replace(old, new)
+
+
+def builtin_split_lines(args, position):
+    return text_argument(args[0], "split_lines()", position).splitlines()
+
+
+def builtin_pad(args, position):
+    text = text_argument(args[0], "pad()", position)
+    return text.ljust(whole_number(args[1], "pad()", position))
+
+
+def builtin_pad_left(args, position):
+    text = text_argument(args[0], "pad_left()", position)
+    return text.rjust(whole_number(args[1], "pad_left()", position))
+
+
+def builtin_reverse(args, position):
+    value = args[0]
+    if isinstance(value, str):
+        return value[::-1]
+    if isinstance(value, list):
+        return list(reversed(value))
+    raise NovaError(
+        "reverse() needs a string or a list, but got {}".format(type_name(value)), position, label="TypeError"
+    )
+
+
+def builtin_sorted(args, position):
+    items = list(list_argument(args[0], "sorted()", position))
+    descending = False
+    if len(args) > 1:
+        if not isinstance(args[1], bool):
+            raise NovaError("sorted()'s second argument must be true or false", position, label="TypeError")
+        descending = args[1]
+    try:
+        items.sort(reverse=descending)
+    except TypeError:
+        raise NovaError("sorted() needs items that can be compared with each other", position, label="TypeError")
+    return items
+
+
+# ---- debugging -----------------------------------------------------------------
+
+def builtin_assert(args, position):
+    condition = args[0]
+    if not isinstance(condition, bool):
+        raise NovaError(
+            "assert() needs true or false, but got {}".format(type_name(condition)), position, label="TypeError"
+        )
+    if not condition:
+        message = "assertion failed"
+        if len(args) > 1:
+            message = text_argument(args[1], "the message for assert()", position)
+        raise NovaError(message, position, label="AssertionError")
+    return NOTHING
+
+
+def builtin_log(args, position):
+    text = " ".join(format_value(arg) for arg in args)
+    stamp = datetime.now(timezone.utc).isoformat()
+    print("[{}] {}".format(stamp, text), file=sys.stderr)
+    return NOTHING
+
+
+# ---- higher-order functions -----------------------------------------------------------------
+#
+# The only built-ins that call back into a NovaLang function value passed
+# as an argument - which needs the interpreter itself, not just the
+# already-evaluated arguments, hence BuiltinFunction's needs_interpreter.
+
+def callable_argument(value, who, position):
+    if not isinstance(value, (NovaFunction, BuiltinFunction)):
+        raise NovaError(
+            "{} needs a function, but got {}".format(who, type_name(value)), position, label="TypeError"
+        )
+    return value
+
+
+def builtin_map(args, position, interpreter):
+    fn = callable_argument(args[0], "map()", position)
+    items = list_argument(args[1], "map()", position)
+    return [interpreter.call_value(fn, [item], position) for item in items]
+
+
+def builtin_filter(args, position, interpreter):
+    fn = callable_argument(args[0], "filter()", position)
+    items = list_argument(args[1], "filter()", position)
+    kept = []
+    for item in items:
+        keep = interpreter.call_value(fn, [item], position)
+        if not isinstance(keep, bool):
+            raise NovaError("filter()'s function must return true or false", position, label="TypeError")
+        if keep:
+            kept.append(item)
+    return kept
+
+
+def builtin_reduce(args, position, interpreter):
+    fn = callable_argument(args[0], "reduce()", position)
+    items = list_argument(args[1], "reduce()", position)
+    if len(args) >= 3:
+        accumulator = args[2]
+        rest = items
+    else:
+        if not items:
+            raise NovaError(
+                "reduce() needs a non-empty list, or an initial value as a third argument",
+                position,
+            )
+        accumulator = items[0]
+        rest = items[1:]
+    for item in rest:
+        accumulator = interpreter.call_value(fn, [accumulator, item], position)
+    return accumulator
+
+
 BUILTINS = {
     "print": BuiltinFunction("print", None, builtin_print),
     "len": BuiltinFunction("len", 1, builtin_len),
@@ -1792,6 +2232,60 @@ BUILTINS = {
     "input": BuiltinFunction("input", None, builtin_input),
     "abspath": BuiltinFunction("abspath", 1, builtin_abspath),
     "dirname": BuiltinFunction("dirname", 1, builtin_dirname),
+
+    # Stage 11: standard library
+    "time": BuiltinFunction("time", 0, builtin_time),
+    "sleep": BuiltinFunction("sleep", 1, builtin_sleep),
+    "now": BuiltinFunction("now", 0, builtin_now),
+    "format_time": BuiltinFunction("format_time", 2, builtin_format_time),
+    "random": BuiltinFunction("random", 0, builtin_random),
+    "randint": BuiltinFunction("randint", 2, builtin_randint),
+    "choice": BuiltinFunction("choice", 1, builtin_choice),
+    "shuffle": BuiltinFunction("shuffle", 1, builtin_shuffle),
+    "abs": BuiltinFunction("abs", 1, builtin_abs),
+    "round": BuiltinFunction("round", None, builtin_round),
+    "floor": BuiltinFunction("floor", 1, builtin_floor),
+    "ceil": BuiltinFunction("ceil", 1, builtin_ceil),
+    "sqrt": BuiltinFunction("sqrt", 1, builtin_sqrt),
+    "pow": BuiltinFunction("pow", 2, builtin_pow),
+    "sin": BuiltinFunction("sin", 1, builtin_sin),
+    "cos": BuiltinFunction("cos", 1, builtin_cos),
+    "tan": BuiltinFunction("tan", 1, builtin_tan),
+    "ln": BuiltinFunction("ln", 1, builtin_ln),
+    "log10": BuiltinFunction("log10", 1, builtin_log10),
+    "min": BuiltinFunction("min", None, builtin_min),
+    "max": BuiltinFunction("max", None, builtin_max),
+    "sum": BuiltinFunction("sum", None, builtin_sum),
+    "env": BuiltinFunction("env", 1, builtin_env),
+    "exit": BuiltinFunction("exit", None, builtin_exit),
+    "args": BuiltinFunction("args", 0, builtin_args),
+    "platform": BuiltinFunction("platform", 0, builtin_platform),
+    "cwd": BuiltinFunction("cwd", 0, builtin_cwd),
+    "mkdir": BuiltinFunction("mkdir", 1, builtin_mkdir),
+    "remove": BuiltinFunction("remove", 1, builtin_remove),
+    "rename": BuiltinFunction("rename", 2, builtin_rename),
+    "copy": BuiltinFunction("copy", 2, builtin_copy),
+    "regex": BuiltinFunction("regex", 2, builtin_regex),
+    "replace_all": BuiltinFunction("replace_all", 3, builtin_replace_all),
+    "split_lines": BuiltinFunction("split_lines", 1, builtin_split_lines),
+    "pad": BuiltinFunction("pad", 2, builtin_pad),
+    "pad_left": BuiltinFunction("pad_left", 2, builtin_pad_left),
+    "reverse": BuiltinFunction("reverse", 1, builtin_reverse),
+    "sorted": BuiltinFunction("sorted", None, builtin_sorted),
+    "assert": BuiltinFunction("assert", None, builtin_assert),
+    "log": BuiltinFunction("log", None, builtin_log),
+    "map": BuiltinFunction("map", 2, builtin_map, needs_interpreter=True),
+    "filter": BuiltinFunction("filter", 2, builtin_filter, needs_interpreter=True),
+    "reduce": BuiltinFunction("reduce", None, builtin_reduce, needs_interpreter=True),
+}
+
+# json.dumps/loads/pretty and the json.dumps-style access are ordinary dict
+# access (Stage 6) on a predefined global - not new syntax, just a
+# dictionary whose values happen to be callable. See Interpreter.__init__.
+JSON_NAMESPACE = {
+    "dumps": BuiltinFunction("json.dumps", 1, builtin_json_dumps),
+    "loads": BuiltinFunction("json.loads", 1, builtin_json_loads),
+    "pretty": BuiltinFunction("json.pretty", 1, builtin_json_pretty),
 }
 
 
@@ -2021,6 +2515,13 @@ class Interpreter:
         self.globals = Environment(barrier=True)
         self.env = self.globals
         self.call_stack = []            # function names, innermost last
+
+        # Stage 11: predefined globals, not reserved builtin names - an
+        # ordinary `let PI = 3` shadows these in its own scope, the same
+        # as it would shadow any other predefined variable.
+        self.globals.define("PI", math.pi)
+        self.globals.define("E", math.e)
+        self.globals.define("json", dict(JSON_NAMESPACE))
 
         # Module machinery (Stage 9). file_stack tracks the directory of
         # whichever file is currently executing, for resolving a relative
@@ -2674,21 +3175,28 @@ class Interpreter:
     def visit_CallNode(self, node):
         callee = self.evaluate(node.callee)
         args = [self.evaluate(arg) for arg in node.args]
+        return self.call_value(callee, args, node.position)
 
+    def call_value(self, callee, args, position):
+        """Call an already-evaluated callee with already-evaluated args -
+        shared by ordinary CallNode evaluation and by map/filter/reduce,
+        which call back into a NovaLang function value of their own."""
         if isinstance(callee, BuiltinFunction):
             if callee.arity is not None and len(args) != callee.arity:
                 raise NovaError(
                     "{}() takes {} argument(s) but got {}".format(
                         callee.name, callee.arity, len(args)
                     ),
-                    node.position,
+                    position,
                 )
-            return callee.implementation(args, node.position)
+            if callee.needs_interpreter:
+                return callee.implementation(args, position, self)
+            return callee.implementation(args, position)
 
         if not isinstance(callee, NovaFunction):
             raise NovaError(
                 "{} is not a function, so it cannot be called".format(type_name(callee)),
-                node.position,
+                position,
             )
 
         if len(args) != len(callee.params):
@@ -2696,7 +3204,7 @@ class Interpreter:
                 "{}() expects {} argument(s) but got {}".format(
                     callee.name, len(callee.params), len(args)
                 ),
-                node.position,
+                position,
             )
 
         if len(self.call_stack) >= MAX_CALL_DEPTH:
@@ -2704,7 +3212,7 @@ class Interpreter:
                 "call depth of {} exceeded - is the recursion missing a base case?".format(
                     MAX_CALL_DEPTH
                 ),
-                node.position,
+                position,
             )
 
         # A fresh barrier scope per call: this is what makes recursion work,
@@ -2892,7 +3400,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.10.0           ║
+║       NOVALANG v0.11.0           ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2946,6 +3454,28 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     listdir(path)        the names inside a directory, sorted
     delete(path)         remove a file (missing is fine) - note the ()
     input(prompt)        print the prompt, read one typed line
+
+  Standard library (Stage 11 - all global, no import needed)
+    time() sleep(ms)     seconds since 1970;  pause for ms milliseconds
+    now() format_time(t, fmt)   an ISO-8601 timestamp; custom formatting
+    random() randint(a,b) choice(a) shuffle(a)   a float, an int, a pick,
+                          and an in-place shuffle
+    abs round floor ceil sqrt pow sin cos tan ln log10   the usual math,
+                          plus the constants PI and E
+    min(...) max(...) sum(...)   several numbers, or one list of them
+    env(key)              a variable from the environment, or nothing
+    exit(code) args() platform()   stop the program; its own extra
+                          command-line words; the OS name
+    json.dumps(v) json.loads(s) json.pretty(v)   to and from JSON text
+    cwd() mkdir(p) remove(p) rename(a,b) copy(a,b)   the filesystem
+    regex(pat, s)         true if pat matches anywhere in s
+    replace_all(s,a,b) split_lines(s) pad(s,n) pad_left(s,n) reverse(x)
+    sorted(a) sorted(a, true)   ascending, or descending with true
+    assert(c) assert(c, msg)   raise an error when c is false
+    log(x, ...)           like print, but to stderr with a timestamp
+    map(f, a) filter(f, a) reduce(f, a) reduce(f, a, start)
+                          the usual three - f may be any function,
+                          built-in or your own
 
   Statements
     x = 10               assignment (updates an outer x if one exists)
@@ -3129,8 +3659,10 @@ def show_vars(interpreter):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_source(source, origin):
+def run_source(source, origin, script_args=None):
     """Run a whole program (a file, or code from the command line)."""
+    global SCRIPT_ARGS
+    SCRIPT_ARGS = list(script_args or [])
     interpreter = Interpreter()
     # A relative import in this file resolves against its own directory first.
     interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
@@ -3153,10 +3685,10 @@ def run_bootstrap(args):
     NovaLang's own self-hosted Lexer/Parser/Interpreter (Stage 10), instead
     of through this Python engine directly. See bootstrap.py."""
     if not args:
-        print("usage: novalang.py --bootstrap <target.nova> [engine.nova]", file=sys.stderr)
+        print("usage: novalang.py --bootstrap <target.nova> [script args...]", file=sys.stderr)
         return 2
     import bootstrap
-    return bootstrap.run_bootstrap(*args)
+    return bootstrap.run_bootstrap(args[0], script_args=args[1:])
 
 
 def main(argv):
@@ -3171,7 +3703,7 @@ def main(argv):
     # `python3 novalang.py program.nova`  or  `python3 novalang.py "1 + 2"`
     try:
         with open(args[0], "r", encoding="utf-8") as handle:
-            return run_source(handle.read(), args[0])
+            return run_source(handle.read(), args[0], script_args=args[1:])
     except (IOError, OSError):
         pass
 

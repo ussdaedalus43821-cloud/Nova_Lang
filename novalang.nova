@@ -12,7 +12,7 @@
 #   - Tokens and AST nodes are dictionaries tagged with a "kind" field,
 #     e.g. {kind: "NUMBER", value: 5, pos: 0}.
 #   - A user-defined (target-program) function is also a tagged dictionary:
-#     {kind: "function", params: [...], body: ..., closure: env}. A
+#     {kind: "function", params: [...], body: ..., closure: scope}. A
 #     built-in is {kind: "builtin", name: "print"}. Everything else a
 #     target program can hold - numbers, strings, booleans, lists,
 #     dictionaries - is represented directly as the same NovaLang value,
@@ -847,10 +847,10 @@ def parse_call(p) {
     while true {
         if p_current(p)["kind"] == "LPAREN" {
             let paren = p_advance(p)
-            let args = []
+            let call_args = []
             if p_current(p)["kind"] != "RPAREN" {
                 while true {
-                    append(args, parse_expression(p))
+                    append(call_args, parse_expression(p))
                     if p_current(p)["kind"] != "COMMA" {
                         break
                     }
@@ -858,7 +858,7 @@ def parse_call(p) {
                 }
             }
             p_expect(p, "RPAREN", "a ')' to close the argument list")
-            node = {kind: "Call", callee: node, args: args, pos: paren["pos"]}
+            node = {kind: "Call", callee: node, call_args: call_args, pos: paren["pos"]}
         } else if p_current(p)["kind"] == "LBRACKET" {
             let bracket = p_advance(p)
             node = parse_index_or_slice(p, node, bracket)
@@ -1013,7 +1013,7 @@ def parse_primary(p) {
 # they behave: a user-defined function is {kind: "function", params:,
 # body:, closure:}, and a built-in is {kind: "builtin", name:}.
 #
-# Scopes are {vars: {}, parent: <env>, barrier: <bool>, is_root: <bool>},
+# Scopes are {vars: {}, parent: <scope>, barrier: <bool>, is_root: <bool>},
 # mirroring novalang.py's own Environment: lookups walk the whole parent
 # chain, assignment walks outward only as far as the nearest barrier
 # (a function call, or the global scope).
@@ -1033,8 +1033,20 @@ def make_env(parent, barrier, is_root) {
     return {vars: {}, parent: parent, barrier: barrier, is_root: is_root}
 }
 
-def env_has(env, name) {
-    let scope = env
+# PI, E and json are predefined globals, not reserved builtin names - an
+# ordinary `let PI = 3` shadows them in its own scope, matching the host.
+def define_stdlib_globals(scope) {
+    scope["vars"]["PI"] = 3.141592653589793
+    scope["vars"]["E"] = 2.718281828459045
+    scope["vars"]["json"] = {
+        dumps: {kind: "builtin", name: "json_dumps"},
+        loads: {kind: "builtin", name: "json_loads"},
+        pretty: {kind: "builtin", name: "json_pretty"}
+    }
+}
+
+def env_has(scope, name) {
+    let scope = scope
     while true {
         if name in scope["vars"] {
             return true
@@ -1046,8 +1058,8 @@ def env_has(env, name) {
     }
 }
 
-def env_get(env, name) {
-    let scope = env
+def env_get(scope, name) {
+    let scope = scope
     while true {
         if name in scope["vars"] {
             return scope["vars"][name]
@@ -1059,12 +1071,12 @@ def env_get(env, name) {
     }
 }
 
-def env_define(env, name, value) {
-    env["vars"][name] = value
+def env_define(scope, name, value) {
+    scope["vars"][name] = value
 }
 
-def env_assign(env, name, value) {
-    let scope = env
+def env_assign(scope, name, value) {
+    let scope = scope
     while true {
         if name in scope["vars"] {
             scope["vars"][name] = value
@@ -1075,7 +1087,7 @@ def env_assign(env, name, value) {
         }
         scope = scope["parent"]
     }
-    env["vars"][name] = value
+    scope["vars"][name] = value
 }
 
 def sig_normal() {
@@ -1104,7 +1116,19 @@ let BUILTIN_NAMES = {
     print: true, len: true, append: true, pop: true, range: true,
     upper: true, lower: true, trim: true, split: true, join: true,
     str: true, num: true, type: true, keys: true, values: true,
-    read: true, write: true, exists: true, listdir: true, input: true
+    read: true, write: true, exists: true, listdir: true, input: true,
+
+    "time": true, sleep: true, now: true, format_time: true,
+    "random": true, randint: true, choice: true, shuffle: true,
+    "abs": true, "round": true, floor: true, ceil: true, sqrt: true,
+    "pow": true, sin: true, cos: true, tan: true, ln: true, log10: true,
+    min: true, max: true, sum: true,
+    env: true, exit: true, args: true, platform: true,
+    cwd: true, mkdir: true, remove: true, rename: true, copy: true,
+    regex: true, replace_all: true, split_lines: true,
+    pad: true, pad_left: true, reverse: true, sorted: true,
+    "assert": true, log: true,
+    map: true, filter: true, reduce: true
 }
 
 def is_target_function(v) {
@@ -1130,93 +1154,304 @@ def target_type(v) {
     return type(v)
 }
 
-def call_builtin(name, args, pos) {
+# min/max/sum accept either several numbers or one list of numbers; this
+# normalizes call_args to a single list either way, then always calls the
+# host with one list argument, so its own len(args)==1-and-a-list check
+# (numbers_from_args in novalang.py) reads it the same way for both shapes.
+def numbers_from_call_args(call_args) {
+    if len(call_args) == 1 and type(call_args[0]) == "list" {
+        return call_args[0]
+    }
+    return call_args
+}
+
+def call_builtin(name, call_args, pos) {
     if name == "print" {
         let text = ""
         let i = 0
-        while i < len(args) {
+        while i < len(call_args) {
             if i > 0 {
                 text = text + " "
             }
-            text = text + target_str(args[i])
+            text = text + target_str(call_args[i])
             i = i + 1
         }
         print(text)
         return make_nothing()
     }
     if name == "len" {
-        return len(args[0])
+        return len(call_args[0])
     }
     if name == "append" {
-        return append(args[0], args[1])
+        return append(call_args[0], call_args[1])
     }
     if name == "pop" {
-        if len(args) == 1 {
-            return pop(args[0])
+        if len(call_args) == 1 {
+            return pop(call_args[0])
         }
-        return pop(args[0], args[1])
+        return pop(call_args[0], call_args[1])
     }
     if name == "range" {
-        if len(args) == 1 {
-            return range(args[0])
+        if len(call_args) == 1 {
+            return range(call_args[0])
         }
-        if len(args) == 2 {
-            return range(args[0], args[1])
+        if len(call_args) == 2 {
+            return range(call_args[0], call_args[1])
         }
-        return range(args[0], args[1], args[2])
+        return range(call_args[0], call_args[1], call_args[2])
     }
     if name == "upper" {
-        return upper(args[0])
+        return upper(call_args[0])
     }
     if name == "lower" {
-        return lower(args[0])
+        return lower(call_args[0])
     }
     if name == "trim" {
-        return trim(args[0])
+        return trim(call_args[0])
     }
     if name == "split" {
-        if len(args) == 1 {
-            return split(args[0])
+        if len(call_args) == 1 {
+            return split(call_args[0])
         }
-        return split(args[0], args[1])
+        return split(call_args[0], call_args[1])
     }
     if name == "join" {
-        return join(args[0], args[1])
+        return join(call_args[0], call_args[1])
     }
     if name == "str" {
-        return target_str(args[0])
+        return target_str(call_args[0])
     }
     if name == "num" {
-        return num(args[0])
+        return num(call_args[0])
     }
     if name == "type" {
-        return target_type(args[0])
+        return target_type(call_args[0])
     }
     if name == "keys" {
-        return keys(args[0])
+        return keys(call_args[0])
     }
     if name == "values" {
-        return values(args[0])
+        return values(call_args[0])
     }
     if name == "read" {
-        return read(args[0])
+        return read(call_args[0])
     }
     if name == "write" {
-        return write(args[0], args[1])
+        return write(call_args[0], call_args[1])
     }
     if name == "exists" {
-        return exists(args[0])
+        return exists(call_args[0])
     }
     if name == "listdir" {
-        return listdir(args[0])
+        return listdir(call_args[0])
     }
     if name == "input" {
-        if len(args) == 0 {
+        if len(call_args) == 0 {
             return input()
         }
-        return input(args[0])
+        return input(call_args[0])
     }
+    if name == "time" {
+        return time()
+    }
+    if name == "sleep" {
+        return sleep(call_args[0])
+    }
+    if name == "now" {
+        return now()
+    }
+    if name == "format_time" {
+        return format_time(call_args[0], call_args[1])
+    }
+    if name == "random" {
+        return random()
+    }
+    if name == "randint" {
+        return randint(call_args[0], call_args[1])
+    }
+    if name == "choice" {
+        return choice(call_args[0])
+    }
+    if name == "shuffle" {
+        return shuffle(call_args[0])
+    }
+    if name == "abs" {
+        return abs(call_args[0])
+    }
+    if name == "round" {
+        if len(call_args) == 1 {
+            return round(call_args[0])
+        }
+        return round(call_args[0], call_args[1])
+    }
+    if name == "floor" {
+        return floor(call_args[0])
+    }
+    if name == "ceil" {
+        return ceil(call_args[0])
+    }
+    if name == "sqrt" {
+        return sqrt(call_args[0])
+    }
+    if name == "pow" {
+        return pow(call_args[0], call_args[1])
+    }
+    if name == "sin" {
+        return sin(call_args[0])
+    }
+    if name == "cos" {
+        return cos(call_args[0])
+    }
+    if name == "tan" {
+        return tan(call_args[0])
+    }
+    if name == "ln" {
+        return ln(call_args[0])
+    }
+    if name == "log10" {
+        return log10(call_args[0])
+    }
+    if name == "min" {
+        return min(numbers_from_call_args(call_args))
+    }
+    if name == "max" {
+        return max(numbers_from_call_args(call_args))
+    }
+    if name == "sum" {
+        return sum(numbers_from_call_args(call_args))
+    }
+    if name == "env" {
+        return env(call_args[0])
+    }
+    if name == "exit" {
+        if len(call_args) == 0 {
+            return exit()
+        }
+        return exit(call_args[0])
+    }
+    if name == "args" {
+        return args()
+    }
+    if name == "platform" {
+        return platform()
+    }
+    if name == "json_dumps" {
+        return json.dumps(call_args[0])
+    }
+    if name == "json_loads" {
+        return json.loads(call_args[0])
+    }
+    if name == "json_pretty" {
+        return json.pretty(call_args[0])
+    }
+    if name == "cwd" {
+        return cwd()
+    }
+    if name == "mkdir" {
+        return mkdir(call_args[0])
+    }
+    if name == "remove" {
+        return remove(call_args[0])
+    }
+    if name == "rename" {
+        return rename(call_args[0], call_args[1])
+    }
+    if name == "copy" {
+        return copy(call_args[0], call_args[1])
+    }
+    if name == "regex" {
+        return regex(call_args[0], call_args[1])
+    }
+    if name == "replace_all" {
+        return replace_all(call_args[0], call_args[1], call_args[2])
+    }
+    if name == "split_lines" {
+        return split_lines(call_args[0])
+    }
+    if name == "pad" {
+        return pad(call_args[0], call_args[1])
+    }
+    if name == "pad_left" {
+        return pad_left(call_args[0], call_args[1])
+    }
+    if name == "reverse" {
+        return reverse(call_args[0])
+    }
+    if name == "sorted" {
+        if len(call_args) == 1 {
+            return sorted(call_args[0])
+        }
+        return sorted(call_args[0], call_args[1])
+    }
+    if name == "assert" {
+        if len(call_args) == 1 {
+            return assert(call_args[0])
+        }
+        return assert(call_args[0], call_args[1])
+    }
+    if name == "log" {
+        return log(call_args[0])
+    }
+    if name == "map" {
+        return target_map(call_args[0], call_args[1], pos)
+    }
+    if name == "filter" {
+        return target_filter(call_args[0], call_args[1], pos)
+    }
+    if name == "reduce" {
+        return target_reduce(call_args, pos)
+    }
+
     raise_error("unknown built-in '" + name + "'", pos)
+}
+
+# map/filter/reduce call back into a target function value of their own,
+# via call_target_value - the same dispatcher a Call node uses. Nothing
+# extra was needed to make this possible: the self-hosted interpreter
+# already has everything it takes to invoke a function value, unlike the
+# host, which had to grow a new needs_interpreter mechanism for this.
+
+def target_map(fn, items, pos) {
+    let out = []
+    for item in items {
+        append(out, call_target_value(fn, [item], pos))
+    }
+    return out
+}
+
+def target_filter(fn, items, pos) {
+    let out = []
+    for item in items {
+        let keep = call_target_value(fn, [item], pos)
+        if type(keep) != "boolean" {
+            raise_error("filter()'s function must return true or false", pos)
+        }
+        if keep {
+            append(out, item)
+        }
+    }
+    return out
+}
+
+def target_reduce(call_args, pos) {
+    let fn = call_args[0]
+    let items = call_args[1]
+    let accumulator = 0
+    let rest = items
+    if len(call_args) >= 3 {
+        accumulator = call_args[2]
+        rest = items
+    } else {
+        if len(items) == 0 {
+            raise_error("reduce() needs a non-empty list, or an initial value as a third argument", pos)
+        }
+        accumulator = items[0]
+        rest = items[1:]
+    }
+    for item in rest {
+        accumulator = call_target_value(fn, [accumulator, item], pos)
+    }
+    return accumulator
 }
 
 # ---- calling a target function -----------------------------------------
@@ -1224,9 +1459,9 @@ def call_builtin(name, args, pos) {
 let CALL_DEPTH = {n: 0}
 let MAX_TARGET_DEPTH = 60
 
-def call_function(fn, args, pos) {
-    if len(args) != len(fn["params"]) {
-        raise_error(fn["name"] + "() expects " + str(len(fn["params"])) + " argument(s) but got " + str(len(args)), pos)
+def call_function(fn, call_args, pos) {
+    if len(call_args) != len(fn["params"]) {
+        raise_error(fn["name"] + "() expects " + str(len(fn["params"])) + " argument(s) but got " + str(len(call_args)), pos)
     }
 
     CALL_DEPTH["n"] = CALL_DEPTH["n"] + 1
@@ -1238,7 +1473,7 @@ def call_function(fn, args, pos) {
     let frame = make_env(fn["closure"], true, false)
     let i = 0
     while i < len(fn["params"]) {
-        frame["vars"][fn["params"][i]] = args[i]
+        frame["vars"][fn["params"][i]] = call_args[i]
         i = i + 1
     }
 
@@ -1258,27 +1493,33 @@ def call_function(fn, args, pos) {
     return make_nothing()
 }
 
-def eval_call(node, env) {
-    let callee = eval_expr(node["callee"], env)
-    let args = []
-    for arg_node in node["args"] {
-        append(args, eval_expr(arg_node, env))
+def eval_call(node, scope) {
+    let callee = eval_expr(node["callee"], scope)
+    let call_args = []
+    for arg_node in node["call_args"] {
+        append(call_args, eval_expr(arg_node, scope))
     }
+    return call_target_value(callee, call_args, node["pos"])
+}
 
+# Call an already-evaluated callee with already-evaluated call_args - shared by
+# ordinary Call-node evaluation and by map/filter/reduce, which call back
+# into a target function value of their own (Stage 11).
+def call_target_value(callee, call_args, pos) {
     if not is_target_function(callee) {
-        raise_error(target_type(callee) + " is not a function, so it cannot be called", node["pos"])
+        raise_error(target_type(callee) + " is not a function, so it cannot be called", pos)
     }
     if callee["kind"] == "builtin" {
-        return call_builtin(callee["name"], args, node["pos"])
+        return call_builtin(callee["name"], call_args, pos)
     }
-    return call_function(callee, args, node["pos"])
+    return call_function(callee, call_args, pos)
 }
 
 # ---- expressions --------------------------------------------------------
 
-def eval_var(node, env) {
-    if env_has(env, node["name"]) {
-        return env_get(env, node["name"])
+def eval_var(node, scope) {
+    if env_has(scope, node["name"]) {
+        return env_get(scope, node["name"])
     }
     if node["name"] in BUILTIN_NAMES {
         return {kind: "builtin", name: node["name"]}
@@ -1286,28 +1527,28 @@ def eval_var(node, env) {
     raise_error("undefined name '" + node["name"] + "'", node["pos"])
 }
 
-def eval_unary(node, env) {
-    let value = eval_expr(node["operand"], env)
+def eval_unary(node, scope) {
+    let value = eval_expr(node["operand"], scope)
     if node["op"] == "+" {
         return +value
     }
     return -value
 }
 
-def eval_not(node, env) {
-    return not eval_expr(node["operand"], env)
+def eval_not(node, scope) {
+    return not eval_expr(node["operand"], scope)
 }
 
-def eval_logical(node, env) {
+def eval_logical(node, scope) {
     if node["op"] == "and" {
-        return eval_expr(node["left"], env) and eval_expr(node["right"], env)
+        return eval_expr(node["left"], scope) and eval_expr(node["right"], scope)
     }
-    return eval_expr(node["left"], env) or eval_expr(node["right"], env)
+    return eval_expr(node["left"], scope) or eval_expr(node["right"], scope)
 }
 
-def eval_binop(node, env) {
-    let left = eval_expr(node["left"], env)
-    let right = eval_expr(node["right"], env)
+def eval_binop(node, scope) {
+    let left = eval_expr(node["left"], scope)
+    let right = eval_expr(node["right"], scope)
     let op = node["op"]
     if op == "+" {
         return left + right
@@ -1330,9 +1571,9 @@ def eval_binop(node, env) {
     raise_error("unknown operator '" + op + "'", node["pos"])
 }
 
-def eval_compare(node, env) {
-    let left = eval_expr(node["left"], env)
-    let right = eval_expr(node["right"], env)
+def eval_compare(node, scope) {
+    let left = eval_expr(node["left"], scope)
+    let right = eval_expr(node["right"], scope)
     let op = node["op"]
     if op == "==" {
         return left == right
@@ -1358,59 +1599,59 @@ def eval_compare(node, env) {
     raise_error("unknown comparison '" + op + "'", node["pos"])
 }
 
-def eval_index(node, env) {
-    let target = eval_expr(node["target"], env)
-    let index_value = eval_expr(node["index"], env)
+def eval_index(node, scope) {
+    let target = eval_expr(node["target"], scope)
+    let index_value = eval_expr(node["index"], scope)
     return target[index_value]
 }
 
-def eval_slice(node, env) {
-    let target = eval_expr(node["target"], env)
+def eval_slice(node, scope) {
+    let target = eval_expr(node["target"], scope)
     if node["has_start"] and node["has_end"] {
-        return target[eval_expr(node["start"], env):eval_expr(node["end"], env)]
+        return target[eval_expr(node["start"], scope):eval_expr(node["end"], scope)]
     }
     if node["has_start"] {
-        return target[eval_expr(node["start"], env):]
+        return target[eval_expr(node["start"], scope):]
     }
     if node["has_end"] {
-        return target[:eval_expr(node["end"], env)]
+        return target[:eval_expr(node["end"], scope)]
     }
     return target[:]
 }
 
-def eval_member(node, env) {
-    let target = eval_expr(node["target"], env)
+def eval_member(node, scope) {
+    let target = eval_expr(node["target"], scope)
     if type(target) != "dict" {
         raise_error(target_type(target) + " has no fields, so '." + node["name"] + "' means nothing here", node["pos"])
     }
     return target[node["name"]]
 }
 
-def eval_list(node, env) {
+def eval_list(node, scope) {
     let items = []
     for item_node in node["items"] {
-        append(items, eval_expr(item_node, env))
+        append(items, eval_expr(item_node, scope))
     }
     return items
 }
 
-def eval_dict(node, env) {
+def eval_dict(node, scope) {
     let result = {}
     for entry in node["entries"] {
-        result[entry["key"]] = eval_expr(entry["value"], env)
+        result[entry["key"]] = eval_expr(entry["value"], scope)
     }
     return result
 }
 
-def eval_fstring(node, env) {
+def eval_fstring(node, scope) {
     let text = ""
     for part in node["parts"] {
-        text = text + target_str(eval_expr(part, env))
+        text = text + target_str(eval_expr(part, scope))
     }
     return text
 }
 
-def eval_expr(node, env) {
+def eval_expr(node, scope) {
     let kind = node["kind"]
     if kind == "Number" {
         return node["value"]
@@ -1422,52 +1663,52 @@ def eval_expr(node, env) {
         return node["value"]
     }
     if kind == "Var" {
-        return eval_var(node, env)
+        return eval_var(node, scope)
     }
     if kind == "Unary" {
-        return eval_unary(node, env)
+        return eval_unary(node, scope)
     }
     if kind == "Not" {
-        return eval_not(node, env)
+        return eval_not(node, scope)
     }
     if kind == "Logical" {
-        return eval_logical(node, env)
+        return eval_logical(node, scope)
     }
     if kind == "BinOp" {
-        return eval_binop(node, env)
+        return eval_binop(node, scope)
     }
     if kind == "Compare" {
-        return eval_compare(node, env)
+        return eval_compare(node, scope)
     }
     if kind == "Call" {
-        return eval_call(node, env)
+        return eval_call(node, scope)
     }
     if kind == "Index" {
-        return eval_index(node, env)
+        return eval_index(node, scope)
     }
     if kind == "Slice" {
-        return eval_slice(node, env)
+        return eval_slice(node, scope)
     }
     if kind == "Member" {
-        return eval_member(node, env)
+        return eval_member(node, scope)
     }
     if kind == "List" {
-        return eval_list(node, env)
+        return eval_list(node, scope)
     }
     if kind == "Dict" {
-        return eval_dict(node, env)
+        return eval_dict(node, scope)
     }
     if kind == "FString" {
-        return eval_fstring(node, env)
+        return eval_fstring(node, scope)
     }
     raise_error("cannot evaluate " + kind, node["pos"])
 }
 
 # ---- statements ----------------------------------------------------------
 
-def exec_block(statements, env) {
+def exec_block(statements, scope) {
     for stmt in statements {
-        let result = exec_stmt(stmt, env)
+        let result = exec_stmt(stmt, scope)
         if result["kind"] != "normal" {
             return result
         }
@@ -1479,31 +1720,31 @@ def exec_scoped_block(block_node, parent_env) {
     return exec_block(block_node["statements"], make_env(parent_env, false, false))
 }
 
-def eval_condition(node, env, keyword) {
-    let value = eval_expr(node["condition"], env)
+def eval_condition(node, scope, keyword) {
+    let value = eval_expr(node["condition"], scope)
     if type(value) != "boolean" {
         raise_error("a '" + keyword + "' condition must be true or false, but this is a " + target_type(value), node["pos"])
     }
     return value
 }
 
-def exec_if(node, env) {
-    if eval_condition(node, env, "if") {
-        return exec_scoped_block(node["then_block"], env)
+def exec_if(node, scope) {
+    if eval_condition(node, scope, "if") {
+        return exec_scoped_block(node["then_block"], scope)
     }
     if node["has_else"] {
         if node["else_block"]["kind"] == "If" {
-            return exec_if(node["else_block"], env)
+            return exec_if(node["else_block"], scope)
         }
-        return exec_scoped_block(node["else_block"], env)
+        return exec_scoped_block(node["else_block"], scope)
     }
     return sig_normal()
 }
 
-def exec_while(node, env) {
+def exec_while(node, scope) {
     let broke = false
-    while eval_condition(node, env, "while") {
-        let result = exec_scoped_block(node["body"], env)
+    while eval_condition(node, scope, "while") {
+        let result = exec_scoped_block(node["body"], scope)
         if result["kind"] == "break" {
             broke = true
             break
@@ -1516,7 +1757,7 @@ def exec_while(node, env) {
         }
     }
     if node["has_else"] and not broke {
-        return exec_scoped_block(node["else_block"], env)
+        return exec_scoped_block(node["else_block"], scope)
     }
     return sig_normal()
 }
@@ -1528,10 +1769,10 @@ def loop_number(node, value, role) {
     return value
 }
 
-def exec_for(node, env) {
-    let start = loop_number(node, eval_expr(node["start"], env), "the start of a 'for' range")
-    let end = loop_number(node, eval_expr(node["end"], env), "the end of a 'for' range")
-    let step_value = loop_number(node, eval_expr(node["step"], env), "a 'for' step")
+def exec_for(node, scope) {
+    let start = loop_number(node, eval_expr(node["start"], scope), "the start of a 'for' range")
+    let end = loop_number(node, eval_expr(node["end"], scope), "the end of a 'for' range")
+    let step_value = loop_number(node, eval_expr(node["step"], scope), "a 'for' step")
     if step_value <= 0 {
         raise_error("a 'for' step must be greater than zero (use 'downto' to count down)", node["pos"])
     }
@@ -1545,7 +1786,7 @@ def exec_for(node, env) {
         iterations = int_floor(span / step_value) + 1
     }
 
-    let loop_env = make_env(env, false, false)
+    let loop_env = make_env(scope, false, false)
     let broke = false
     let index = 0
     while index < iterations {
@@ -1567,7 +1808,7 @@ def exec_for(node, env) {
     }
 
     if node["has_else"] and not broke {
-        return exec_scoped_block(node["else_block"], env)
+        return exec_scoped_block(node["else_block"], scope)
     }
     return sig_normal()
 }
@@ -1576,15 +1817,15 @@ def int_floor(v) {
     return v // 1
 }
 
-def exec_for_in(node, env) {
-    let collection = eval_expr(node["iterable"], env)
+def exec_for_in(node, scope) {
+    let collection = eval_expr(node["iterable"], scope)
     let collection_kind = type(collection)
     let ok_kinds = {list: true, string: true, dict: true}
     if not (collection_kind in ok_kinds) {
         raise_error("'for ... in' needs a list, a string or a dictionary, but this is a " + collection_kind, node["pos"])
     }
 
-    let loop_env = make_env(env, false, false)
+    let loop_env = make_env(scope, false, false)
     let broke = false
 
     if node["has_second"] {
@@ -1621,21 +1862,21 @@ def exec_for_in(node, env) {
     }
 
     if node["has_else"] and not broke {
-        return exec_scoped_block(node["else_block"], env)
+        return exec_scoped_block(node["else_block"], scope)
     }
     return sig_normal()
 }
 
-def exec_try(node, env) {
+def exec_try(node, scope) {
     let result = sig_normal()
     try {
         try {
-            result = exec_scoped_block(node["body"], env)
+            result = exec_scoped_block(node["body"], scope)
         } catch e {
             if not node["has_catch"] {
                 throw(e)
             }
-            let catch_env = make_env(env, false, false)
+            let catch_env = make_env(scope, false, false)
             if node["catch_has_name"] {
                 catch_env["vars"][node["catch_name"]] = e
             }
@@ -1643,7 +1884,7 @@ def exec_try(node, env) {
         }
     } finally {
         if node["has_finally"] {
-            let finally_result = exec_scoped_block(node["finally_block"], env)
+            let finally_result = exec_scoped_block(node["finally_block"], scope)
             if finally_result["kind"] != "normal" {
                 result = finally_result
             }
@@ -1652,67 +1893,67 @@ def exec_try(node, env) {
     return result
 }
 
-def exec_index_assign(node, env) {
-    let target = eval_expr(node["target"], env)
-    let index_value = eval_expr(node["index"], env)
-    let value = eval_expr(node["value"], env)
+def exec_index_assign(node, scope) {
+    let target = eval_expr(node["target"], scope)
+    let index_value = eval_expr(node["index"], scope)
+    let value = eval_expr(node["value"], scope)
     target[index_value] = value
     return sig_normal()
 }
 
-def exec_member_assign(node, env) {
-    let target = eval_expr(node["target"], env)
+def exec_member_assign(node, scope) {
+    let target = eval_expr(node["target"], scope)
     if type(target) != "dict" {
         raise_error("only a dictionary can have fields set, but this is a " + target_type(target), node["pos"])
     }
-    target[node["name"]] = eval_expr(node["value"], env)
+    target[node["name"]] = eval_expr(node["value"], scope)
     return sig_normal()
 }
 
-def exec_delete(node, env) {
-    let target = eval_expr(node["target"], env)
+def exec_delete(node, scope) {
+    let target = eval_expr(node["target"], scope)
     if type(target) != "dict" {
         raise_error("delete works on dictionary entries, but this is a " + target_type(target), node["pos"])
     }
-    let key = eval_expr(node["key"], env)
+    let key = eval_expr(node["key"], scope)
     delete target[key]
     return sig_normal()
 }
 
-def exec_delete_file(node, env) {
-    let path = eval_expr(node["path"], env)
+def exec_delete_file(node, scope) {
+    let path = eval_expr(node["path"], scope)
     delete(path)
     return sig_normal()
 }
 
-def exec_stmt(node, env) {
+def exec_stmt(node, scope) {
     let kind = node["kind"]
 
     if kind == "Let" {
-        env_define(env, node["name"], eval_expr(node["value"], env))
+        env_define(scope, node["name"], eval_expr(node["value"], scope))
         return sig_normal()
     }
     if kind == "Assign" {
-        env_assign(env, node["name"], eval_expr(node["value"], env))
+        env_assign(scope, node["name"], eval_expr(node["value"], scope))
         return sig_normal()
     }
     if kind == "IndexAssign" {
-        return exec_index_assign(node, env)
+        return exec_index_assign(node, scope)
     }
     if kind == "MemberAssign" {
-        return exec_member_assign(node, env)
+        return exec_member_assign(node, scope)
     }
     if kind == "If" {
-        return exec_if(node, env)
+        return exec_if(node, scope)
     }
     if kind == "While" {
-        return exec_while(node, env)
+        return exec_while(node, scope)
     }
     if kind == "For" {
-        return exec_for(node, env)
+        return exec_for(node, scope)
     }
     if kind == "ForIn" {
-        return exec_for_in(node, env)
+        return exec_for_in(node, scope)
     }
     if kind == "Break" {
         return sig_break()
@@ -1721,41 +1962,41 @@ def exec_stmt(node, env) {
         return sig_continue()
     }
     if kind == "FunctionDef" {
-        env_define(env, node["name"], {kind: "function", name: node["name"], params: node["params"], body: node["body"], closure: env})
+        env_define(scope, node["name"], {kind: "function", name: node["name"], params: node["params"], body: node["body"], closure: scope})
         return sig_normal()
     }
     if kind == "Return" {
         if node["has_value"] {
-            return sig_return(eval_expr(node["value"], env))
+            return sig_return(eval_expr(node["value"], scope))
         }
         return sig_return(make_nothing())
     }
     if kind == "Try" {
-        return exec_try(node, env)
+        return exec_try(node, scope)
     }
     if kind == "Throw" {
-        let value = eval_expr(node["value"], env)
+        let value = eval_expr(node["value"], scope)
         if type(value) != "string" {
             raise_error("throw needs a string, but got a " + target_type(value) + " - use str() to convert it", node["pos"])
         }
         throw(value)
     }
     if kind == "Delete" {
-        return exec_delete(node, env)
+        return exec_delete(node, scope)
     }
     if kind == "DeleteFile" {
-        return exec_delete_file(node, env)
+        return exec_delete_file(node, scope)
     }
     if kind == "Import" {
-        return exec_import(node, env)
+        return exec_import(node, scope)
     }
     if kind == "Export" {
-        let value = exec_stmt(node["inner"], env)
-        current_exports()[node["inner"]["name"]] = env_get(env, node["inner"]["name"])
+        let value = exec_stmt(node["inner"], scope)
+        current_exports()[node["inner"]["name"]] = env_get(scope, node["inner"]["name"])
         return value
     }
 
-    eval_expr(node, env)
+    eval_expr(node, scope)
     return sig_normal()
 }
 
@@ -1873,6 +2114,7 @@ def run_module(resolved_path, raw_path, pos) {
     try {
         let ast = parse_program(source)
         let module_env = make_env(false, true, true)
+        define_stdlib_globals(module_env)
         exec_block(ast["statements"], module_env)
         exports = current_exports()
     } finally {
@@ -1885,7 +2127,7 @@ def run_module(resolved_path, raw_path, pos) {
     return exports
 }
 
-def exec_import(node, env) {
+def exec_import(node, scope) {
     let resolved = resolve_import(node["path"], node["pos"])
     let exports = run_module(resolved, node["path"], node["pos"])
 
@@ -1894,7 +2136,7 @@ def exec_import(node, env) {
             if not (name in exports) {
                 raise_error("module \"" + node["path"] + "\" has no exported '" + name + "'", node["pos"])
             }
-            env_define(env, name, exports[name])
+            env_define(scope, name, exports[name])
         }
         return sig_normal()
     }
@@ -1903,7 +2145,7 @@ def exec_import(node, env) {
     if node["mode"] == "as" {
         module_name = node["alias"]
     }
-    env_define(env, module_name, exports)
+    env_define(scope, module_name, exports)
     return sig_normal()
 }
 
@@ -1914,8 +2156,9 @@ def exec_import(node, env) {
 def run_program(source, path) {
     append(FILE_STACK, dirname(abspath(path)))
     let ast = parse_program(source)
-    let env = make_env(false, true, true)
-    exec_block(ast["statements"], env)
+    let scope = make_env(false, true, true)
+    define_stdlib_globals(scope)
+    exec_block(ast["statements"], scope)
 }
 
 def run_file(path) {

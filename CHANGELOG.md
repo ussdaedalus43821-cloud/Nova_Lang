@@ -18,6 +18,93 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.11.0] - 2026-09-01 — Standard Library
+
+Stage 11. Batteries included: over 40 global functions, no import needed,
+identical under `--bootstrap`.
+
+### Added
+
+- **Time**: `time()`, `sleep(ms)`, `now()` (an ISO-8601 timestamp),
+  `format_time(timestamp, fmt)` (strftime-style codes).
+- **Random**: `random()`, `randint(a, b)` (inclusive), `choice(list)`,
+  `shuffle(list)` (in place).
+- **Math**: `abs`, `round` (an optional second argument sets the decimal
+  places), `floor`, `ceil`, `sqrt`, `pow`, `sin`, `cos`, `tan`, `ln`,
+  `log10`, plus the constants `PI` and `E`, and `min` / `max` / `sum`,
+  each accepting either several numbers or one list of them.
+- **System**: `env(key)` (the variable's value, or nothing if it is unset),
+  `exit(code)`, `args()` (extra words after the script's own name on the
+  command line - `novalang.py file.nova a b` and
+  `novalang.py --bootstrap file.nova a b` both give the target `["a", "b"]`),
+  `platform()`.
+- **JSON**: `json.dumps`, `json.loads`, `json.pretty` - a namespace, not new
+  syntax. `json` is an ordinary predefined dictionary whose values are
+  callable, so `json.dumps(x)` is exactly the dot-call Stage 6 already had.
+- **Filesystem**: `cwd()`, `mkdir(path)` (creates intermediate directories,
+  and does not mind if the path already exists), `remove(path)` (a file or
+  an empty directory), `rename(old, new)`, `copy(src, dst)`.
+- **Strings**: `regex(pattern, text)` (true/false), `replace_all`,
+  `split_lines` (handles `\n`, `\r\n` and `\r` alike), `pad` / `pad_left`
+  (space-pad to a length), `reverse` (a string or a list), and `sorted`
+  (ascending, or descending with a second argument of `true`).
+- **Debugging**: `assert(condition)` and `assert(condition, message)`;
+  `log(x, ...)`, which writes to stderr with a timestamp rather than to
+  stdout.
+- **Higher-order functions**: `map(f, list)`, `filter(f, list)`,
+  `reduce(f, list)` and `reduce(f, list, start)`. `f` may be a function you
+  wrote or a built-in - `map(str, [1, 2, 3])` and `reduce(max, numbers)`
+  both work, since a built-in is a callable value like any other.
+- `examples/stdlib_demo.nova`, exercising every function above, including a
+  small `filter` → `map` → `reduce` pipeline.
+
+### Changed
+
+- **`BuiltinFunction` gained an opt-in `needs_interpreter` flag**, used only
+  by `map`/`filter`/`reduce`: calling back into a function value passed as
+  an argument needs the interpreter itself, not just the already-evaluated
+  arguments every other built-in works with. `visit_CallNode`'s calling
+  logic is now `Interpreter.call_value`, a small reusable method - the
+  refactor that made this possible.
+- The self-hosted interpreter needed no such change: `map`/`filter`/`reduce`
+  are ordinary NovaLang functions inside `novalang.nova`'s `call_builtin`,
+  calling back through `call_target_value` - the dispatcher a `Call` node
+  already used. Nothing new to build there.
+- `examples/strings.nova`'s Stage 5 hand-rolled `reverse(text)` is retired
+  in favor of the new built-in of the same name, which does the same thing.
+  Two other examples had incidental local names that collided with new
+  built-ins and were renamed: `sum` to `running_total` in `lists.nova`,
+  `log` to `log_file` in `file_demo.nova`.
+- The banner reads `NOVALANG v0.11.0`; `help` gains a Standard library
+  section.
+
+### Note
+
+Every new built-in type-checks its arguments and raises a `NovaError`
+labelled `TypeError` on a bad one (`catch e` then sees e.g.
+`"TypeError: sqrt() needs a number, but got a string"`) - the same labelling
+`FileNotFoundError` introduced in v0.7.0, applied here for the first time
+to argument-type mistakes rather than file trouble. `assert()`'s failures
+are labelled `AssertionError` instead. Built-ins from earlier stages keep
+their original bare `NovaError` wording; this labelling is new to Stage 11's
+functions, not applied retroactively.
+
+`round()` inherits Python's own rounding: `round(2.5)` is `2`, not `3`
+(round-half-to-even, not round-half-up) - correct and intentional, since it
+is exactly what `round()` does on both engines, but worth knowing if you
+expected the more common convention.
+
+Two of the largest built-ins by far - the self-hosted interpreter's own
+`env`, `args`, `min`, `max`, `sum`, and about three dozen others - forced a
+mechanical but wide rename inside `novalang.nova` itself: `env` (the
+universal scope parameter throughout the interpreter, ~130 occurrences) to
+`scope`, and `args` (the evaluated-arguments parameter used everywhere a
+function is called, ~40 occurrences) to `call_args`. Every new built-in
+name is now checked against `novalang.nova`'s own identifiers before it is
+added, the same discipline `step` already required back in Stage 9.
+
+---
+
 ## [0.10.0] - 2026-09-01 — Self-Hosting
 
 Stage 10. NovaLang can now run NovaLang.
@@ -591,6 +678,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.11.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.10.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.9.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.8.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang

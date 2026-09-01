@@ -1,0 +1,102 @@
+# examples/stdlib_demo.nova - Stage 11's standard library, demonstrated.
+#
+# Every function here is global - no import needed - and works identically
+# under `python3 novalang.py examples/stdlib_demo.nova` and
+# `python3 novalang.py --bootstrap examples/stdlib_demo.nova`.
+#
+# A few functions are skipped in the printed walkthrough because their
+# output is inherently non-deterministic (random()) or environment-specific
+# (platform(), cwd()) - those are exercised at the bottom instead, checked
+# for *shape* rather than an exact value.
+
+# ---- time ----
+let start = time()
+sleep(5)
+let elapsed = time() - start
+print("time() advances:", elapsed >= 0)
+print("now() looks like an ISO-8601 timestamp:", "T" in now())
+print("format_time:", format_time(0, "%Y-%m-%d"))
+
+# ---- random ----
+let n = randint(1, 6)
+print("randint(1, 6) is in range:", n >= 1 and n <= 6)
+let picked = choice(["red", "green", "blue"])
+print("choice() picks a real element:", picked in ["red", "green", "blue"])
+let deck = [1, 2, 3, 4, 5]
+shuffle(deck)
+print("shuffle() keeps the same elements:", sorted(deck) == [1, 2, 3, 4, 5])
+
+# ---- math ----
+print("abs:", abs(-7), abs(7))
+print("round:", round(3.14159, 2), round(2.5))
+print("floor/ceil:", floor(3.9), ceil(3.1))
+print("sqrt/pow:", sqrt(144), pow(2, 8))
+print("sin/cos/tan at 0:", sin(0), cos(0), tan(0))
+print("PI, E:", PI, E)
+print("ln(E), log10(1000):", ln(E), log10(1000))
+print("min/max/sum, either form:", min(4, 1, 7), max([4, 1, 7]), sum(1, 2, 3))
+
+# ---- system ----
+print("env() for a real variable:", type(env("HOME")))
+print("env() for a missing one:", env("DEFINITELY_NOT_SET_XYZ_123"))
+print("args() is a list:", type(args()))
+print("platform() names an OS:", len(platform()) > 0)
+
+# ---- json ----
+let record = {name: "Ada", age: 36, tags: ["mathematician", "programmer"]}
+let text = json.dumps(record)
+print("json.dumps:", text)
+let restored = json.loads(text)
+print("round-trips:", restored == record)
+print(json.pretty({x: 1, y: [1, 2]}))
+
+# ---- filesystem ----
+mkdir("nova_stdlib_scratch")
+write("nova_stdlib_scratch/a.txt", "one")
+copy("nova_stdlib_scratch/a.txt", "nova_stdlib_scratch/b.txt")
+print("copy worked:", read("nova_stdlib_scratch/b.txt"))
+rename("nova_stdlib_scratch/b.txt", "nova_stdlib_scratch/c.txt")
+print("rename worked:", exists("nova_stdlib_scratch/c.txt") and not exists("nova_stdlib_scratch/b.txt"))
+remove("nova_stdlib_scratch/a.txt")
+remove("nova_stdlib_scratch/c.txt")
+remove("nova_stdlib_scratch")
+print("cleaned up:", not exists("nova_stdlib_scratch"))
+
+# ---- string utilities ----
+print("regex:", regex("[0-9]+", "room 42"), regex("^[0-9]+$", "room 42"))
+print("replace_all:", replace_all("a-b-c", "-", "_"))
+print("split_lines:", split_lines("one\ntwo\nthree"))
+print("pad/pad_left:", "[" + pad("hi", 5) + "]", "[" + pad_left("hi", 5) + "]")
+print("reverse:", reverse("Nova"), reverse([1, 2, 3]))
+
+# ---- debugging ----
+assert(1 + 1 == 2)
+assert(len("hi") == 2, "len should be 2")
+try {
+    assert(1 == 2, "one is not two")
+} catch e {
+    print("assert() failure caught:", e)
+}
+log("this line goes to stderr, not stdout, stamped with the time")
+
+# ---- higher-order functions ----
+def square(x) { return x * x }
+def is_positive(x) { return x > 0 }
+def add(a, b) { return a + b }
+
+print("map:", map(square, [1, 2, 3, 4]))
+print("filter:", filter(is_positive, [-2, -1, 0, 1, 2]))
+print("reduce:", reduce(add, [1, 2, 3, 4, 5]))
+print("reduce with a seed:", reduce(add, [], 100))
+
+# builtins are values too, so they compose with map/filter/reduce directly
+print("map(str, ...):", map(str, [1, 2, 3]))
+print("reduce with a builtin:", reduce(max, [3, 7, 2, 9, 4]))
+
+# a small pipeline: sum of squares of the positive numbers in a list
+def sum_of_squares_of_positives(numbers) {
+    return reduce(add, map(square, filter(is_positive, numbers)), 0)
+}
+print("pipeline:", sum_of_squares_of_positives([-3, -2, -1, 0, 1, 2, 3]))
+
+print("ALL STDLIB DEMOS RAN")
