@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import novalang  # noqa: E402
 from novalang import Interpreter, NovaError, run  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,9 +42,13 @@ def nova_string_literal(text):
     return '"' + escaped + '"'
 
 
-def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE):
+def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None):
     """Run `target_path` through the self-hosted interpreter defined in
-    `engine_path`. Returns the process exit code."""
+    `engine_path`. `script_args` become what the target's own args() call
+    sees - the Stage 11 standard-library built-in, read from novalang.py's
+    module-level SCRIPT_ARGS the same way a directly-run program's would be.
+    Returns the process exit code."""
+    novalang.SCRIPT_ARGS = list(script_args or [])
     try:
         with open(engine_path, "r", encoding="utf-8") as handle:
             engine_source = handle.read()
@@ -80,11 +85,10 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE):
 
 def main(argv):
     if len(argv) < 2:
-        print("usage: bootstrap.py <target.nova> [engine.nova]", file=sys.stderr)
+        print("usage: bootstrap.py <target.nova> [script args...]", file=sys.stderr)
         return 2
     target_path = argv[1]
-    engine_path = argv[2] if len(argv) > 2 else DEFAULT_ENGINE
-    return run_bootstrap(target_path, engine_path)
+    return run_bootstrap(target_path, script_args=argv[2:])
 
 
 if __name__ == "__main__":

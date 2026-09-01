@@ -69,13 +69,8 @@ def vowels(text) {
 }
 print(f"'programming' has {vowels("programming")} vowels")
 
-def reverse(text) {
-    let out = ""
-    for i in range(len(text)) {
-        out = text[i] + out
-    }
-    return out
-}
+# reverse() is now a built-in (Stage 11's standard library) and does
+# exactly this - Stage 5's hand-rolled version is retired in its favor.
 print(reverse("NovaLang"))
 
 def is_palindrome(text) {

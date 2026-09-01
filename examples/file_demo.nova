@@ -6,7 +6,7 @@
 let interactive = false
 
 let notes = "nova_demo_notes.txt"
-let log = "nova_demo_log.txt"
+let log_file = "nova_demo_log.txt"
 
 # ---- write ----
 write(notes, "NovaLang can write files.\n")
@@ -46,12 +46,12 @@ let loaded = split(read("nova_demo_planets.txt"), "\n")
 print("read back:", loaded, len(loaded) == len(planets))
 
 # ---- a log file built line by line ----
-delete(log)                       # start clean; deleting a missing file is fine
+delete(log_file)                       # start clean; deleting a missing file is fine
 for number in range(1, 4) {
-    append(log, f"step {str(number)} finished\n")
+    append(log_file, f"step {str(number)} finished\n")
 }
 print("--- log ---")
-for line in split(trim(read(log)), "\n") {
+for line in split(trim(read(log_file)), "\n") {
     print("|", line)
 }
 
@@ -90,6 +90,6 @@ if interactive {
 
 # ---- delete: tidy up ----
 delete(notes)
-delete(log)
+delete(log_file)
 delete("nova_demo_planets.txt")
-print("cleaned up:", exists(notes), exists(log), exists("nova_demo_planets.txt"))
+print("cleaned up:", exists(notes), exists(log_file), exists("nova_demo_planets.txt"))
