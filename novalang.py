@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.7.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.8.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 7: File I/O
+NovaLang - Stage 8: Error Handling
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -24,6 +24,8 @@ Stage 6:  dictionaries - literals, dot and bracket access, delete,
           merging, pair iteration, and the keys / values built-ins.
 Stage 7:  files - read / write / append / exists / listdir, delete(path),
           and input() for reading a line from the person at the keyboard.
+Stage 8:  try / catch / finally and throw, so a program can recover from
+          an error instead of stopping at it.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -31,7 +33,7 @@ No eval(). No exec(). Everything is still built by hand.
 import os
 import sys
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -166,6 +168,10 @@ TT_NOT      = "NOT"
 TT_LET      = "LET"         # Stage 4
 TT_IN       = "IN"
 TT_DELETE   = "DELETE"      # Stage 6
+TT_TRY      = "TRY"         # Stage 8
+TT_CATCH    = "CATCH"
+TT_FINALLY  = "FINALLY"
+TT_THROW    = "THROW"
 
 KEYWORDS = {
     "def": TT_DEF,
@@ -187,6 +193,10 @@ KEYWORDS = {
     "let": TT_LET,
     "in": TT_IN,
     "delete": TT_DELETE,
+    "try": TT_TRY,
+    "catch": TT_CATCH,
+    "finally": TT_FINALLY,
+    "throw": TT_THROW,
 }
 
 # Keywords may still be used as dictionary keys and field names, so the
@@ -669,6 +679,24 @@ class DeleteNode(Node):
         self.position = position
 
 
+class TryNode(Node):
+    """try { } catch e { } finally { } - catch and finally are both optional,
+    but at least one of them has to be there."""
+
+    def __init__(self, body, catch_name, catch_block, finally_block, position):
+        self.body = body
+        self.catch_name = catch_name    # the name bound to the message, or None
+        self.catch_block = catch_block
+        self.finally_block = finally_block
+        self.position = position
+
+
+class ThrowNode(Node):
+    def __init__(self, value, position):
+        self.value = value
+        self.position = position
+
+
 class DeleteFileNode(Node):
     """`delete("temp.txt")` - the parenthesised form of delete."""
 
@@ -762,7 +790,7 @@ class ProgramNode(Node):
 
 
 # Statements that end in '}' and therefore need no separator after them.
-BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
+BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode, TryNode)
 
 
 # ---------------------------------------------------------------------------
@@ -775,6 +803,8 @@ BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode)
 #   statement   := funcdef | returnstmt | ifstmt | whilestmt | forstmt
 #                | 'break' | 'continue' | letstmt | exprstmt
 #   letstmt     := 'let' IDENT '=' exprstmt
+#   trystmt     := 'try' block ['catch' [IDENT] block] ['finally' block]
+#   throwstmt   := 'throw' expression
 #   exprstmt    := expression ['=' exprstmt]     (the left side must be a
 #                  variable or a list element, checked after parsing)
 #   funcdef     := 'def' IDENT '(' [IDENT (',' IDENT)*] ')' block
@@ -869,9 +899,13 @@ class Parser:
 
     def optional_else(self):
         """An `else` may sit on the same line as the '}' or on the next one."""
+        return self.optional_keyword(TT_ELSE)
+
+    def optional_keyword(self, type_):
+        """Accept a keyword that may follow a '}' on either line."""
         rewind = self.index
         self.skip_newlines()
-        if self.current.type == TT_ELSE:
+        if self.current.type == type_:
             self.advance()
             return True
         self.index = rewind
@@ -928,6 +962,10 @@ class Parser:
             return self.let_statement()
         if token.type == TT_DELETE:
             return self.delete_statement()
+        if token.type == TT_TRY:
+            return self.try_statement()
+        if token.type == TT_THROW:
+            return self.throw_statement()
         return self.expression_statement()
 
     def function_def(self):
@@ -1040,6 +1078,33 @@ class Parser:
         guard_name(name_token.value, name_token.position, "a variable")
         self.expect(TT_EQUALS, "a '=' after the name in a 'let'")
         return LetNode(name_token.value, self.expression_statement(), keyword.position)
+
+    def try_statement(self):
+        keyword = self.advance()                        # 'try'
+        body = self.block()
+
+        catch_name = None
+        catch_block = None
+        if self.optional_keyword(TT_CATCH):
+            if self.current.type == TT_IDENT:
+                name = self.advance()
+                guard_name(name.value, name.position, "a caught error")
+                catch_name = name.value
+            catch_block = self.block()
+
+        finally_block = self.block() if self.optional_keyword(TT_FINALLY) else None
+
+        if catch_block is None and finally_block is None:
+            raise NovaError(
+                "a 'try' needs a 'catch', a 'finally', or both", keyword.position
+            )
+        return TryNode(body, catch_name, catch_block, finally_block, keyword.position)
+
+    def throw_statement(self):
+        keyword = self.advance()                        # 'throw'
+        if self.current.type in (TT_NEWLINE, TT_RBRACE, TT_EOF):
+            raise NovaError("throw needs a message to throw", keyword.position)
+        return ThrowNode(self.expression(), keyword.position)
 
     def delete_statement(self):
         keyword = self.advance()                        # 'delete'
@@ -1958,6 +2023,45 @@ class Interpreter:
         target[node.name] = value                       # a new key is fine
         return value
 
+    def visit_TryNode(self, node):
+        # The outer try/finally is Python's, so `finally` runs on the way out
+        # no matter what left the block: normal completion, a caught error, an
+        # error still on its way up, or a return / break / continue.
+        try:
+            try:
+                self.execute_scoped_block(node.body)
+            except NovaError as error:
+                if node.catch_block is None:
+                    raise
+                self.run_catch(node, error)
+        finally:
+            if node.finally_block is not None:
+                self.execute_scoped_block(node.finally_block)
+        return NOTHING
+
+    def run_catch(self, node, error):
+        """Run the catch block, with the message bound if a name was given."""
+        saved = self.env
+        self.env = Environment(parent=saved)
+        try:
+            if node.catch_name is not None:
+                self.env.define(node.catch_name, error_text(error))
+            self.execute_block(node.catch_block)
+        finally:
+            self.env = saved
+
+    def visit_ThrowNode(self, node):
+        value = self.evaluate(node.value)
+        if not isinstance(value, str):
+            raise NovaError(
+                "throw needs a string, but got {} - use str() to convert it".format(
+                    type_name(value)
+                ),
+                node.position,
+            )
+        # label "Error" so a thrown message reads as its own kind of trouble.
+        raise NovaError(value, node.position, label="Error")
+
     def visit_DeleteFileNode(self, node):
         path = self.evaluate(node.path)
         if not isinstance(path, str):
@@ -2421,6 +2525,15 @@ def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def error_text(error):
+    """What `catch e` binds: the message, with a label only when it adds
+    something. `throw("boom")` gives "boom"; a missing file gives
+    "FileNotFoundError: data.txt"."""
+    if error.label in ("NovaError", "Error"):
+        return error.message
+    return "{}: {}".format(error.label, error.message)
+
+
 def nova_contains(needle, haystack, position):
     """`x in y` - a substring of a string, or an item of a list."""
     if isinstance(haystack, str):
@@ -2540,7 +2653,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.7.0            ║
+║       NOVALANG v0.8.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -2608,6 +2721,9 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     for x in a { }       walk a list, a string, or a dictionary's keys
     for k, v in d { }    walk a dictionary's pairs (or a list's index, item)
     break | continue     leave the loop / jump to the next turn
+    try { } catch e { }  run anyway; e holds the message as a string
+    try { } finally { }  the finally block always runs
+    throw("gone wrong")  raise an error of your own
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in
 
@@ -2741,6 +2857,8 @@ def repl():
             print("\n(stopped)")
         except RecursionError:
             print("NovaError: the interpreter ran out of stack - recursion too deep")
+        except Exception as problem:    # a bug in here, not in your program
+            print("InternalError: {}: {}".format(type(problem).__name__, problem))
 
 
 def show_vars(interpreter):

@@ -1,0 +1,147 @@
+# ---- catching an error and carrying on ----
+try {
+    read("definitely_missing.txt")
+} catch {
+    print("File not found! Continuing...")
+}
+
+# ---- binding the message ----
+try {
+    read("definitely_missing.txt")
+} catch e {
+    print("Error: " + e)
+}
+
+# ---- finally always runs ----
+try {
+    write("nova_temp.txt", "data")
+    print("wrote the temp file")
+} catch e {
+    print("Failed: " + e)
+} finally {
+    delete("nova_temp.txt")
+    print("cleaned up; temp file exists?", exists("nova_temp.txt"))
+}
+
+# ---- finally runs even when the try fails ----
+try {
+    try {
+        throw("something went wrong")
+    } finally {
+        print("finally runs on the way out, error or not")
+    }
+} catch e {
+    print("and the error still arrives:", e)
+}
+
+# ---- throwing your own errors ----
+def checked_sqrt(x) {
+    if x < 0 {
+        throw("x cannot be negative")
+    }
+    let guess = x / 2
+    if x == 0 {
+        return 0
+    }
+    for i in range(20) {
+        guess = (guess + x / guess) / 2
+    }
+    return guess
+}
+
+print(checked_sqrt(16))
+try {
+    print(checked_sqrt(-1))
+} catch e {
+    print("caught:", e)
+}
+
+# ---- validation with a helpful message ----
+def require_key(record, key) {
+    if not (key in record) {
+        throw(f"the record has no '{key}' - it has {join(keys(record), ', ')}")
+    }
+    return record[key]
+}
+
+let user = {name: "Ada", role: "engineer"}
+print(require_key(user, "name"))
+try {
+    print(require_key(user, "email"))
+} catch e {
+    print("caught:", e)
+}
+
+# ---- errors from anywhere in the language are catchable ----
+let cases = ["divide", "index", "key", "name", "type", "file"]
+let d = {a: 1}
+let list = [1, 2, 3]
+for case in cases {
+    try {
+        if case == "divide" { print(1 / 0) }
+        if case == "index" { print(list[99]) }
+        if case == "key" { print(d.nope) }
+        if case == "name" { print(never_defined) }
+        if case == "type" { print("text" - 1) }
+        if case == "file" { print(read("nope.txt")) }
+    } catch e {
+        print(f"{case} -> {e}")
+    }
+}
+
+# ---- retrying until something works ----
+def flaky(attempt) {
+    if attempt < 3 {
+        throw(f"attempt {str(attempt)} failed")
+    }
+    return f"attempt {str(attempt)} succeeded"
+}
+
+let result = "gave up"
+for attempt in range(1, 5) {
+    try {
+        result = flaky(attempt)
+        break
+    } catch e {
+        print("  " + e)
+    }
+}
+print(result)
+
+# ---- a try inside a loop, with finally counting the turns ----
+let cleanups = 0
+for n in range(4) {
+    try {
+        if n % 2 == 0 {
+            throw(f"{str(n)} is even")
+        }
+        print(n, "is odd")
+    } catch e {
+        print("  caught:", e)
+    } finally {
+        cleanups = cleanups + 1
+    }
+}
+print("finally ran", cleanups, "times")
+
+# ---- catch and finally both cooperate with return ----
+def safe_read(path, fallback) {
+    try {
+        return read(path)
+    } catch {
+        return fallback
+    } finally {
+        print("  (safe_read finished looking at " + path + ")")
+    }
+}
+write("nova_present.txt", "I am here")
+print(safe_read("nova_present.txt", "(missing)"))
+print(safe_read("nova_absent.txt", "(missing)"))
+delete("nova_present.txt")
+
+# ---- an uncaught throw would stop the program; this one is caught ----
+try {
+    throw("the last word")
+} catch e {
+    print(e)
+}

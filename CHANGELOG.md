@@ -18,6 +18,55 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.8.0] - 2026-09-01 — Error Handling
+
+Stage 8. A program can now recover from an error instead of stopping at it.
+
+### Added
+
+- **`try` / `catch` / `finally`.** Either `catch` or `finally` is required;
+  both together are fine. A `catch` may bind the message to a name, which is
+  always a string:
+  ```
+  try {
+      read("missing.txt")
+  } catch e {
+      print("Error: " + e)
+  } finally {
+      print("this runs either way")
+  }
+  ```
+  The bound text carries a label only when it adds something:
+  `throw("boom")` gives `"boom"`, while a missing file gives
+  `"FileNotFoundError: data.txt"`.
+- **`throw(message)`**, which raises an error of your own. Uncaught, it stops
+  the program with `Error: your message` and the usual caret and call stack.
+- **Every error in the language is catchable**: division by zero, an index out
+  of range, a missing dictionary key, an undefined name, a type mismatch and
+  file trouble all arrive in `catch` the same way.
+- New AST nodes `TryNode` and `ThrowNode`, rendered by `tree`; new keywords
+  `try`, `catch`, `finally` and `throw`.
+- `examples/errors.nova`, which catches one of each kind of error, retries a
+  flaky function until it succeeds, and cleans up after itself with `finally`.
+
+### Changed
+
+- The REPL now survives anything, including a bug in the interpreter itself,
+  which reports as `InternalError: ...` and returns you to the prompt rather
+  than ending the session.
+- `help` gains the try/catch/finally and throw lines; the banner reads
+  `NOVALANG v0.8.0`.
+
+### Note
+
+`catch` catches errors, not control flow. A `return`, `break` or `continue`
+passing through a `try` is not an error and is never caught, and neither is
+Ctrl-C — but `finally` still runs on the way out in every one of those cases,
+so cleanup happens even when a loop is broken or the program is interrupted.
+`throw` takes a string; use `str()` to convert a value first.
+
+---
+
 ## [0.7.0] - 2026-09-01 — File I/O
 
 Stage 7. NovaLang programs can now read and write the world outside the
@@ -382,6 +431,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.8.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.7.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.1]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.6.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
