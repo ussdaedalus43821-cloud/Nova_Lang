@@ -1,0 +1,105 @@
+# ---- while, exactly as specified ----
+x = 0
+while x < 10 {
+    print(x)
+    x = x + 1
+}
+print("x after the loop:", x)
+
+# ---- for ... to ----
+for i = 0 to 10 {
+    print(i)
+}
+
+# ---- for ... to ... step ----
+for i = 0 to 100 step 10 {
+    print(i)
+}
+
+# ---- downto ----
+for i = 5 downto 1 {
+    print(i)
+}
+
+# ---- break and continue ----
+for i = 1 to 10 {
+    if i == 4 {
+        continue
+    }
+    if i > 6 {
+        break
+    }
+    print("kept", i)
+}
+
+# ---- while with else (no break -> else runs) ----
+y = 0
+while y < 3 {
+    print("y", y)
+    y = y + 1
+} else {
+    print("Loop completed without break")
+}
+
+# ---- while with else (break -> else skipped) ----
+z = 0
+while z < 10 {
+    z = z + 1
+    if z == 2 { break }
+} else {
+    print("this must not print")
+}
+print("z stopped at", z)
+
+# ---- and / or / not with short circuit ----
+def boom() {
+    print("boom ran - short circuit failed!")
+    return true
+}
+print(false and boom())
+print(true or boom())
+print(not true, not false)
+print(1 < 2 and 3 >= 3)
+print(not (1 == 2) or false)
+
+# ---- loops inside functions ----
+def factorial(n) {
+    total = 1
+    for i = 2 to n {
+        total = total * i
+    }
+    return total
+}
+print("10! =", factorial(10))
+
+def fib_loop(n) {
+    a = 0
+    b = 1
+    for step_number = 1 to n {
+        next = a + b
+        a = b
+        b = next
+    }
+    return a
+}
+print("fib(30) the iterative way:", fib_loop(30))
+
+def sum_to(limit) {
+    total = 0
+    n = 1
+    while true {
+        if n > limit {
+            break
+        }
+        total = total + n
+        n = n + 1
+    }
+    return total
+}
+print("1..100 sums to:", sum_to(100))
+
+# ---- scoping: block locals must not leak ----
+for i = 0 to 2 {
+    inside = i * 2
+}
+print("loop finished")
