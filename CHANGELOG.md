@@ -18,6 +18,58 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [1.0.0] - 2026-09-02 — First Stable Release
+
+Stage 13. Polish and documentation, and the line drawn under Stages 1–12:
+NovaLang is a complete, self-hosting, embeddable scripting language with a
+standard library and a two-way Python bridge. No language, standard-library,
+or embedding-API behavior changes in this release — every example and test
+from the pre-release verification pass (core regression, the full Stage 11
+stdlib suite, and the Stage 12 embedding suite) was re-confirmed green
+immediately beforehand.
+
+### Added
+
+- **`README.md`** — the project's front door: what NovaLang is, quick
+  start, full language syntax, standard library reference, the embedding
+  API, a tour of `examples/`, measured performance numbers, the security
+  model, and how to contribute.
+- **`CONTRIBUTING.md`** — guidelines for extending the language: the
+  Lexer → Parser → AST → Interpreter pipeline contract, the host/
+  self-hosted parity rule (`novalang.py` and `novalang.nova` must agree,
+  byte-for-byte, on every example), the scope-barrier rule, coding style
+  (no `eval`/`exec`, no parser generators, no regexes in the core
+  pipeline), and the testing expectations for a change before it merges.
+- This changelog entry, and the `v1.0.0` git tag marking the release.
+
+### Changed
+
+- Version banner and `__version__` bumped from `0.12.0` to `1.0.0` in both
+  `novalang.py` (the REPL welcome banner, the `help` text's version line,
+  and the module docstring's stage list) and `novalang.nova` (header
+  comment), across the board — this is the same codebase Stage 12 shipped,
+  now versioned and documented as a stable release rather than an
+  in-progress build.
+
+### Notes for integrators
+
+- Summarizing the pre-release verification pass: all 10 Stage 1–9 example
+  files are byte-identical between direct execution and `--bootstrap`; the
+  new `examples/stdlib_full_test.nova` exercises the entire Stage 11
+  standard library and passes identically on both engines; the Stage 12
+  embedding demos (`embedding_demo.py`, `reactor_sim_integration.py`,
+  `daedalus_integration.py`) all behave as documented; `nova.call()`
+  throughput measured at ~2,200 calls/sec, comfortably inside a 60fps
+  frame budget. See `README.md`'s Performance and Security sections for
+  the numbers and the sandboxing model in context.
+- The one open naming note from that pass still applies: a blocked
+  `python.import(...)` raises `NovaError`/`NovaLangError` labeled
+  `PythonError`, not `ModuleNotAllowedError` — the restricted-bridge
+  *design* was explicitly confirmed during Stage 12 and is unchanged in
+  this release; only the label name differs from an earlier guess at it.
+
+---
+
 ## [0.12.0] - 2026-09-01 — Embedding & Integration
 
 Stage 12. NovaLang as a scripting engine inside a Python program, in both
