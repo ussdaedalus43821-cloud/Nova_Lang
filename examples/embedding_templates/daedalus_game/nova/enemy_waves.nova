@@ -1,0 +1,51 @@
+# nova/enemy_waves.nova - enemy wave definitions, copied unchanged from
+# examples/daedalus_waves.nova (same functions, same `export`s) so this
+# template is self-contained. In your real project, either copy this file
+# in the same way or keep a single shared copy and import it with a
+# relative path from wherever your game's .nova files actually live.
+
+export def enemy_stats(kind) {
+    if kind == "fast" {
+        return {hp: 20, speed: 3.0, damage: 5}
+    }
+    if kind == "tank" {
+        return {hp: 150, speed: 0.6, damage: 15}
+    }
+    if kind == "boss" {
+        return {hp: 800, speed: 1.0, damage: 40}
+    }
+    return {hp: 40, speed: 1.5, damage: 8}          # "normal", or unrecognized
+}
+
+export def spawn_wave(count, kind) {
+    let stats = enemy_stats(kind)
+    let wave = []
+    for i in range(count) {
+        append(wave, {
+            id: kind + "_" + str(i),
+            kind: kind,
+            hp: stats["hp"],
+            speed: stats["speed"],
+            damage: stats["damage"]
+        })
+    }
+    log(f"spawn_wave({str(count)}, \"{kind}\") -> {str(len(wave))} enemies")
+    return wave
+}
+
+# A slightly more interesting wave: mixed kinds, harder as `level` rises.
+export def spawn_level_wave(level) {
+    let wave = []
+    for enemy in spawn_wave(level + 2, "fast") {
+        append(wave, enemy)
+    }
+    for enemy in spawn_wave(level // 2, "tank") {
+        append(wave, enemy)
+    }
+    if level % 5 == 0 {
+        for enemy in spawn_wave(1, "boss") {
+            append(wave, enemy)
+        }
+    }
+    return wave
+}

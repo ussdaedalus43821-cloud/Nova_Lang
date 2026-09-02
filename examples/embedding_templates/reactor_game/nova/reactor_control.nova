@@ -1,0 +1,28 @@
+# nova/reactor_control.nova - the reactor's rules: when to warn, when to
+# scram, when to raise a cold alarm. This is examples/reactor_script.nova
+# unchanged in substance - that file's method-call style
+# (reactor.scram(), reactor.set_power(...)) already works against a real
+# exposed Python object (see nova_bridge.py's expose(): a live proxy over
+# a real class instance has real bound methods, so calling them from
+# NovaLang works exactly like calling them from Python would). The
+# free-function style used in examples/reactor_sim.nova was only needed
+# there because that version's reactor was a plain NovaLang dict with no
+# Python object behind it at all - not the case here.
+
+def check_reactor() {
+    if reactor.temp > 2800 {
+        log(f"CRITICAL: core at {str(reactor.temp)}C - scramming")
+        reactor.scram()
+        return "scrammed"
+    }
+    if reactor.temp > 2400 {
+        log(f"WARNING: core at {str(reactor.temp)}C - reducing power")
+        reactor.set_power(reactor.power - 10)
+        return "reduced_power"
+    }
+    if reactor.temp < 300 and reactor.power > 0 {
+        log(f"core is cold at {str(reactor.temp)}C while power is on - check sensors")
+        return "cold_alarm"
+    }
+    return "nominal"
+}

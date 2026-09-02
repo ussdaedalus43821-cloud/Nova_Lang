@@ -1,0 +1,148 @@
+# nova/game_logic.nova - Daedalus's game state and rules: NovaLang owns
+# the canonical `enemies` list and `player` state; Python only ever reads
+# a snapshot back for rendering (see main.py) and forwards input in.
+#
+# Why NovaLang owns this list, rather than exposing a Python one: passing
+# a plain Python list/dict into NovaLang (as a call argument, or via
+# expose_global) CONVERTS it into a new NovaLang list/dict - a one-time
+# copy, not a live proxy. (Only an arbitrary Python OBJECT - a class
+# instance, like reactor_game's Reactor - gets wrapped as a live proxy;
+# see PythonObjectProxy in novalang.py.) So if `enemies` lived in Python
+# as a list of dicts, NovaLang mutating it would never be seen back in
+# Python, and vice versa. Keeping the list on the NovaLang side avoids
+# the question entirely: there is only ever one copy, and Python asks for
+# a read-only snapshot of it once a frame.
+#
+# A second thing worth flagging up front, since it is easy to trip on -
+# hard enough that an earlier draft of this exact file got it wrong and
+# only test_game_logic.py's "level advanced after the first wave" check
+# caught it: NovaLang's scope barrier (a plain variable assignment inside
+# a function can never reach an enclosing function's - or the top-level
+# script's - locals) applies here too. `enemies = some_new_list` inside a
+# function would NOT update the `enemies` declared below, it would just
+# shadow it locally - and neither would `level = level + 1`, even though
+# `level` looks like an ordinary top-level variable. Every function below
+# that needs to change `enemies`, `level`, or `spawn_timer` therefore
+# mutates something's CONTENTS instead of rebinding a name: `enemies` is
+# mutated in place (pop() everything, then append() the survivors back -
+# see remove_dead_and_escaped()), and `level`/`spawn_timer` live as
+# fields on the `world` dict below so `world["level"] = ...` mutates dict
+# contents rather than rebinding. Plain field writes like `player.hp =
+# ...` never had this problem: they were always dict-content mutation,
+# not a variable rebind.
+
+import "./enemy_waves.nova" with spawn_level_wave
+
+let enemies = []
+let player = {x: 10.0, y: 5.0, hp: 100, score: 0}
+let world = {level: 1, spawn_timer: 0.0}
+let wave_delay = 5.0
+let collision_radius = 0.5
+let bump_damage = 1
+
+def reset_game() {
+    while len(enemies) > 0 {
+        pop(enemies)
+    }
+    player.x = 10.0
+    player.y = 5.0
+    player.hp = 100
+    player.score = 0
+    world.level = 1
+    world.spawn_timer = 0.0
+}
+
+def handle_input(controls, dt) {
+    # `input` is a NovaLang built-in (reads a line at the REPL) and can't
+    # be used as a parameter name - hence `controls` here.
+    let speed = 6.0
+    if controls["left"] { player.x = player.x - speed * dt }
+    if controls["right"] { player.x = player.x + speed * dt }
+    if controls["up"] { player.y = player.y - speed * dt }
+    if controls["down"] { player.y = player.y + speed * dt }
+}
+
+def maybe_spawn_wave(dt) {
+    world.spawn_timer = world.spawn_timer + dt
+    if world.spawn_timer >= wave_delay and len(enemies) == 0 {
+        world.spawn_timer = 0.0
+        for enemy in spawn_level_wave(world.level) {
+            enemy["x"] = 20.0
+            enemy["y"] = random() * 10.0
+            append(enemies, enemy)
+        }
+        world.level = world.level + 1
+    }
+}
+
+def distance(ax, ay, bx, by) {
+    let dx = ax - bx
+    let dy = ay - by
+    return sqrt(dx * dx + dy * dy)
+}
+
+def resolve_enemy_collisions() {
+    # A plain O(n^2) pairwise check - fine at the enemy counts one wave
+    # actually has on screen, and there is no spatial-index library to
+    # reach for instead. See examples/daedalus_sim.nova for the same
+    # technique used stand-alone (no Python involved at all).
+    for i = 0 to len(enemies) - 1 {
+        for j = i + 1 to len(enemies) - 1 {
+            let a = enemies[i]
+            let b = enemies[j]
+            if distance(a["x"], a["y"], b["x"], b["y"]) < collision_radius {
+                a["hp"] = a["hp"] - bump_damage
+                b["hp"] = b["hp"] - bump_damage
+            }
+        }
+    }
+}
+
+def advance_enemies(dt) {
+    for enemy in enemies {
+        enemy["x"] = enemy["x"] - enemy["speed"] * dt
+    }
+}
+
+def resolve_player_hits() {
+    for enemy in enemies {
+        if enemy["hp"] > 0 and distance(enemy["x"], enemy["y"], player.x, player.y) < 1.0 {
+            player.hp = player.hp - enemy["damage"]
+            player.score = player.score + 10
+            enemy["hp"] = 0                  # a hit on the player destroys the enemy too
+        }
+    }
+}
+
+def remove_dead_and_escaped() {
+    let survivors = []
+    for enemy in enemies {
+        if enemy["hp"] > 0 and enemy["x"] > -2.0 {
+            append(survivors, enemy)
+        }
+    }
+    while len(enemies) > 0 {
+        pop(enemies)
+    }
+    for enemy in survivors {
+        append(enemies, enemy)
+    }
+}
+
+def update(dt, controls) {
+    handle_input(controls, dt)
+    maybe_spawn_wave(dt)
+    advance_enemies(dt)
+    resolve_enemy_collisions()
+    resolve_player_hits()
+    remove_dead_and_escaped()
+    return {
+        player_x: player.x,
+        player_y: player.y,
+        player_hp: player.hp,
+        score: player.score,
+        level: world.level,
+        enemies: enemies,
+        game_over: player.hp <= 0
+    }
+}
