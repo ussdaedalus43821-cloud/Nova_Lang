@@ -1,5 +1,5 @@
 # novalang.nova - NovaLang's own Lexer, Parser and Interpreter, written in
-# NovaLang itself.
+# NovaLang itself. Part of the NovaLang v1.0.0 release.
 #
 # This file is a normal .nova program. Loaded and run by the host
 # (novalang.py), it defines a second, self-hosted implementation of the

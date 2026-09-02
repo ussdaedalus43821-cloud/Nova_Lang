@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.12.0 - a tiny language built from a hand-written lexer,
+# NovaLang v1.0.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 12: Embedding & Integration
+NovaLang v1.0.0 - Stage 13: Polish & Documentation
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -42,6 +42,10 @@ Stage 12: embedding - a Python-side Nova class (eval/exec/load_file/call/
           a NovaLang-side `python` namespace (call/get/set/import) for
           reaching back into Python - through an explicit, host-controlled
           bridge, not unrestricted access to the process.
+Stage 13: polish and documentation - README.md, a finalized CHANGELOG.md,
+          CONTRIBUTING.md, and the v1.0.0 release. No language or
+          standard-library behavior changed; Stages 1-12 are the complete,
+          stable feature set this release ships.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -58,7 +62,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-__version__ = "0.12.0"
+__version__ = "1.0.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -3674,7 +3678,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.12.0           ║
+║       NOVALANG v1.0.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
