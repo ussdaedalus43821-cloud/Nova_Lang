@@ -1,0 +1,88 @@
+# examples/spatial_hash_self_test.nova - exercises lib/spatial_hash.nova:
+# insert/remove/update, radius queries, negative coordinates, and moving
+# an object across a cell boundary.
+#
+# Run: python3 novalang.py examples/spatial_hash_self_test.nova
+#      python3 novalang.py --bootstrap examples/spatial_hash_self_test.nova
+
+import "../lib/spatial_hash.nova" with spatial_hash_new, spatial_hash_insert, spatial_hash_remove, spatial_hash_update, spatial_hash_query_radius, spatial_hash_clear, spatial_hash_count, spatial_hash_suggest_cell_size, cell_coord
+
+let state = {checks: 0, failures: []}
+
+def check(label, actual, expected) {
+    state["checks"] = state["checks"] + 1
+    if actual != expected {
+        append(state["failures"], label + ": expected " + str(expected) + ", got " + str(actual))
+    }
+}
+
+def check_true(label, actual) {
+    check(label, actual, true)
+}
+
+def contains(list_value, item) {
+    for x in list_value {
+        if x == item {
+            return true
+        }
+    }
+    return false
+}
+
+# ---- basic insert + radius query ----
+let hash = spatial_hash_new(10.0)
+spatial_hash_insert(hash, 1, 5.0, 5.0)
+spatial_hash_insert(hash, 2, 6.0, 5.0)
+spatial_hash_insert(hash, 3, 500.0, 500.0)
+
+check("spatial_hash_count reflects inserts", spatial_hash_count(hash), 3)
+let nearby = spatial_hash_query_radius(hash, 5.0, 5.0, 3.0)
+check_true("query_radius finds the near neighbor", contains(nearby, 2))
+check_true("query_radius does not find the far object", not contains(nearby, 3))
+
+# ---- remove ----
+spatial_hash_remove(hash, 2)
+let after_remove = spatial_hash_query_radius(hash, 5.0, 5.0, 3.0)
+check_true("removed object no longer appears in queries", not contains(after_remove, 2))
+check("count drops after remove", spatial_hash_count(hash), 2)
+
+# ---- update: moving within the same cell ----
+spatial_hash_update(hash, 1, 5.5, 5.5)
+let still_near = spatial_hash_query_radius(hash, 5.5, 5.5, 1.0)
+check_true("update within the same cell keeps it findable", contains(still_near, 1))
+
+# ---- update: moving ACROSS a cell boundary (cell_size=10, so 5.0->25.0
+# crosses from cell 0 into cell 2) ----
+spatial_hash_update(hash, 1, 25.0, 25.0)
+let moved_away = spatial_hash_query_radius(hash, 5.0, 5.0, 3.0)
+check_true("after moving across a cell boundary, old location no longer finds it", not contains(moved_away, 1))
+let moved_to = spatial_hash_query_radius(hash, 25.0, 25.0, 3.0)
+check_true("after moving across a cell boundary, new location finds it", contains(moved_to, 1))
+
+# ---- negative coordinates ----
+let hash2 = spatial_hash_new(10.0)
+spatial_hash_insert(hash2, 10, -15.0, -15.0)
+spatial_hash_insert(hash2, 11, -14.0, -15.0)
+spatial_hash_insert(hash2, 12, 100.0, 100.0)
+let neg_results = spatial_hash_query_radius(hash2, -15.0, -15.0, 3.0)
+check_true("negative-coordinate query finds its near neighbor", contains(neg_results, 11))
+check_true("negative-coordinate query excludes the far object", not contains(neg_results, 12))
+check("cell_coord handles negative values below zero correctly", cell_coord(hash2, -15.0), -2.0)
+
+# ---- clear ----
+spatial_hash_clear(hash2)
+check("clear empties the hash", spatial_hash_count(hash2), 0)
+
+# ---- density-based cell size suggestion ----
+let suggested = spatial_hash_suggest_cell_size(1000, 800.0, 600.0, 3.0)
+check_true("suggested cell size is a sane positive number", suggested > 0.0 and suggested < 800.0)
+
+# ---- report ----
+if len(state["failures"]) == 0 {
+    print("All spatial hash self-tests passed.")
+} else {
+    print(str(len(state["checks"])) + " checks run, " + str(len(state["failures"])) + " FAILED:")
+    for message in state["failures"] {
+        print("  " + message)
+    }
+}

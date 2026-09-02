@@ -18,6 +18,144 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [1.1.0] - 2026-09-02 — ECS & Particle Engine
+
+Stage 14. An Entity-Component-System library, a spatial hash, and a
+25,000–50,000-particle demo — and a deliberate architectural split,
+explained below, between what NovaLang actually runs and what a
+vectorized Python/NumPy engine runs, because the literal spec (the whole
+particle simulation as NovaLang systems) is roughly 1,000–10,000x past
+what NovaLang's interpreter can do at that particle count and 60fps.
+
+### Added
+
+- **`lib/ecs.nova`** — a real Entity-Component-System: `world_new()`,
+  `spawn_entity()`/`despawn_entity()`, `set_component()`/
+  `get_component()`/`has_component()`/`remove_component()`, and
+  `query(world, names)` — every entity with ALL the named components,
+  found by walking only the smallest matching component set once (never
+  an O(n²) scan across every entity and every component). Component
+  membership is tracked as a real integer bitmask per entity
+  (`mask_has`/`mask_add`/`mask_remove`), built from plain arithmetic
+  (`(mask // bit) % 2`) since NovaLang has no bitwise operators — a
+  standard technique, not a workaround, documented in the file itself.
+  `run_system(world, names, fn, dt)` is a small convenience wrapper for
+  the common "call fn(world, id, dt) once per matching entity" case.
+- **`lib/spatial_hash.nova`** — a grid-based spatial hash with O(1)
+  average insert/remove/update/query-radius, plus
+  `spatial_hash_suggest_cell_size(count, width, height, target_per_cell)`
+  to pick a cell size from density alone. Built for NovaLang's own
+  entity scale (force fields, emitters — tens to a few hundred objects),
+  *not* the particle simulation itself; see below for why those are
+  different things here.
+- **`examples/ecs_particles.nova`** — the demo's NovaLang side: defines
+  a `sim` (an ECS `world` plus a few global tunables), spawns `emitter`
+  and `force_field` entities with real components, and queries them
+  every frame via `world_step()`, which returns a small "directives"
+  dict (gravity, damping, active force fields, spawn requests, the
+  mouse's current interaction mode) for Python to apply. Every function
+  that takes `sim` returns it — documented loudly in the file, because
+  passing a Python dict into `nova.call()` converts it into a fresh
+  NovaLang value each call, not a live reference, so the caller must
+  reassign `sim = nova.call(...)` or every mutation silently vanishes.
+  (This was caught by testing the file, not by inspection - see Notes.)
+- **`examples/particle_engine.py`** — the NumPy engine: struct-of-arrays
+  particle storage (positions/velocities/radii/mass as contiguous
+  arrays, not 50,000 Python objects), vectorized movement/gravity/
+  damping/boundary collision/mouse and force-field interaction, and
+  particle-particle collision via a uniform grid broad-phase (bucket
+  particles into occupied cells with a sort + "rank within cell via
+  cumsum" trick, then check 5 fixed neighbor-cell offsets — covering
+  full 8-connectivity while visiting each unordered cell pair once —
+  with one broadcasted NumPy operation across every occupied cell at
+  once, no Python loop over particles or cells). Also: three color
+  modes (velocity, a black→red→yellow→white "temperature" gradient,
+  and per-particle rainbow hue-cycling), and trail support via an
+  integer-arithmetic pixel-buffer fade.
+- **`examples/ecs_demo.py`** — the pygame harness: an FPS counter,
+  particle-count control (number-key presets and a drag slider, up to
+  55,000), left/right mouse for attract/repel, keys to toggle gravity/
+  collisions/trails, cycle color mode, and spawn or despawn a force
+  field entity at the mouse — a live "spawn/despawn at runtime" demo of
+  the ECS, not just a claim about it. Two render paths: a fast one
+  (`draw_particles_fast`) that splats every particle into the screen's
+  pixel buffer with vectorized NumPy indexing — no per-particle Python
+  call — which is what makes the target particle count possible; and a
+  slower "quality" one (`draw_particles_quality`, real
+  `pygame.draw.circle` calls, toggled with Q) for a few thousand
+  particles where the visual difference is worth the cost.
+- **`examples/ecs_self_test.nova`**, **`examples/spatial_hash_self_test.nova`**
+  — exhaustive tests of both libraries (spawn/despawn, masks, queries
+  driven by the smallest component set, insert/remove/update including
+  moving an object across a cell boundary, negative coordinates) — pass
+  identically host and `--bootstrap`.
+- **`examples/particle_engine_selftest.py`** — cross-checks the
+  vectorized collision code against a brute-force O(n²) reference,
+  using real NumPy. Run this before trusting any FPS number - see Notes.
+
+### Changed
+
+- Version bumped `1.0.0` → `1.1.0`: the banner, `__version__`, and the
+  module docstring's stage list in `novalang.py`, and the header comment
+  in `novalang.nova`.
+
+### The architecture decision
+
+The spec called for the ECS, spatial hash, *and* physics/collision
+systems to run as NovaLang — 25,000–50,000 particles, 60fps. Before
+writing any of it, this was benchmarked directly in the interpreter:
+a bare arithmetic loop runs at ~162,000 iterations/sec; a realistic
+per-particle physics update (dict field reads/writes) runs at
+~41,000–66,000/sec. At 50,000 particles, the movement update *alone*
+would cost ~750ms — 45x an entire 16.7ms frame budget — before
+collision detection (costlier per-particle than movement, not
+cheaper) touches anything. This is a constant-factor interpreter
+ceiling, not an algorithmic one; no spatial-hash cleverness fixes it,
+because algorithmic complexity was never the bottleneck at these
+counts.
+
+So: NovaLang owns the ECS and everything that stays at gameplay scale
+(entities, components, queries, emitters, force fields, interaction
+rules) — comfortably within its real throughput, no different from how
+`examples/embedding_templates/daedalus_game` or the Reactor Sim port
+use it. The particle *data* — 25,000–50,000 of them — lives in NumPy
+arrays in Python, updated with vectorized array operations, which is
+the only way to close a three-to-four-order-of-magnitude gap. NovaLang
+decides *what* the simulation should do each frame (`world_step()`,
+called once, not once per particle); Python's `ParticleEngine.step()`
+is what actually does it to 50,000 particles at once.
+
+### Notes for integrators
+
+- **New dependencies, only for this demo**: `numpy` (required) and
+  `pygame` (required for `ecs_demo.py`'s window; not needed for
+  `particle_engine_selftest.py`). The core language (`novalang.py`,
+  `bootstrap.py`) still has zero dependencies — nothing else in this
+  repo needs either package.
+- **An honest testing note.** The sandbox this was built in has no
+  numpy, no pygame, and no network access to install either — so
+  `lib/ecs.nova`, `lib/spatial_hash.nova`, and `examples/ecs_particles.nova`
+  were tested for real (their self-tests above all pass, host and
+  `--bootstrap`), but `particle_engine.py` and `ecs_demo.py` could not
+  be executed at all before shipping. What *was* validated: the
+  uniform-grid collision algorithm and its "sort + cumsum rank-in-cell"
+  vectorization trick, each checked against a brute-force O(n²)
+  reference as plain-Python prototypes (no numpy needed to run those),
+  and a careful line-by-line review of the NumPy transcription.
+  `examples/particle_engine_selftest.py` re-runs that same brute-force
+  cross-check against the real, installed NumPy and the actual
+  `ParticleEngine` class — **run it before trusting any FPS number**;
+  if it passes, the transcription was faithful, and any remaining
+  performance/behavior questions are about tuning, not correctness.
+- Measured FPS at 25,000–50,000 particles on real hardware (a MacBook
+  Pro, M1 or Intel, per the original spec) has not been measured by
+  Claude at all — this environment has no display and no numpy. Please
+  report back what you see; the architecture is designed to make the
+  target achievable, but "designed to" and "measured to" are different
+  claims, and only the second one is worth trusting.
+
+---
+
 ## [1.0.0] - 2026-09-02 — First Stable Release
 
 Stage 13. Polish and documentation, and the line drawn under Stages 1–12:

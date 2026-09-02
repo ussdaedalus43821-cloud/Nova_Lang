@@ -1,0 +1,135 @@
+# lib/spatial_hash.nova - a grid-based spatial hash for O(1) average
+# insert/remove/query-radius, at NovaLang's own entity scale.
+#
+# Import it with:  import "../lib/spatial_hash.nova" with spatial_hash_new, ...
+#
+# Read lib/ecs.nova's header first if you haven't - the short version:
+# this is for gameplay-scale objects (force fields, emitters, a few
+# hundred things), not the 25,000-50,000 simulated particles, which live
+# in NumPy arrays in Python precisely because NovaLang's interpreter
+# can't touch that many objects per frame at 60fps. The particle-vs-
+# particle collision broad-phase in examples/particle_engine.py uses its
+# own NumPy-vectorized grid for the same reason this file exists in
+# NovaLang: the *technique* (uniform grid, O(1) average lookup) is the
+# same one either way - only which language runs it changes, and why.
+#
+# ---------------------------------------------------------------------
+# How it works
+# ---------------------------------------------------------------------
+# The plane is divided into square cells of `cell_size`. Each occupied
+# cell holds the set of ids currently inside it, keyed by a "cx:cy"
+# string (NovaLang dict keys must be strings - see ecs.nova). Insert and
+# remove touch exactly one cell's entry: O(1). A radius query touches
+# only the handful of cells that could possibly overlap the query circle
+# (2*ceil(radius/cell_size)+1 per axis) rather than every object that
+# exists - O(1) average when `cell_size` is chosen close to the typical
+# query radius and objects are roughly evenly spread, which is what
+# spatial_hash_suggest_cell_size() below picks for you from density
+# alone. A query still returns candidates only (everything in the
+# overlapping cells) - the caller does the final exact-distance check,
+# same as any broad-phase.
+
+export def spatial_hash_new(cell_size) {
+    return {
+        cell_size: cell_size,
+        cells: {},          # "cx:cy" -> {"<id>": true}
+        positions: {}        # "<id>" -> {x: .., y: .., cx: .., cy: ..}
+    }
+}
+
+export def cell_coord(hash, value) {
+    return floor(value / hash.cell_size)
+}
+
+export def cell_key(cx, cy) {
+    return str(cx) + ":" + str(cy)
+}
+
+export def spatial_hash_insert(hash, id, x, y) {
+    let key = str(id)
+    let cx = cell_coord(hash, x)
+    let cy = cell_coord(hash, y)
+    let ck = cell_key(cx, cy)
+    if not (ck in hash.cells) {
+        hash.cells[ck] = {}
+    }
+    hash.cells[ck][key] = true
+    hash.positions[key] = {x: x, y: y, cx: cx, cy: cy}
+}
+
+export def spatial_hash_remove(hash, id) {
+    let key = str(id)
+    if not (key in hash.positions) {
+        return false
+    }
+    let pos = hash.positions[key]
+    let ck = cell_key(pos.cx, pos.cy)
+    if ck in hash.cells {
+        delete hash.cells[ck][key]
+    }
+    delete hash.positions[key]
+    return true
+}
+
+export def spatial_hash_update(hash, id, x, y) {
+    let key = str(id)
+    let cx = cell_coord(hash, x)
+    let cy = cell_coord(hash, y)
+    if key in hash.positions {
+        let pos = hash.positions[key]
+        if pos.cx == cx and pos.cy == cy {
+            # Still in the same cell - just refresh the coordinates,
+            # no cell membership to move. This is the common case when
+            # objects move a lot less than one cell per update.
+            pos.x = x
+            pos.y = y
+            return
+        }
+        spatial_hash_remove(hash, id)
+    }
+    spatial_hash_insert(hash, id, x, y)
+}
+
+export def spatial_hash_query_radius(hash, x, y, radius) {
+    let min_cx = cell_coord(hash, x - radius)
+    let max_cx = cell_coord(hash, x + radius)
+    let min_cy = cell_coord(hash, y - radius)
+    let max_cy = cell_coord(hash, y + radius)
+
+    let results = []
+    for cx = min_cx to max_cx {
+        for cy = min_cy to max_cy {
+            let ck = cell_key(cx, cy)
+            if ck in hash.cells {
+                for key in keys(hash.cells[ck]) {
+                    append(results, num(key))
+                }
+            }
+        }
+    }
+    return results
+}
+
+export def spatial_hash_clear(hash) {
+    hash.cells = {}
+    hash.positions = {}
+}
+
+export def spatial_hash_count(hash) {
+    return len(keys(hash.positions))
+}
+
+# Picks a cell size from density alone: aiming for `target_per_cell`
+# objects per occupied cell on average, given `count` objects spread
+# roughly evenly over a width x height area. A good starting point is
+# target_per_cell around 2-4 - too small and most cells are empty
+# (wasted dict overhead per query); too large and each query re-degrades
+# toward scanning everything in view, the O(n) behavior this file exists
+# to avoid.
+export def spatial_hash_suggest_cell_size(count, width, height, target_per_cell) {
+    if count <= 0 {
+        return 32.0
+    }
+    let area_per_object = (width * height) / num(count)
+    return sqrt(area_per_object * target_per_cell)
+}
