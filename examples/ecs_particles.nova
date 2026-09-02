@@ -1,0 +1,205 @@
+# examples/ecs_particles.nova - the NovaLang side of the particle demo:
+# defines what the simulation should do, using lib/ecs.nova for real.
+#
+# Read lib/ecs.nova's header if you haven't yet - the short version: the
+# 25,000-50,000 particles themselves are NumPy arrays in Python
+# (examples/particle_engine.py), not ECS entities, because NovaLang's
+# interpreter cannot touch that many objects per frame at 60fps. What
+# NovaLang manages here, as real ECS entities with real components and
+# real queries, are the things that stay at gameplay scale even in a
+# 50,000-particle demo: a handful of emitters, a handful of force
+# fields, and one entity tracking the mouse. Every frame,
+# examples/ecs_demo.py calls world_step() once; this file runs its
+# systems over those (few) entities and returns a small "directives"
+# dict describing what the particle engine should do that frame -
+# gravity, whether/where to spawn, which force fields are active, what
+# the mouse is doing. examples/particle_engine.py is what actually
+# applies that to the particle arrays.
+#
+# CALLING CONVENTION - every function below that takes `sim` mutates it
+# and then returns it. This isn't decoration: passing a Python dict into
+# nova.call() CONVERTS it into a fresh NovaLang value each call (a copy,
+# not a live reference) - Stage 12's embedding architecture. So the
+# Python caller MUST reassign `sim = nova.call(...)` every time, or
+# every mutation this file makes (toggling gravity, spawning a force
+# field, cycling color mode) will silently vanish the moment the call
+# returns, because the Python-held `sim` never saw it happen. This was
+# caught by testing, not spotted by inspection - see
+# examples/ecs_demo.py's game loop for the calling pattern this requires.
+
+import "../lib/ecs.nova" with world_new, spawn_entity, despawn_entity, set_component, get_component, has_component, query
+
+def particles_world_new(width, height) {
+    let world = world_new()
+
+    let mouse_id = spawn_entity(world)
+    set_component(world, mouse_id, "position", {x: width / 2.0, y: height / 2.0})
+    set_component(world, mouse_id, "mouse_state", {mode: "none", radius: 220.0, strength: 3500.0, vx: 0.0, vy: 0.0})
+
+    let sim = {
+        world: world,
+        mouse_entity: mouse_id,
+        width: width,
+        height: height,
+        gravity: 500.0,
+        gravity_enabled: true,
+        wind: 0.0,
+        damping: 0.999,
+        restitution: 0.6,
+        collisions_enabled: true,
+        collision_cell_size: 0.0,
+        collision_max_per_cell: 12,
+        collision_spring_k: 4000.0,
+        color_mode: "velocity",
+        primary_mode: "attract",
+        secondary_mode: "repel",
+        force_field_ids: [],
+        pending_spawns: []
+    }
+
+    let emitter_id = spawn_entity(world)
+    set_component(world, emitter_id, "position", {x: width / 2.0, y: height / 4.0})
+    set_component(world, emitter_id, "emitter", {rate: 4000.0, accumulator: 0.0, speed: 140.0, hue: 0.0})
+
+    return sim
+}
+
+def toggle_gravity(sim) {
+    sim.gravity_enabled = not sim.gravity_enabled
+    return sim
+}
+
+def toggle_collisions(sim) {
+    sim.collisions_enabled = not sim.collisions_enabled
+    return sim
+}
+
+def cycle_color_mode(sim) {
+    if sim.color_mode == "velocity" {
+        sim.color_mode = "temperature"
+    } else {
+        if sim.color_mode == "temperature" {
+            sim.color_mode = "rainbow"
+        } else {
+            sim.color_mode = "velocity"
+        }
+    }
+    return sim
+}
+
+def spawn_force_field(sim, x, y, kind) {
+    let id = spawn_entity(sim.world)
+    set_component(sim.world, id, "position", {x: x, y: y})
+    set_component(sim.world, id, "force_field", {radius: 180.0, strength: 6000.0, kind: kind})
+    append(sim.force_field_ids, id)
+    return sim
+}
+
+def despawn_last_force_field(sim) {
+    let count = len(sim.force_field_ids)
+    if count == 0 {
+        return sim
+    }
+    let id = sim.force_field_ids[count - 1]
+    let kept = []
+    for i = 0 to count - 2 {
+        append(kept, sim.force_field_ids[i])
+    }
+    sim.force_field_ids = kept
+    despawn_entity(sim.world, id)
+    return sim
+}
+
+def spawn_emitter(sim, x, y, rate, speed) {
+    let id = spawn_entity(sim.world)
+    set_component(sim.world, id, "position", {x: x, y: y})
+    set_component(sim.world, id, "emitter", {rate: rate, accumulator: 0.0, speed: speed, hue: 0.0})
+    return sim
+}
+
+def collect_spawn_requests(sim, dt) {
+    let requests = []
+    for id in query(sim.world, ["position", "emitter"]) {
+        let pos = get_component(sim.world, id, "position")
+        let em = get_component(sim.world, id, "emitter")
+        em.accumulator = em.accumulator + em.rate * dt
+        if em.accumulator >= 1.0 {
+            let count = floor(em.accumulator)
+            em.accumulator = em.accumulator - count
+            append(requests, {x: pos.x, y: pos.y, count: count, speed: em.speed, hue: em.hue})
+        }
+    }
+    return requests
+}
+
+def collect_force_fields(sim) {
+    let fields = []
+    for id in query(sim.world, ["position", "force_field"]) {
+        let pos = get_component(sim.world, id, "position")
+        let ff = get_component(sim.world, id, "force_field")
+        append(fields, {x: pos.x, y: pos.y, radius: ff.radius, strength: ff.strength, kind: ff.kind})
+    }
+    return fields
+}
+
+def update_mouse(sim, mx, my, dt, left_down, right_down) {
+    let pos = get_component(sim.world, sim.mouse_entity, "position")
+    let state = get_component(sim.world, sim.mouse_entity, "mouse_state")
+
+    let prev_x = pos.x
+    let prev_y = pos.y
+    pos.x = mx
+    pos.y = my
+
+    if dt > 0.0 {
+        state.vx = (mx - prev_x) / dt
+        state.vy = (my - prev_y) / dt
+    }
+
+    if left_down {
+        state.mode = sim.primary_mode
+    } else {
+        if right_down {
+            state.mode = sim.secondary_mode
+        } else {
+            state.mode = "none"
+        }
+    }
+    return state
+}
+
+def world_step(sim, dt, mouse_x, mouse_y, mouse_left, mouse_right) {
+    let mouse_state = update_mouse(sim, mouse_x, mouse_y, dt, mouse_left, mouse_right)
+    let spawn_requests = collect_spawn_requests(sim, dt)
+    let fields = collect_force_fields(sim)
+
+    let gravity_value = 0.0
+    if sim.gravity_enabled {
+        gravity_value = sim.gravity
+    }
+
+    let directives = {
+        gravity: gravity_value,
+        wind: sim.wind,
+        damping: sim.damping,
+        restitution: sim.restitution,
+        mouse_mode: mouse_state.mode,
+        mouse_x: mouse_x,
+        mouse_y: mouse_y,
+        mouse_vx: mouse_state.vx,
+        mouse_vy: mouse_state.vy,
+        mouse_radius: mouse_state.radius,
+        mouse_strength: mouse_state.strength,
+        force_fields: fields,
+        collisions_enabled: sim.collisions_enabled,
+        collision_cell_size: sim.collision_cell_size,
+        collision_max_per_cell: sim.collision_max_per_cell,
+        collision_spring_k: sim.collision_spring_k,
+        spawn_requests: spawn_requests,
+        color_mode: sim.color_mode
+    }
+
+    # Same convention as every other function here: sim comes back out,
+    # because passing it in only ever handed NovaLang a converted copy.
+    return {sim: sim, directives: directives}
+}

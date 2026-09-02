@@ -1,0 +1,105 @@
+# examples/ecs_self_test.nova - exercises lib/ecs.nova's core mechanics:
+# spawn/despawn, component set/get/has, masks, and query() correctness -
+# including that query() only walks the smallest matching component set
+# (checked directly, not just trusted).
+#
+# Run: python3 novalang.py examples/ecs_self_test.nova
+#      python3 novalang.py --bootstrap examples/ecs_self_test.nova
+
+import "../lib/ecs.nova" with world_new, spawn_entity, despawn_entity, is_alive, set_component, remove_component, has_component, get_component, query, smallest_component, mask_has, mask_add, mask_remove, run_system
+
+let state = {checks: 0, failures: []}
+
+def check(label, actual, expected) {
+    state["checks"] = state["checks"] + 1
+    if actual != expected {
+        append(state["failures"], label + ": expected " + str(expected) + ", got " + str(actual))
+    }
+}
+
+def check_true(label, actual) {
+    check(label, actual, true)
+}
+
+# ---- masks ----
+check("mask_add then mask_has", mask_has(mask_add(0, 4), 4), true)
+check("mask_has on a bit never added", mask_has(mask_add(0, 4), 8), false)
+check("mask_remove clears only that bit", mask_has(mask_remove(mask_add(mask_add(0, 4), 8), 4), 8), true)
+check("mask_remove actually removed the bit", mask_has(mask_remove(mask_add(mask_add(0, 4), 8), 4), 4), false)
+
+# ---- spawn / component set / get / has ----
+let world = world_new()
+let e1 = spawn_entity(world)
+let e2 = spawn_entity(world)
+let e3 = spawn_entity(world)
+
+check_true("freshly spawned entity is alive", is_alive(world, e1))
+check_true("entity ids are distinct", e1 != e2 and e2 != e3)
+
+set_component(world, e1, "position", {x: 1.0, y: 2.0})
+set_component(world, e1, "velocity", {vx: 0.5, vy: -0.5})
+set_component(world, e2, "position", {x: 5.0, y: 5.0})
+set_component(world, e3, "velocity", {vx: 1.0, vy: 1.0})
+
+check_true("e1 has position", has_component(world, e1, "position"))
+check_true("e1 has velocity", has_component(world, e1, "velocity"))
+check_true("e2 has position", has_component(world, e2, "position"))
+check("e2 does not have velocity", has_component(world, e2, "velocity"), false)
+check("e3 does not have position", has_component(world, e3, "position"), false)
+
+check("get_component reads back what was set", get_component(world, e1, "position")["x"], 1.0)
+
+# ---- query: only entities with ALL requested components ----
+let both = query(world, ["position", "velocity"])
+check("query([position, velocity]) finds exactly e1", both, [e1])
+
+let positioned = query(world, ["position"])
+let positioned_sorted = sorted(positioned)
+check("query([position]) finds e1 and e2", positioned_sorted, sorted([e1, e2]))
+
+# ---- query drives off the SMALLEST component set, not the world size ----
+# velocity has 2 entities (e1, e3), position has 2 (e1, e2) - add a
+# third, much larger component so smallest_component() has a real choice
+# to make, and check it picks correctly.
+for i = 0 to 20 {
+    let filler = spawn_entity(world)
+    set_component(world, filler, "tag", "filler")
+}
+let picked = smallest_component(world, ["tag", "velocity"])
+check("smallest_component still picks a 2-entity component over a 21-entity one", picked, "velocity")
+
+# ---- despawn removes the entity from every component and every query ----
+despawn_entity(world, e1)
+check("despawned entity is no longer alive", is_alive(world, e1), false)
+check("despawned entity drops out of has_component", has_component(world, e1, "position"), false)
+check("despawned entity drops out of query results", query(world, ["position"]), [e2])
+
+# ---- run_system calls fn(world, id, dt) once per matching entity ----
+let world2 = world_new()
+let a = spawn_entity(world2)
+let b = spawn_entity(world2)
+set_component(world2, a, "position", {x: 0.0, y: 0.0})
+set_component(world2, a, "velocity", {vx: 2.0, vy: 0.0})
+set_component(world2, b, "position", {x: 0.0, y: 0.0})
+set_component(world2, b, "velocity", {vx: 0.0, vy: 3.0})
+
+def apply_velocity(world, id, dt) {
+    let pos = get_component(world, id, "position")
+    let vel = get_component(world, id, "velocity")
+    pos["x"] = pos["x"] + vel["vx"] * dt
+    pos["y"] = pos["y"] + vel["vy"] * dt
+}
+
+run_system(world2, ["position", "velocity"], apply_velocity, 1.0)
+check("run_system moved entity a", get_component(world2, a, "position")["x"], 2.0)
+check("run_system moved entity b", get_component(world2, b, "position")["y"], 3.0)
+
+# ---- report ----
+if len(state["failures"]) == 0 {
+    print("All ECS self-tests passed.")
+} else {
+    print(str(len(state["checks"])) + " checks run, " + str(len(state["failures"])) + " FAILED:")
+    for message in state["failures"] {
+        print("  " + message)
+    }
+}

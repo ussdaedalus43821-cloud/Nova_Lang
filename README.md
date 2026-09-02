@@ -3,9 +3,11 @@
 **NovaLang** is a simple, embeddable scripting language, implemented twice
 over: once as a hand-written Python interpreter (`novalang.py`), and once
 again in NovaLang itself (`novalang.nova`) — a self-hosted implementation
-that the Python engine can load and run under. It has no dependencies
-beyond the Python standard library, a real standard library of its own,
-and a two-way embedding API for calling between Python and NovaLang.
+that the Python engine can load and run under. The language itself has no
+dependencies beyond the Python standard library, a real standard library
+of its own, and a two-way embedding API for calling between Python and
+NovaLang. (One example — the [ECS particle demo](#ecs--particle-engine) —
+needs NumPy and pygame; nothing else in this repo does.)
 
 ```
 source text  ->  Lexer       ->  tokens
@@ -17,8 +19,8 @@ No `eval()`. No `exec()`. No parser generators. Every stage — lexer,
 parser, AST, tree-walking interpreter — is built by hand, in both the
 Python engine and the self-hosted one.
 
-**Current release: v1.0.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
-full history across all 13 build stages.
+**Current release: v1.1.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
+full history across all 14 build stages.
 
 ## Contents
 
@@ -27,6 +29,7 @@ full history across all 13 build stages.
 - [Standard library](#standard-library)
 - [Self-hosting](#self-hosting)
 - [Embedding NovaLang in Python](#embedding-novalang-in-python)
+- [ECS & particle engine](#ecs--particle-engine)
 - [Examples](#examples)
 - [Performance](#performance)
 - [Security](#security)
@@ -224,10 +227,23 @@ except NovaLangError as error:
 | `expose_global(name, value)` | Bind a Python value as a NovaLang **global**, so a script writes `name.field` directly, no `python.*` wrapper |
 | `expose_module(module)` | Allow `python.import("name")` to succeed for a module beyond the built-in allowlist |
 
-Passing a plain Python object as an argument to a NovaLang function (via
-`call()`, or as an argument from `expose_global`) wraps it as a **live
-proxy**: reading and writing its attributes from NovaLang reads and writes
-the real object, with no copying and no pre-registration needed.
+Passing a plain Python **object** (a class instance) as an argument to a
+NovaLang function (via `call()`, or as an argument from `expose_global`)
+wraps it as a **live proxy**: reading and writing its attributes from
+NovaLang reads and writes the real object, with no copying and no
+pre-registration needed.
+
+A plain Python **dict or list**, though, is a different story:
+`to_nova_value()` converts it into a *new* NovaLang value each time it
+crosses the boundary — a one-time copy, not a live reference. So if you
+`call()` a NovaLang function that mutates a dict argument and expect the
+Python-held original to reflect that mutation afterward, it won't:
+mutations only show up in whatever that call *returns*. The fix is the
+same pattern used throughout `examples/` (`reactor_sim.nova`'s `reactor`,
+`daedalus_sim.nova`'s `enemies`, `ecs_particles.nova`'s `sim`): every
+function that mutates such a value returns it, and the Python caller
+reassigns — `state = nova.call("update", state, ...)` — every time, not
+just on the calls where you remember a mutation happened.
 
 From the NovaLang side, the `python` namespace reaches back into Python:
 
@@ -241,6 +257,77 @@ python.set("computed", 6 * 7)          # write one back, or define a fresh entry
 See [Security](#security) below for exactly what `python.*` can and can't
 reach, and `examples/embedding.nova` / `examples/embedding_demo.py` for a
 complete, runnable walkthrough of both directions together.
+
+## ECS & particle engine
+
+`lib/ecs.nova` is a real Entity-Component-System — entities, components,
+`query()` by component combination, `spawn_entity()`/`despawn_entity()`
+at runtime — and `lib/spatial_hash.nova` is a grid-based spatial hash
+with O(1) average insert/query. Both are genuinely fast at what
+NovaLang's interpreter can actually do.
+
+What they are *not* is where `examples/ecs_particles.nova`'s
+25,000–50,000 simulated particles live. That decision is worth
+explaining rather than just asserting, because it's a direct answer to
+"why isn't the physics system just NovaLang, like the spec asked for":
+
+**Measured, before writing any of it** — a bare NovaLang arithmetic loop
+runs at ~162,000 iterations/sec; a realistic per-particle physics update
+(reading/writing dict fields, the natural way to represent a particle in
+NovaLang) runs at ~41,000–66,000 particles/sec. At 50,000 particles, the
+movement update *alone* costs ~750ms — 45x an entire 16.7ms frame budget
+at 60fps — before collision detection, which costs *more* per particle
+than movement, touches anything. That's a constant-factor ceiling from
+tree-walking interpretation itself (every `+`, every dict lookup is a
+Python function call walking an AST node), not an algorithmic one — a
+spatial hash fixes O(n²) *complexity*, and complexity was never the
+bottleneck at these counts.
+
+So the split is: **NovaLang owns the ECS and everything at gameplay
+scale** — emitters, force fields, the mouse's current interaction mode,
+spawn timing — using `lib/ecs.nova` for real, with entities numbering in
+the tens to low hundreds, comfortably inside its real throughput.
+**Python owns the particle data itself**, tens of thousands of positions
+and velocities as contiguous NumPy arrays (struct-of-arrays, not 50,000
+Python objects), updated with vectorized array operations —
+`examples/particle_engine.py`. `examples/ecs_particles.nova`'s
+`world_step()` is called once a frame, not once per particle, and
+returns a small "directives" dict (gravity, active force fields, spawn
+requests, mouse mode) that Python applies to all 50,000 particles in one
+shot. NovaLang decides *what*; NumPy does it, to everything, at once.
+
+The same "pass state in, get new state back" pattern from
+`examples/embedding_templates/` applies here too, with a sharper edge:
+every `ecs_particles.nova` function that takes `sim` returns it, and the
+caller must reassign `sim = nova.call(...)` every time — see the caveat
+in [Embedding NovaLang in Python](#embedding-novalang-in-python) above
+about dicts/lists being copied, not proxied, across the boundary. This
+was caught by testing the file, not by inspection.
+
+**Run `examples/particle_engine_selftest.py` before trusting any FPS
+number.** The environment this was built in had no NumPy, no pygame, and
+no network access to install either — so while `lib/ecs.nova`,
+`lib/spatial_hash.nova`, and `examples/ecs_particles.nova` were fully
+tested (their self-tests pass, host and `--bootstrap`), the NumPy
+collision code in `particle_engine.py` was validated only as an
+algorithm — checked against a brute-force O(n²) reference as a
+plain-Python prototype (no NumPy needed to run that check) — not
+executed. The self-test re-runs that exact cross-check against your real
+NumPy on the real `ParticleEngine` class; if it passes, the
+transcription was faithful.
+
+```bash
+pip3 install numpy pygame        # only ecs_demo.py needs these - the language itself needs neither
+python3 examples/particle_engine_selftest.py   # run this first - no display needed
+python3 examples/ecs_demo.py                    # the real demo
+```
+
+In `ecs_demo.py`: drag the slider or press 1–5 for particle-count
+presets, hold left/right mouse to attract/repel, `G`/`C`/`V` toggle
+gravity/collisions/cycle color mode, `F`/`X` spawn/despawn a force field
+at the mouse, `Q` toggles the fast (vectorized pixel-splat) render path
+against a slower "quality" one (real drawn circles) so you can see the
+difference directly.
 
 ## Examples
 
@@ -263,6 +350,10 @@ All in `examples/`, runnable directly or with `--bootstrap`:
 | `embedding.nova` + `embedding_demo.py` | `python.*` from NovaLang, `Nova`/`expose()` from Python, together |
 | `reactor_script.nova` + `reactor_sim_integration.py` | A live Python object (`reactor.temp`, `reactor.scram()`) driven from NovaLang each simulation tick |
 | `daedalus_waves.nova` + `daedalus_integration.py` | `nova.call()` from inside a Python game loop, with a throughput benchmark |
+| `ecs_self_test.nova` | Exhaustive test of `lib/ecs.nova`: spawn/despawn, masks, queries |
+| `spatial_hash_self_test.nova` | Exhaustive test of `lib/spatial_hash.nova`, including a moving-across-cell-boundary case |
+| `ecs_particles.nova` + `particle_engine.py` + `ecs_demo.py` | The ECS/NumPy particle engine — see [ECS & particle engine](#ecs--particle-engine) |
+| `particle_engine_selftest.py` | Cross-checks the vectorized collision code against a brute-force reference — run this first |
 
 ## Performance
 

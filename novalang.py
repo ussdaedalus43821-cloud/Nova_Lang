@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v1.0.0 - a tiny language built from a hand-written lexer,
+# NovaLang v1.1.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang v1.0.0 - Stage 13: Polish & Documentation
+NovaLang v1.1.0 - Stage 14: ECS & Particle Engine
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -45,7 +45,16 @@ Stage 12: embedding - a Python-side Nova class (eval/exec/load_file/call/
 Stage 13: polish and documentation - README.md, a finalized CHANGELOG.md,
           CONTRIBUTING.md, and the v1.0.0 release. No language or
           standard-library behavior changed; Stages 1-12 are the complete,
-          stable feature set this release ships.
+          stable feature set that release shipped.
+Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
+          spatial hash (lib/spatial_hash.nova), plus a 25,000-50,000-
+          particle demo (examples/ecs_particles.nova,
+          examples/ecs_demo.py) built on both. The particle simulation
+          itself runs as vectorized NumPy in Python, not NovaLang - see
+          lib/ecs.nova's header for the measured numbers behind that
+          choice. NovaLang owns the ECS and everything at gameplay
+          scale: entities, components, queries, emitters, force fields,
+          mouse-interaction rules.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -62,7 +71,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -3678,7 +3687,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v1.0.0            ║
+║       NOVALANG v1.1.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
