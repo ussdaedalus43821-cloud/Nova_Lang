@@ -1,0 +1,36 @@
+# nova/reactor_physics.nova - temperature physics, the first slice ported
+# from the Python prototype's Reactor.tick().
+#
+# `reactor` is never passed in as an argument here - it doesn't need to
+# be. nova_bridge.py's expose() calls Nova.expose_global("reactor", ...),
+# which binds it as an ordinary NovaLang GLOBAL, so every function in
+# every script this engine loads can just say `reactor` directly, the
+# same way reactor_script.nova's original functions did when reactor was
+# a call argument. Globals here mean the same thing they do in
+# examples/reactor_script.nova's docs: reactor.temp / reactor.power read
+# and write the real Python object directly, live, no copying.
+
+def tick(dt) {
+    if reactor.scrammed {
+        let cooled = reactor.temp - 40 * dt
+        if cooled < 20.0 { cooled = 20.0 }
+        reactor.temp = cooled
+        return
+    }
+    let jitter = (random() * 40 - 15) * dt
+    let heated = reactor.temp + reactor.power * 6 * dt + jitter
+    if heated < 20.0 { heated = 20.0 }
+    reactor.temp = heated
+}
+
+def operator_increase_power() {
+    let target = reactor.power + 5
+    if target > 100 { target = 100 }
+    reactor.set_power(target)
+}
+
+def operator_decrease_power() {
+    let target = reactor.power - 5
+    if target < 0 { target = 0 }
+    reactor.set_power(target)
+}
