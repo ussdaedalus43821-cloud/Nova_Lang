@@ -1,0 +1,129 @@
+# examples/stdlib_full_test.nova - exercises every Stage 11 standard
+# library built-in and checks its return value, printing a single summary
+# line. Run both ways and the line must match:
+#
+#   python3 novalang.py examples/stdlib_full_test.nova
+#   python3 novalang.py --bootstrap examples/stdlib_full_test.nova
+#
+# exit() is the one built-in deliberately not called here, since calling
+# it would end this very test process; its behavior (a real process exit
+# with the given code) is covered separately, by shell exit-code checks.
+
+let state = {checks: 0, failures: []}
+
+def check(label, actual, expected) {
+    state["checks"] = state["checks"] + 1
+    if actual != expected {
+        append(state["failures"], label + ": expected " + str(expected) + ", got " + str(actual))
+    }
+}
+
+def check_true(label, actual) {
+    check(label, actual, true)
+}
+
+# ---- time ----
+let t0 = time()
+check_true("time() returns a number", type(t0) == "number")
+sleep(2)
+check_true("time() advances after sleep()", time() >= t0)
+check_true("now() looks ISO-8601", "T" in now() and len(now()) > 10)
+check("format_time epoch", format_time(0, "%Y-%m-%d"), "1970-01-01")
+
+# ---- random ----
+let r = random()
+check_true("random() in [0, 1)", r >= 0 and r < 1)
+let ri = randint(5, 5)
+check("randint(5, 5) forced value", ri, 5)
+let picked = choice([1, 2, 3])
+check_true("choice() picks a real element", picked in [1, 2, 3])
+let deck = [1, 2, 3, 4, 5]
+shuffle(deck)
+check("shuffle() keeps the same elements", sorted(deck), [1, 2, 3, 4, 5])
+
+# ---- math ----
+check("abs(-7)", abs(-7), 7)
+check("round(3.14159, 2)", round(3.14159, 2), 3.14)
+check("floor(3.9)", floor(3.9), 3)
+check("ceil(3.1)", ceil(3.1), 4)
+check("sqrt(144)", sqrt(144), 12)
+check("pow(2, 10)", pow(2, 10), 1024)
+check("sin(0)", sin(0), 0)
+check("cos(0)", cos(0), 1)
+check("tan(0)", tan(0), 0)
+check("ln(1)", ln(1), 0)
+check("log10(1000)", log10(1000), 3)
+check_true("PI is approximately correct", PI > 3.14 and PI < 3.15)
+check_true("E is approximately correct", E > 2.71 and E < 2.72)
+check("min(4, 1, 7)", min(4, 1, 7), 1)
+check("max([4, 1, 7])", max([4, 1, 7]), 7)
+check("sum(1, 2, 3, 4)", sum(1, 2, 3, 4), 10)
+
+# ---- system ----
+check("type(env(missing))", type(env("DEFINITELY_NOT_SET_XYZ_999")), "nothing")
+check("type(args())", type(args()), "list")
+check_true("platform() is non-empty", len(platform()) > 0)
+
+# ---- json ----
+let record = {a: 1, b: [1, 2, 3], c: "hi", d: true}
+let encoded = json.dumps(record)
+check_true("json.dumps produces a string", type(encoded) == "string")
+check("json.loads round-trips", json.loads(encoded), record)
+check_true("json.pretty is longer (indented)", len(json.pretty(record)) > len(encoded))
+
+# ---- filesystem ----
+mkdir("nova_stdlib_full_scratch")
+write("nova_stdlib_full_scratch/a.txt", "one")
+copy("nova_stdlib_full_scratch/a.txt", "nova_stdlib_full_scratch/b.txt")
+check("copy() then read()", read("nova_stdlib_full_scratch/b.txt"), "one")
+rename("nova_stdlib_full_scratch/b.txt", "nova_stdlib_full_scratch/c.txt")
+check_true("rename() moved the file", exists("nova_stdlib_full_scratch/c.txt") and not exists("nova_stdlib_full_scratch/b.txt"))
+check_true("cwd() is non-empty", len(cwd()) > 0)
+remove("nova_stdlib_full_scratch/a.txt")
+remove("nova_stdlib_full_scratch/c.txt")
+remove("nova_stdlib_full_scratch")
+check_true("remove() cleaned up the directory", not exists("nova_stdlib_full_scratch"))
+
+# ---- strings ----
+check_true("regex() matches", regex("[0-9]+", "room 42"))
+check_true("regex() does not force full match", not regex("^[0-9]+$", "room 42"))
+check("replace_all()", replace_all("a-b-c", "-", "_"), "a_b_c")
+check("split_lines()", split_lines("one\ntwo\nthree"), ["one", "two", "three"])
+check("pad()", pad("hi", 5), "hi   ")
+check("pad_left()", pad_left("hi", 5), "   hi")
+check("reverse(string)", reverse("Nova"), "avoN")
+check("reverse(list)", reverse([1, 2, 3]), [3, 2, 1])
+check("sorted() ascending", sorted([3, 1, 2]), [1, 2, 3])
+check("sorted() descending", sorted([3, 1, 2], true), [3, 2, 1])
+
+# ---- debugging ----
+assert(1 + 1 == 2)
+let assert_message = ""
+try {
+    assert(false, "deliberate failure")
+} catch e {
+    assert_message = e
+}
+check("assert() failure message", assert_message, "AssertionError: deliberate failure")
+log("stdlib_full_test.nova reached the logging check")
+
+# ---- higher-order functions ----
+def double(x) { return x * 2 }
+def is_even(x) { return x % 2 == 0 }
+def add(a, b) { return a + b }
+check("map()", map(double, [1, 2, 3]), [2, 4, 6])
+check("filter()", filter(is_even, [1, 2, 3, 4, 5, 6]), [2, 4, 6])
+check("reduce()", reduce(add, [1, 2, 3, 4, 5]), 15)
+check("reduce() with a seed", reduce(add, [], 100), 100)
+check("map() with a builtin", map(str, [1, 2, 3]), ["1", "2", "3"])
+check("reduce() with a builtin", reduce(max, [3, 7, 2, 9, 4]), 9)
+
+# ---- report ----
+if len(state["failures"]) == 0 {
+    print("All standard library tests passed.")
+} else {
+    print(str(len(state["checks"])) + " checks run, " + str(len(state["failures"])) + " FAILED:")
+    for message in state["failures"] {
+        print("  " + message)
+    }
+}
