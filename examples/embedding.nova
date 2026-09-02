@@ -1,0 +1,55 @@
+# examples/embedding.nova - calling Python from NovaLang (Stage 12).
+#
+# This file only reaches modules on PYTHON_IMPORT_ALLOWLIST (math, random,
+# datetime, ...) and functions an embedding program has exposed under the
+# name "host" - so it runs two ways:
+#
+#   python3 novalang.py examples/embedding.nova
+#       standalone; host.* calls are skipped, since nothing exposed "host"
+#
+#   python3 examples/embedding_demo.py
+#       the companion script below, which does expose "host" and also
+#       calls back into this file's own functions from Python afterwards
+#
+# python.* is a deliberately narrow bridge, not unrestricted access to the
+# process - see novalang.py's PYTHON_IMPORT_ALLOWLIST. python.import("os")
+# is refused for exactly that reason; try it if you want to see the error.
+
+# ---- calling a Python module function ----
+python.import("math")
+print("sqrt(2) via python.call:", python.call("math.sqrt", 2))
+print("pi via python.get:", python.get("math.pi"))
+print("pow(2, 10) via python.call:", python.call("math.pow", 2, 10))
+
+# ---- a module outside the allowlist is refused, not silently ignored ----
+try {
+    python.import("os")
+} catch e {
+    print("blocked, as intended:", e)
+}
+
+# ---- python.set writes back to a Python object the embedder exposed,
+# or - with no dot in the name - defines a fresh entry of its own that
+# Nova.registry can read afterwards. ----
+python.set("computed_from_nova", 6 * 7)
+
+# ---- calling a function the embedding program exposed with
+# Nova.expose("host", ...). Only present when embedding_demo.py ran this
+# file, so it is wrapped in try/catch: python.call raises a clear
+# PythonError when "host" was never exposed, which is expected and fine
+# when this file is run standalone. ----
+try {
+    let greeting = python.call("host.greet", "NovaLang")
+    print("host.greet() from Python:", greeting)
+} catch e {
+    print("host.* not available in this run (that's fine standalone):", e)
+}
+
+# ---- a function defined here, ready for embedding_demo.py to call back
+# into with Nova.call("celsius_to_fahrenheit", ...) ----
+def celsius_to_fahrenheit(c) {
+    return c * 9 / 5 + 32
+}
+print("celsius_to_fahrenheit(100):", celsius_to_fahrenheit(100))
+
+print("EMBEDDING.NOVA FINISHED")

@@ -1043,6 +1043,16 @@ def define_stdlib_globals(scope) {
         loads: {kind: "builtin", name: "json_loads"},
         pretty: {kind: "builtin", name: "json_pretty"}
     }
+    # Stage 12: python.* delegates straight to the host's real python.*
+    # (see call_builtin below) - this interpreter is itself NovaLang code
+    # running under that same host, so its own `python` global already IS
+    # the real, host-bound namespace with the real registry behind it.
+    scope["vars"]["python"] = {
+        "import": {kind: "builtin", name: "python_import"},
+        call: {kind: "builtin", name: "python_call"},
+        get: {kind: "builtin", name: "python_get"},
+        set: {kind: "builtin", name: "python_set"}
+    }
 }
 
 def env_has(scope, name) {
@@ -1343,6 +1353,36 @@ def call_builtin(name, call_args, pos) {
     }
     if name == "json_pretty" {
         return json.pretty(call_args[0])
+    }
+    if name == "python_import" {
+        return python.import(call_args[0])
+    }
+    if name == "python_get" {
+        return python.get(call_args[0])
+    }
+    if name == "python_set" {
+        return python.set(call_args[0], call_args[1])
+    }
+    if name == "python_call" {
+        # python.call(name, ...) is variadic on the host too; a handful of
+        # explicit arities covers realistic embedding calls without needing
+        # a general argument-spread NovaLang does not have syntax for.
+        if len(call_args) == 1 {
+            return python.call(call_args[0])
+        }
+        if len(call_args) == 2 {
+            return python.call(call_args[0], call_args[1])
+        }
+        if len(call_args) == 3 {
+            return python.call(call_args[0], call_args[1], call_args[2])
+        }
+        if len(call_args) == 4 {
+            return python.call(call_args[0], call_args[1], call_args[2], call_args[3])
+        }
+        if len(call_args) == 5 {
+            return python.call(call_args[0], call_args[1], call_args[2], call_args[3], call_args[4])
+        }
+        return python.call(call_args[0], call_args[1], call_args[2], call_args[3], call_args[4], call_args[5])
     }
     if name == "cwd" {
         return cwd()

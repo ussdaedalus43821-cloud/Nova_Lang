@@ -1,0 +1,36 @@
+# examples/reactor_script.nova - a control script for a reactor
+# simulation (Stage 12).
+#
+# check_reactor(reactor) takes the live reactor object as a plain
+# argument - an embedding program calls it once per simulation tick with
+# Nova.call("check_reactor", reactor_instance). Passing a Python object as
+# a NovaLang function argument automatically wraps it as a live proxy
+# (Stage 12's PythonObjectProxy), so `reactor.temp`, `reactor.scram()` and
+# `reactor.set_power(...)` here read and write the real Python object -
+# no python.get/call wrapper needed, and nothing needs pre-registering.
+# See examples/reactor_sim_integration.py for the Python side, and swap
+# its mock Reactor class for your real one.
+
+def check_reactor(reactor) {
+    if reactor.temp > 2800 {
+        log(f"CRITICAL: core at {str(reactor.temp)}C - scramming")
+        reactor.scram()
+        return "scrammed"
+    }
+    if reactor.temp > 2400 {
+        log(f"WARNING: core at {str(reactor.temp)}C - reducing power")
+        reactor.set_power(reactor.power - 10)
+        return "reduced_power"
+    }
+    if reactor.temp < 300 and reactor.power > 0 {
+        log(f"core is cold at {str(reactor.temp)}C while power is on - check sensors")
+        return "cold_alarm"
+    }
+    return "nominal"
+}
+
+# The embedding program calls check_reactor(reactor) once per simulation
+# tick (see reactor_sim_integration.py) - Nova.call("check_reactor", reactor)
+# from Python, or python.call from another NovaLang script. Nothing at
+# this file's top level runs the check itself, so loading it has no
+# side effects until the embedder actually calls in.
