@@ -1,0 +1,114 @@
+# examples/daedalus_sim.nova - Daedalus, rewritten entirely in native
+# NovaLang (Stage 14): a full game loop - spawning, movement, and
+# collision - not just wave data, with no Python driving it.
+#
+# Run: python3 novalang.py examples/daedalus_sim.nova
+#      python3 novalang.py --bootstrap examples/daedalus_sim.nova
+#
+# examples/daedalus_waves.nova (imported below, unchanged) already
+# supplies enemy_stats()/spawn_wave()/spawn_level_wave() as pure data -
+# nothing there was Python-specific, so this file reuses it as-is rather
+# than re-implementing spawning. What's genuinely new here, since neither
+# daedalus_waves.nova nor examples/daedalus_integration.py ever simulated
+# actual gameplay, is:
+#   - positions and movement: each enemy advances along a single lane
+#     toward the base at x = 0, at its own `speed`.
+#   - base collision: an enemy that reaches the base (x <= 0) deals its
+#     damage to the base and is removed.
+#   - enemy-enemy collision: a plain O(n^2) pairwise distance check each
+#     frame - fine at these enemy counts, and there is no spatial-index
+#     library to reach for instead. Enemies that end a frame within
+#     COLLISION_RADIUS of each other are "bumping" and knock a small
+#     amount of hp off one another; an enemy whose hp reaches 0 is
+#     removed, matching a normal top-down shooter's crowding behavior.
+
+import "./daedalus_waves.nova" with spawn_level_wave
+
+let COLLISION_RADIUS = 0.5
+let BUMP_DAMAGE = 1
+let LANE_LENGTH = 20.0
+
+def place_wave(wave) {
+    # Spread a freshly spawned wave out along the lane's starting edge so
+    # they do not all begin stacked on top of one another.
+    let placed = []
+    for i in range(len(wave)) {
+        let enemy = wave[i]
+        enemy["x"] = LANE_LENGTH
+        enemy["y"] = i * 0.6
+        append(placed, enemy)
+    }
+    return placed
+}
+
+def advance(enemies, dt) {
+    for enemy in enemies {
+        enemy["x"] = enemy["x"] - enemy["speed"] * dt
+    }
+}
+
+def distance(a, b) {
+    let dx = a["x"] - b["x"]
+    let dy = a["y"] - b["y"]
+    return sqrt(dx * dx + dy * dy)
+}
+
+def resolve_collisions(enemies) {
+    for i = 0 to len(enemies) - 1 {
+        for j = i + 1 to len(enemies) - 1 {
+            let a = enemies[i]
+            let b = enemies[j]
+            if distance(a, b) < COLLISION_RADIUS {
+                a["hp"] = a["hp"] - BUMP_DAMAGE
+                b["hp"] = b["hp"] - BUMP_DAMAGE
+            }
+        }
+    }
+}
+
+def resolve_base_hits(enemies, base) {
+    let survivors = []
+    for enemy in enemies {
+        if enemy["x"] <= 0 {
+            base["hp"] = base["hp"] - enemy["damage"]
+            log(f"{enemy['id']} reached the base for {str(enemy['damage'])} damage")
+        } else {
+            if enemy["hp"] > 0 {
+                append(survivors, enemy)
+            } else {
+                log(f"{enemy['id']} destroyed in a collision")
+            }
+        }
+    }
+    return survivors
+}
+
+def run_frame(enemies, base, dt) {
+    advance(enemies, dt)
+    resolve_collisions(enemies)
+    return resolve_base_hits(enemies, base)
+}
+
+def run_level(level, frames, dt) {
+    let base = {hp: 100}
+    let enemies = place_wave(spawn_level_wave(level))
+    print("level " + str(level) + ": " + str(len(enemies)) + " enemies inbound, base hp " + str(base["hp"]))
+
+    for frame_number = 1 to frames {
+        enemies = run_frame(enemies, base, dt)
+        if base["hp"] <= 0 {
+            print("frame " + str(frame_number) + ": base destroyed")
+            break
+        }
+        if len(enemies) == 0 {
+            print("frame " + str(frame_number) + ": wave cleared, base hp " + str(base["hp"]))
+            break
+        }
+    }
+
+    let final_hp = base["hp"]
+    if final_hp < 0 { final_hp = 0 }
+    print("level " + str(level) + " result: base hp " + str(final_hp) + ", " + str(len(enemies)) + " enemies remaining")
+}
+
+run_level(5, 40, 1.0)

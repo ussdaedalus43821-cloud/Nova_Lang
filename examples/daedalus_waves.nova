@@ -7,9 +7,14 @@
 # rather than spawning anything itself, so this script stays pure data
 # and the embedding game decides what "spawning" actually means (adding
 # sprites, playing sounds, whatever Daedalus's own spawn code does). See
-# examples/daedalus_integration.py for the Python side driving it.
+# examples/daedalus_integration.py for the Python side driving it, and
+# examples/daedalus_sim.nova (Stage 14) for a fully native NovaLang game
+# loop that imports these three functions directly (hence `export` below
+# on all three - added for that import, and harmless to the existing
+# Python-embedding use, since Nova.call() looks functions up as ordinary
+# globals regardless of whether they are exported).
 
-def enemy_stats(kind) {
+export def enemy_stats(kind) {
     if kind == "fast" {
         return {hp: 20, speed: 3.0, damage: 5}
     }
@@ -22,7 +27,7 @@ def enemy_stats(kind) {
     return {hp: 40, speed: 1.5, damage: 8}          # "normal", or unrecognized
 }
 
-def spawn_wave(count, kind) {
+export def spawn_wave(count, kind) {
     let stats = enemy_stats(kind)
     let wave = []
     for i in range(count) {
@@ -39,7 +44,7 @@ def spawn_wave(count, kind) {
 }
 
 # A slightly more interesting wave: mixed kinds, harder as `level` rises.
-def spawn_level_wave(level) {
+export def spawn_level_wave(level) {
     let wave = []
     for enemy in spawn_wave(level + 2, "fast") {
         append(wave, enemy)
