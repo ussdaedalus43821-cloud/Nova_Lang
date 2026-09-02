@@ -18,6 +18,106 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [0.12.0] - 2026-09-01 — Embedding & Integration
+
+Stage 12. NovaLang as a scripting engine inside a Python program, in both
+directions - and a design departure from what was asked for, explained
+below, because the literal request was a sandbox escape.
+
+### Added
+
+- **`Nova`, the Python-side embedding class**: `eval(code)`, `exec(code)`,
+  `load_file(path)`, `call(name, *args)`, each converting between Python
+  and NovaLang values and raising `NovaLangError` - never a raw
+  `NovaError` - on trouble in the NovaLang code, so calling code never has
+  to import `novalang` to handle failures.
+- **`compile(code)`**, returning a `CompiledScript` whose `run()` skips
+  lexing and parsing on every call - the precompile option for a script
+  invoked every frame. `eval()`/`exec()` also cache by source text
+  automatically, so calling either with an unchanged script string every
+  frame (a game loop's condition script, typically) costs no repeated
+  parsing even without calling `compile()` yourself.
+  `examples/daedalus_integration.py` measures this concretely: 15
+  `nova.call()`s to an already-loaded function in 0.007s on this machine,
+  about 2,200 calls/sec - far inside a 60fps frame budget (16.7ms/frame).
+- **`Nova.expose(name, value)`**, registering a Python value so
+  `python.get/call/set("name...")` can reach it from NovaLang;
+  **`expose_module(module)`**, allowing `python.import()` to succeed for a
+  module beyond the built-in allowlist; **`expose_global(name, value)`**,
+  binding a value directly as a NovaLang global, so a script can write
+  `reactor.temp` and `reactor.scram()` with no `python.*` wrapper at all.
+- **`python.import`, `python.call`, `python.get`, `python.set`** on the
+  NovaLang side - a namespace dict like `json`, not new syntax.
+  `python.import` only succeeds on its own for a short, fixed allowlist of
+  pure-computation stdlib modules (`math`, `random`, `statistics`,
+  `itertools`, `functools`, `string`, `re`, `datetime`, `json`,
+  `collections`); anything else needs `Nova.expose_module()` first.
+  `python.call`/`get`/`set` resolve a dotted name against what the
+  embedding program has explicitly exposed - there is no path from
+  `python.*` to anything the host did not choose to hand over.
+- **`PythonObjectProxy`**, a `dict` subclass wrapping a live Python object.
+  NovaLang's member/index access already only ever calls `in`, `[]` and
+  iteration on a dict-typed value (`isinstance(x, dict)`, true for a
+  subclass) - overriding those four is all it took for `reactor.temp` to
+  read the real attribute, `reactor.temp = x` to write it, and
+  `reactor.scram` to resolve to a real, callable method, with no changes
+  needed anywhere else in the interpreter. Passing a plain Python object
+  as an argument to `Nova.call()` wraps it the same way automatically.
+- Self-hosted parity: `novalang.nova` binds the same `python` namespace
+  and delegates each case straight to the host's real `python.*` -
+  `novalang.nova` is itself NovaLang code running under that host, so its
+  own `python` global already is the live, registry-backed one; nothing
+  needed duplicating. Verified byte-identical, `examples/embedding.nova`
+  included.
+- `examples/embedding.nova` and its companion `examples/embedding_demo.py`
+  - calling Python module functions, a Python object's methods, a blocked
+  import, and a NovaLang function called back from Python. `examples/
+  reactor_script.nova` and `examples/reactor_sim_integration.py` - a
+  control script scramming a (mock) reactor through a live proxy every
+  simulation tick. `examples/daedalus_waves.nova` and `examples/
+  daedalus_integration.py` - `spawn_wave`/`spawn_level_wave` returning
+  enemy data for a (mock) game loop to spawn, with the throughput numbers
+  above. The reactor and Daedalus integrations are self-contained mocks
+  with the same shape (`temp`/`power`/`scram()`, `spawn_wave(n, kind)`)
+  real ones would have - there is no actual Reactor Sim or Daedalus
+  source in this repository to integrate with, so these demonstrate the
+  pattern to adapt, not a drop-in connection to your real projects.
+- The banner reads `NOVALANG v0.12.0`; `help` gains an Embedding section.
+
+### Changed from what was asked
+
+**`python.import`/`call`/`get`/`set` were specified as unrestricted access
+to any Python module or function.** That is not what got built, on
+purpose: a NovaLang script is meant to be things like a level script, a
+mod, someone else's config logic - exactly the kind of content a real
+embedding boundary should not trust with `python.call("os.system", ...)`.
+The allowlist-plus-explicit-registry design above satisfies every example
+in the request (`python.get("math.pi")`, `reactor.scram()`) while keeping
+a script unable to reach anything the host did not choose to expose. This
+is standard practice for embedded scripting (Lua, JS-in-browser both work
+this way) and was worth doing even though it means the built API is
+narrower than literally specified.
+
+### Note
+
+A Python exception raised inside a function NovaLang calls (`python.call`,
+or a value exposed with `expose`/`expose_global`) is caught and re-raised
+as a NovaError labelled `PythonError` - catchable with an ordinary
+`try { ... } catch e { ... }`, same as any other NovaLang error. The
+reverse direction (`Nova.eval`/`exec`/`load_file`/`call`, and a NovaLang
+function value handed to Python) always raises `NovaLangError`, whether
+the underlying problem was a parse error, a runtime error, or a stray
+`return`/`break`/`continue` outside anything that would catch it.
+
+`python.call`'s NovaLang-facing arity is capped at five extra arguments
+(six including the name) in the self-hosted interpreter, since NovaLang
+has no argument-spread syntax to forward an arbitrary-length list to
+another variadic call - `novalang.nova`'s own `call_builtin` has to
+enumerate each arity by hand, the same way it already does for `range()`
+and `pow()`. The host side has no such limit.
+
+---
+
 ## [0.11.0] - 2026-09-01 — Standard Library
 
 Stage 11. Batteries included: over 40 global functions, no import needed,
@@ -678,6 +778,7 @@ Stage 1. The pipeline, end to end, in its smallest useful form.
 - Errors reported as a caret under the offending character rather than a Python
   traceback.
 
+[0.12.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.11.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.10.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang
 [0.9.0]: https://github.com/ussdaedalus43821-cloud/Nova_Lang

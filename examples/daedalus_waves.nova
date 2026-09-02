@@ -1,0 +1,56 @@
+# examples/daedalus_waves.nova - custom enemy wave definitions
+# (Stage 12), meant to be called from a game loop.
+#
+# spawn_wave(count, kind) is the function an embedding Python program
+# calls once per wave with Nova.call("spawn_wave", count, kind_string).
+# It returns a description of what to spawn - a list of dictionaries -
+# rather than spawning anything itself, so this script stays pure data
+# and the embedding game decides what "spawning" actually means (adding
+# sprites, playing sounds, whatever Daedalus's own spawn code does). See
+# examples/daedalus_integration.py for the Python side driving it.
+
+def enemy_stats(kind) {
+    if kind == "fast" {
+        return {hp: 20, speed: 3.0, damage: 5}
+    }
+    if kind == "tank" {
+        return {hp: 150, speed: 0.6, damage: 15}
+    }
+    if kind == "boss" {
+        return {hp: 800, speed: 1.0, damage: 40}
+    }
+    return {hp: 40, speed: 1.5, damage: 8}          # "normal", or unrecognized
+}
+
+def spawn_wave(count, kind) {
+    let stats = enemy_stats(kind)
+    let wave = []
+    for i in range(count) {
+        append(wave, {
+            id: kind + "_" + str(i),
+            kind: kind,
+            hp: stats["hp"],
+            speed: stats["speed"],
+            damage: stats["damage"]
+        })
+    }
+    log(f"spawn_wave({str(count)}, \"{kind}\") -> {str(len(wave))} enemies")
+    return wave
+}
+
+# A slightly more interesting wave: mixed kinds, harder as `level` rises.
+def spawn_level_wave(level) {
+    let wave = []
+    for enemy in spawn_wave(level + 2, "fast") {
+        append(wave, enemy)
+    }
+    for enemy in spawn_wave(level // 2, "tank") {
+        append(wave, enemy)
+    }
+    if level % 5 == 0 {
+        for enemy in spawn_wave(1, "boss") {
+            append(wave, enemy)
+        }
+    }
+    return wave
+}

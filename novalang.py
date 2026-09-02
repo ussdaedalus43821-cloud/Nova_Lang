@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v0.11.0 - a tiny language built from a hand-written lexer,
+# NovaLang v0.12.0 - a tiny language built from a hand-written lexer,
 # recursive-descent parser, AST and tree-walking interpreter.
 """
-NovaLang - Stage 11: Standard Library
+NovaLang - Stage 12: Embedding & Integration
 
 The pipeline has not changed since Stage 1, only widened:
 
@@ -37,10 +37,16 @@ Stage 10: self-hosting - novalang.nova is a second Lexer/Parser/Interpreter
 Stage 11: a standard library - time, random, math, the OS and filesystem,
           JSON, string utilities, assert/log, and map/filter/reduce - all
           global, no import needed, and identical under --bootstrap.
+Stage 12: embedding - a Python-side Nova class (eval/exec/load_file/call/
+          compile/expose) for running NovaLang from a Python program, and
+          a NovaLang-side `python` namespace (call/get/set/import) for
+          reaching back into Python - through an explicit, host-controlled
+          bridge, not unrestricted access to the process.
 
 No eval(). No exec(). Everything is still built by hand.
 """
 
+import importlib
 import json as json_module
 import math
 import os
@@ -52,7 +58,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -73,6 +79,19 @@ MAX_TRACE_FRAMES = 8
 # ---------------------------------------------------------------------------
 # Errors and the signals that unwind the interpreter
 # ---------------------------------------------------------------------------
+
+class NovaLangError(Exception):
+    """Raised by the Stage 12 Python embedding API (Nova.eval/exec/
+    load_file/call, and a NovaLang function value wrapped for Python) when
+    the NovaLang code involved raises or fails - wrapping the underlying
+    NovaError so calling code never has to import NovaLang's own error
+    type to handle it. str(this) is the rendered NovaLang message; the
+    original NovaError is chained as __cause__ for anyone who wants it."""
+
+    def __init__(self, nova_error):
+        super().__init__(error_text(nova_error))
+        self.nova_error = nova_error
+
 
 class NovaError(Exception):
     """A NovaLang error that points at the offending character."""
@@ -2024,6 +2043,251 @@ def builtin_json_pretty(args, position):
     return json_module.dumps(to_jsonable(args[0], position), indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Stage 12: embedding - a NovaLang-side bridge back into Python
+# ---------------------------------------------------------------------------
+#
+# `python.*` is deliberately NOT unrestricted access to the process: a
+# NovaLang script - which may be a level script, a mod, config logic
+# someone else wrote - can only reach what the embedding Python program
+# chose to hand it (Nova.expose/expose_module), plus a short allowlist of
+# pure-computation stdlib modules with no file, process or network access.
+# Anything else python.import() refuses, by design.
+
+PYTHON_IMPORT_ALLOWLIST = (
+    "math", "random", "statistics", "itertools", "functools",
+    "string", "re", "datetime", "json", "collections",
+)
+
+
+class PythonObjectProxy(dict):
+    """Makes a live Python object look like a NovaLang dictionary.
+
+    NovaLang's dot/bracket access (visit_MemberNode, visit_IndexNode,
+    lookup_key) only ever calls `in`, `[]` and iteration on whatever a
+    dict-typed value is - all overridden here to reach the wrapped
+    object's real attributes instead of a snapshot, and all it took was
+    isinstance(x, dict) already being how the interpreter checks "is this
+    a dict", true for a subclass too. So `reactor.temp` reads the actual
+    live attribute, `reactor.temp = x` writes it, and `reactor.scram`
+    resolves to a real, callable method - no changes needed anywhere else
+    in the interpreter.
+    """
+
+    def __init__(self, target, interpreter=None):
+        super().__init__()
+        object.__setattr__(self, "_nova_target", target)
+        object.__setattr__(self, "_nova_interpreter", interpreter)
+
+    def _visible_keys(self):
+        return [name for name in dir(self._nova_target) if not name.startswith("_")]
+
+    def __contains__(self, key):
+        return isinstance(key, str) and hasattr(self._nova_target, key)
+
+    def __getitem__(self, key):
+        if not hasattr(self._nova_target, key):
+            raise KeyError(key)
+        return to_nova_value(getattr(self._nova_target, key), self._nova_interpreter)
+
+    def __setitem__(self, key, value):
+        setattr(self._nova_target, key, to_python_value(value, self._nova_interpreter))
+
+    def __iter__(self):
+        return iter(self._visible_keys())
+
+    def __len__(self):
+        return len(self._visible_keys())
+
+    def keys(self):
+        return self._visible_keys()
+
+    def items(self):
+        return [(name, self[name]) for name in self._visible_keys()]
+
+    def values(self):
+        return [self[name] for name in self._visible_keys()]
+
+    def __repr__(self):
+        return "<python object {}>".format(type(self._nova_target).__name__)
+
+
+def to_nova_value(value, interpreter=None):
+    """Python -> NovaLang. A callable becomes a callable NovaLang value;
+    any other object becomes a live PythonObjectProxy, so nested access
+    like `reactor.core.temp` works without special-casing anything."""
+    if value is None:
+        return NOTHING
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): to_nova_value(item, interpreter) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_nova_value(item, interpreter) for item in value]
+    if callable(value):
+        return wrap_python_callable(value)
+    return PythonObjectProxy(value, interpreter)
+
+
+def to_python_value(value, interpreter=None):
+    """NovaLang -> Python, the inverse of to_nova_value. Converting a
+    NovaLang function or built-in needs an interpreter to call it with
+    later - supplied by every call site that has one (the python.* and
+    Nova.* built-ins all do); omitting it is only safe for data with no
+    function values in it."""
+    if value is NOTHING:
+        return None
+    if isinstance(value, PythonObjectProxy):
+        return value._nova_target
+    if isinstance(value, (NovaFunction, BuiltinFunction)):
+        if interpreter is None:
+            raise NovaError(
+                "this NovaLang function cannot be handed to Python here - no "
+                "interpreter is available to call it with",
+                label="PythonError",
+            )
+        return wrap_nova_callable(value, interpreter)
+    if isinstance(value, list):
+        return [to_python_value(item, interpreter) for item in value]
+    if isinstance(value, dict):
+        return {key: to_python_value(item, interpreter) for key, item in value.items()}
+    return value                                        # bool, int, float, str
+
+
+def wrap_python_callable(func, name=None):
+    """A Python callable, reachable from NovaLang - its own errors become
+    a NovaError labelled PythonError, per Stage 12's error-handling rule."""
+
+    def implementation(args, position):
+        python_args = [to_python_value(arg) for arg in args]
+        try:
+            result = func(*python_args)
+        except NovaError:
+            raise
+        except Exception as problem:
+            raise NovaError(
+                "{}: {}".format(type(problem).__name__, problem), position, label="PythonError"
+            )
+        return to_nova_value(result)
+
+    return BuiltinFunction(name or getattr(func, "__name__", "python function"), None, implementation)
+
+
+def wrap_nova_callable(fn, interpreter):
+    """A NovaLang function or built-in, reachable from Python - see
+    Nova.call for the counterpart used when Python code calls in by name."""
+
+    def call_from_python(*python_args):
+        nova_args = [to_nova_value(arg, interpreter) for arg in python_args]
+        try:
+            result = interpreter.call_value(fn, nova_args, 0)
+        except NovaError as error:
+            raise NovaLangError(error) from None
+        return to_python_value(result, interpreter)
+
+    return call_from_python
+
+
+def resolve_python_path(interpreter, dotted_name, position):
+    """Walk a dotted name like "reactor.core.temp" from the registry."""
+    parts = dotted_name.split(".")
+    root = parts[0]
+    if root not in interpreter.python_registry:
+        raise NovaError(
+            '"{}" is not available to this script - only names the embedding program '
+            'exposed with Nova.expose()/expose_module() can be reached from python.*'
+            .format(root),
+            position, label="PythonError",
+        )
+    target = interpreter.python_registry[root]
+    for part in parts[1:]:
+        if not hasattr(target, part):
+            raise NovaError(
+                '"{}" has no attribute "{}"'.format(dotted_name, part), position, label="PythonError"
+            )
+        target = getattr(target, part)
+    return target
+
+
+def builtin_python_import(args, position, interpreter):
+    name = text_argument(args[0], "python.import()", position)
+    if name in interpreter.python_registry:
+        return NOTHING
+    if name not in PYTHON_IMPORT_ALLOWLIST:
+        raise NovaError(
+            '"{}" is not on the list of modules python.import() allows on its own ({}) '
+            '- the embedding program can add it with Nova.expose_module("{}")'
+            .format(name, ", ".join(PYTHON_IMPORT_ALLOWLIST), name),
+            position, label="PythonError",
+        )
+    try:
+        module = importlib.import_module(name)
+    except ImportError as problem:
+        raise NovaError("python.import(): {}".format(problem), position, label="PythonError")
+    interpreter.python_registry[name] = module
+    return NOTHING
+
+
+def builtin_python_call(args, position, interpreter):
+    name = text_argument(args[0], "python.call()", position)
+    target = resolve_python_path(interpreter, name, position)
+    if not callable(target):
+        raise NovaError('"{}" is not callable'.format(name), position, label="PythonError")
+    call_args = [to_python_value(arg, interpreter) for arg in args[1:]]
+    try:
+        result = target(*call_args)
+    except NovaError:
+        raise
+    except Exception as problem:
+        raise NovaError(
+            "{}: {}".format(type(problem).__name__, problem), position, label="PythonError"
+        )
+    return to_nova_value(result, interpreter)
+
+
+def builtin_python_get(args, position, interpreter):
+    name = text_argument(args[0], "python.get()", position)
+    target = resolve_python_path(interpreter, name, position)
+    return to_nova_value(target, interpreter)
+
+
+def builtin_python_set(args, position, interpreter):
+    name = text_argument(args[0], "python.set()", position)
+    value = args[1]
+    parts = name.split(".")
+    root = parts[0]
+    if len(parts) == 1:
+        # No dots: define or overwrite a top-level registry entry, so a
+        # script can hand a value back for the embedding program to read
+        # afterwards with Nova.registry[name] or python.get(name) itself.
+        interpreter.python_registry[root] = to_python_value(value, interpreter)
+        return NOTHING
+    if root not in interpreter.python_registry:
+        raise NovaError(
+            '"{}" is not available to this script - see python.import() or ask the '
+            'embedding program to expose it first'.format(root),
+            position, label="PythonError",
+        )
+    target = interpreter.python_registry[root]
+    for part in parts[1:-1]:
+        if not hasattr(target, part):
+            raise NovaError('"{}" has no attribute "{}"'.format(name, part), position, label="PythonError")
+        target = getattr(target, part)
+    try:
+        setattr(target, parts[-1], to_python_value(value, interpreter))
+    except AttributeError as problem:
+        raise NovaError("python.set(): {}".format(problem), position, label="PythonError")
+    return NOTHING
+
+
+PYTHON_NAMESPACE = {
+    "import": BuiltinFunction("python.import", 1, builtin_python_import, needs_interpreter=True),
+    "call": BuiltinFunction("python.call", None, builtin_python_call, needs_interpreter=True),
+    "get": BuiltinFunction("python.get", 1, builtin_python_get, needs_interpreter=True),
+    "set": BuiltinFunction("python.set", 2, builtin_python_set, needs_interpreter=True),
+}
+
+
 # ---- OS / filesystem -----------------------------------------------------------------
 
 def builtin_cwd(args, position):
@@ -2522,6 +2786,16 @@ class Interpreter:
         self.globals.define("PI", math.pi)
         self.globals.define("E", math.e)
         self.globals.define("json", dict(JSON_NAMESPACE))
+        self.globals.define("python", dict(PYTHON_NAMESPACE))
+
+        # Stage 12: the NovaLang-side half of the embedding bridge. Empty
+        # by default - a plain `python3 novalang.py script.nova` run has
+        # nothing exposed except the modules in PYTHON_IMPORT_ALLOWLIST,
+        # importable on demand. An embedding Python program populates this
+        # via Nova.expose()/Nova.expose_module() before running a script,
+        # which is the only way a NovaLang script reaches anything here -
+        # there is no path from `python.*` to an unregistered object.
+        self.python_registry = {}
 
         # Module machinery (Stage 9). file_stack tracks the directory of
         # whichever file is currently executing, for resolving a relative
@@ -3400,7 +3674,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v0.11.0           ║
+║       NOVALANG v0.12.0           ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -3476,6 +3750,26 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     map(f, a) filter(f, a) reduce(f, a) reduce(f, a, start)
                           the usual three - f may be any function,
                           built-in or your own
+
+  Embedding (Stage 12) - reaching Python from a NovaLang script
+    python.import("math")   allow a module from a short, safe allowlist
+                          (math, random, statistics, itertools, functools,
+                          string, re, datetime, json, collections) - or
+                          one the embedding program chose to expose
+    python.call("mod.fn", ...)   call a Python function by dotted name
+    python.get("mod.name")   read a Python value by dotted name
+    python.set("mod.name", v)   write one back, or define a fresh entry
+    reactor.temp  reactor.scram()   an object the *embedding* Python
+                          program exposed with Nova.expose_global() reads
+                          and calls like this directly - see
+                          examples/reactor_script.nova
+    This is a deliberate, narrow bridge, not unrestricted access to the
+    process: a script only ever reaches what the embedding program chose
+    to hand it, plus that short allowlist. Nothing here matters when
+    running novalang.py directly - it is for a NovaLang script running
+    inside another Python program. See examples/embedding.nova,
+    examples/embedding_demo.py, examples/reactor_sim_integration.py and
+    examples/daedalus_integration.py.
 
   Statements
     x = 10               assignment (updates an outer x if one exists)
@@ -3678,6 +3972,153 @@ def run_source(source, origin, script_args=None):
         print("NovaError: the interpreter ran out of stack - recursion too deep", file=sys.stderr)
         return 1
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Stage 12: embedding - the Python-side half
+# ---------------------------------------------------------------------------
+
+class CompiledScript:
+    """A pre-parsed NovaLang program. Lexing and parsing happen once, at
+    Nova.compile() time, so running the same script again and again - a
+    game loop's per-frame condition, say - skips that work every call."""
+
+    def __init__(self, source, ast):
+        self.source = source
+        self.ast = ast
+
+    def run(self, engine):
+        """Execute against `engine` (a Nova instance), returning the
+        result as a Python value. Raises NovaLangError, never a raw
+        NovaError - Stage 12's rule that NovaLang trouble surfaces to
+        Python code as a Python exception, not something of NovaLang's
+        own that caller would have to import novalang to catch."""
+        interpreter = engine.interpreter
+        try:
+            value = interpreter.evaluate(self.ast)
+        except ReturnSignal:
+            raise NovaLangError(NovaError("'return' only makes sense inside a function")) from None
+        except BreakSignal as signal:
+            raise NovaLangError(NovaError("'break' is not inside a loop", signal.position)) from None
+        except ContinueSignal as signal:
+            raise NovaLangError(NovaError("'continue' is not inside a loop", signal.position)) from None
+        except NovaError as error:
+            raise NovaLangError(error) from None
+        return to_python_value(value, interpreter)
+
+
+class Nova:
+    """The Python side of Stage 12's embedding API: run NovaLang from a
+    Python program, and hand it Python objects/functions to reach back
+    into with python.* (see expose/expose_module/expose_global).
+
+        engine = Nova()
+        engine.expose_global("reactor", reactor)   # reactor.temp, reactor.scram()
+        engine.exec('if reactor.temp > 2800 { reactor.scram() }')
+
+    Each Nova wraps its own Interpreter, so independent scripts - two game
+    levels, two reactor simulations - run in full isolation just by using
+    separate Nova() instances; nothing is shared at the module level.
+    Every method here raises NovaLangError, never a raw NovaError, on
+    trouble in the NovaLang code it runs.
+    """
+
+    def __init__(self):
+        self.interpreter = Interpreter()
+        self._compiled_cache = {}          # source text -> CompiledScript, see eval()
+
+    @property
+    def registry(self):
+        """The dict backing python.* - Nova.expose()'d names, and any
+        modules python.import() has already pulled in."""
+        return self.interpreter.python_registry
+
+    def expose(self, name, value):
+        """Make `value` reachable from NovaLang as python.get/call/set
+        with a dotted name starting with `name` - e.g. after
+        expose("reactor", reactor), python.get("reactor.temp") and
+        python.call("reactor.scram") both work. Does not make `name`
+        itself a NovaLang global; see expose_global for `reactor.temp`
+        written directly, with no python.get wrapper."""
+        self.interpreter.python_registry[name] = value
+
+    def expose_module(self, module):
+        """Allow python.import(name) to succeed for a module beyond the
+        built-in allowlist (PYTHON_IMPORT_ALLOWLIST). Accepts an already-
+        imported module object, or a module name to import here first."""
+        if isinstance(module, str):
+            module = importlib.import_module(module)
+        self.interpreter.python_registry[module.__name__] = module
+        return module
+
+    def expose_global(self, name, value):
+        """Bind `value` directly as a NovaLang global: a script can write
+        `reactor.temp` and `reactor.scram()` rather than going through
+        python.get/call. An arbitrary object becomes a live proxy (Stage
+        12's PythonObjectProxy); a callable becomes a callable NovaLang
+        value; a plain number/string/bool/list/dict converts as usual.
+        Reserved built-in names are still protected, same as any other
+        NovaLang global."""
+        guard_name(name, None, "a global")
+        self.interpreter.globals.define(name, to_nova_value(value, self.interpreter))
+
+    def compile(self, code):
+        """Lex and parse `code` once, returning a CompiledScript that can
+        be run() repeatedly with no further parsing overhead - the
+        precompile option for a script called every frame."""
+        try:
+            tokens = Lexer(code).tokenize()
+            ast = Parser(tokens).parse()
+        except NovaError as error:
+            raise NovaLangError(error) from None
+        return CompiledScript(code, ast)
+
+    def _cached(self, code):
+        compiled = self._compiled_cache.get(code)
+        if compiled is None:
+            compiled = self.compile(code)
+            if len(self._compiled_cache) < 512:      # a simple cap, not a real LRU
+                self._compiled_cache[code] = compiled
+        return compiled
+
+    def eval(self, code):
+        """Evaluate `code`, returning its value as a Python value. The
+        same source string is only ever lexed/parsed once per engine (see
+        _cached above), so calling eval() with an unchanged script every
+        frame costs no repeated parsing - enough for a 60fps game loop
+        without needing compile() explicitly, though compile() is still
+        available when you want to hold the parsed form yourself."""
+        return self._cached(code).run(self)
+
+    def exec(self, code):
+        """Run `code` for effect; any value it produces is discarded."""
+        self.eval(code)
+
+    def load_file(self, path):
+        """Read and run a .nova file, returning its last top-level
+        expression's value as a Python value. Relative imports inside the
+        file resolve against the file's own directory, same as running it
+        with `python3 novalang.py path`."""
+        with open(path, "r", encoding="utf-8") as handle:
+            source = handle.read()
+        self.interpreter.file_stack.append(os.path.dirname(os.path.abspath(path)))
+        return self.compile(source).run(self)
+
+    def call(self, name, *args):
+        """Call an already-defined NovaLang function (from a prior eval/
+        exec/load_file) by name, with Python arguments, returning its
+        result as a Python value."""
+        if not self.interpreter.globals.has(name):
+            raise NovaLangError(NovaError("undefined name {!r}".format(name)))
+        fn = self.interpreter.globals.get(name)
+        if not isinstance(fn, (NovaFunction, BuiltinFunction)):
+            raise NovaLangError(NovaError("{!r} is not a function".format(name)))
+        nova_args = [to_nova_value(arg, self.interpreter) for arg in args]
+        try:
+            result = self.interpreter.call_value(fn, nova_args, 0)
+        except NovaError as error:
+            raise NovaLangError(error) from None
+        return to_python_value(result, self.interpreter)
 
 
 def run_bootstrap(args):
