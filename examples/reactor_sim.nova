@@ -1,0 +1,99 @@
+# examples/reactor_sim.nova - Reactor Sim, rewritten entirely in native
+# NovaLang (Stage 14): no Python, no embedding API. The reactor's state,
+# its physics, and its control logic all live in this one file.
+#
+# Run: python3 novalang.py examples/reactor_sim.nova
+#      python3 novalang.py --bootstrap examples/reactor_sim.nova
+#
+# This supersedes examples/reactor_script.nova for a NovaLang-only sim.
+# That file's check_reactor() calls reactor.scram() and
+# reactor.set_power(...) as method calls, which only works when `reactor`
+# is a live Python object passed in through the embedding API (a real
+# bound method on Stage 12's PythonObjectProxy). NovaLang has no classes
+# and no implicit "self" binding - calling a plain function stored in a
+# dict as d.method() fails ("scram() expects 1 argument(s) but got 0"),
+# since NovaLang has no way to pass `d` itself along automatically.
+#
+# So here, state and behavior stay separate: `reactor` is a plain dict,
+# and scram()/set_power()/tick() are free functions that take it as an
+# explicit argument and mutate its fields directly - the same "shared
+# mutable container" pattern used throughout examples/stdlib_full_test.nova
+# (dicts and lists are passed by reference, so a function can carry state
+# across calls by mutating one it was handed, even though a plain
+# variable assignment can never reach past a function boundary).
+#
+# examples/reactor_script.nova and examples/reactor_sim_integration.py
+# remain the right pattern when a *real* external reactor object (actual
+# hardware, an existing Python simulation) needs driving from NovaLang
+# instead of a reactor NovaLang owns outright, as here.
+
+def make_reactor() {
+    return {temp: 1800.0, power: 70, scrammed: false}
+}
+
+def scram(reactor) {
+    reactor.scrammed = true
+    reactor.power = 0
+}
+
+def set_power(reactor, power) {
+    if power < 0 { power = 0 }
+    if power > 100 { power = 100 }
+    reactor.power = power
+}
+
+def tick(reactor) {
+    # Purely illustrative physics, not a real reactor model - same shape
+    # as the mock Reactor.tick() in reactor_sim_integration.py.
+    if reactor.scrammed {
+        let cooled = reactor.temp - 40
+        if cooled < 20.0 { cooled = 20.0 }
+        reactor.temp = cooled
+        return
+    }
+    let jitter = random() * 40 - 15               # ~ Python's random.uniform(-15, 25)
+    let heated = reactor.temp + reactor.power * 6 + jitter
+    if heated < 20.0 { heated = 20.0 }
+    reactor.temp = heated
+}
+
+def check_reactor(reactor) {
+    if reactor.temp > 2800 {
+        log(f"CRITICAL: core at {str(reactor.temp)}C - scramming")
+        scram(reactor)
+        return "scrammed"
+    }
+    if reactor.temp > 2400 {
+        log(f"WARNING: core at {str(reactor.temp)}C - reducing power")
+        set_power(reactor, reactor.power - 10)
+        return "reduced_power"
+    }
+    if reactor.temp < 300 and reactor.power > 0 {
+        log(f"core is cold at {str(reactor.temp)}C while power is on - check sensors")
+        return "cold_alarm"
+    }
+    return "nominal"
+}
+
+def report_row(tick_number, reactor, result) {
+    let line = pad_left(str(tick_number), 4) + "  " + pad_left(str(round(reactor.temp, 1)), 7)
+    line = line + "  " + pad_left(str(reactor.power), 5) + "  " + pad_left(str(reactor.scrammed), 8)
+    line = line + "  " + result
+    print(line)
+}
+
+def run_reactor_sim(max_ticks) {
+    let reactor = make_reactor()
+    print("tick  temp     power  scrammed  result")
+    for tick_number = 1 to max_ticks {
+        let result = check_reactor(reactor)
+        report_row(tick_number, reactor, result)
+        if reactor.scrammed and reactor.temp < 200 {
+            print("reactor cooled down after scram; stopping")
+            break
+        }
+        tick(reactor)
+    }
+}
+
+run_reactor_sim(20)
