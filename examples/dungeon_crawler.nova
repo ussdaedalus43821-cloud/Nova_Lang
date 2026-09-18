@@ -1,0 +1,177 @@
+# Dungeon Crawler - a small, complete, playable game written entirely in
+# NovaLang. No Python anywhere in the loop; the only file it touches is its
+# own save log (dungeon_log.jsonl), written next to wherever it's run from.
+#
+# Run it with:
+#   python3 novalang.py examples/dungeon_crawler.nova
+
+def make_monster(name, hp, atk) {
+    assert(len(name) > 0, "a monster needs a name")
+    return {name: name, hp: hp, max_hp: hp, atk: atk}
+}
+
+def random_monster() {
+    # Built fresh every call, so choice() below hands back a dict nothing
+    # else in the program can be holding a reference to.
+    let templates = [
+        make_monster("Goblin", 18, 4),
+        make_monster("Skeleton", 24, 5),
+        make_monster("Cave Slime", 14, 3),
+        make_monster("Orc Brute", 32, 7),
+        make_monster("Wraith", 28, 6)
+    ]
+    return choice(templates)
+}
+
+def make_player(name) {
+    return {name: name, hp: 30, max_hp: 30, atk: 6, potions: 3}
+}
+
+def bar(current, maxv, width) {
+    let filled = round((current / maxv) * width)
+    if filled < 0 { filled = 0 }
+    if filled > width { filled = width }
+    let out = ""
+    for i = 0 to width {
+        if i < filled {
+            out = out + "#"
+        } else {
+            out = out + "."
+        }
+    }
+    return out
+}
+
+def show_status(player, monster) {
+    print(f"{player.name}   [{bar(player.hp, player.max_hp, 20)}] {player.hp}/{player.max_hp} HP   potions: {player.potions}")
+    print(f"{monster.name}   [{bar(monster.hp, monster.max_hp, 20)}] {monster.hp}/{monster.max_hp} HP")
+}
+
+def player_attack(player, monster) {
+    let dmg = randint(player.atk - 2, player.atk + 3)
+    if dmg < 1 { dmg = 1 }
+    monster.hp = monster.hp - dmg
+    print(f"You strike the {monster.name} for {dmg} damage.")
+}
+
+def monster_attack(player, monster) {
+    let dmg = randint(monster.atk - 1, monster.atk + 2)
+    if dmg < 1 { dmg = 1 }
+    player.hp = player.hp - dmg
+    print(f"The {monster.name} hits you for {dmg} damage.")
+}
+
+def use_potion(player) {
+    if player.potions <= 0 {
+        print("You're out of potions!")
+        return
+    }
+    player.potions = player.potions - 1
+    let healed = randint(8, 15)
+    player.hp = player.hp + healed
+    if player.hp > player.max_hp { player.hp = player.max_hp }
+    print(f"You drink a potion and recover {healed} HP.")
+}
+
+def ask_action() {
+    while true {
+        let choice_text = trim(lower(input("(a)ttack, (p)otion, (f)lee > ")))
+        if choice_text == "a" or choice_text == "attack" { return "attack" }
+        if choice_text == "p" or choice_text == "potion" { return "potion" }
+        if choice_text == "f" or choice_text == "flee" { return "flee" }
+        print("Not sure what that means - try a, p, or f.")
+    }
+}
+
+def log_path() {
+    return "dungeon_log.jsonl"
+}
+
+def log_battle(result, monster_name, turns) {
+    let entry = {
+        time: format_time(time(), "%Y-%m-%d %H:%M:%S"),
+        result: result,
+        monster: monster_name,
+        turns: turns
+    }
+    try {
+        append(log_path(), json.dumps(entry) + "\n")
+    } catch e {
+        log("Could not save battle log:", e)
+    }
+}
+
+def is_not_blank(line) {
+    return trim(line) != ""
+}
+
+def is_win(entry) {
+    return entry.result == "win"
+}
+
+def show_history() {
+    if not exists(log_path()) {
+        print("No battles recorded yet.")
+        return
+    }
+    let lines = filter(is_not_blank, split_lines(read(log_path())))
+    let entries = map(json.loads, lines)
+    let wins = filter(is_win, entries)
+    print(f"--- Battle log: {len(entries)} fought, {len(wins)} won ---")
+    for e in entries {
+        print(f"  {e.time}  vs {e.monster}: {e.result} in {e.turns} turns")
+    }
+}
+
+def fight(player) {
+    let monster = random_monster()
+    print(f"\nA wild {monster.name} appears! ({monster.hp} HP, {monster.atk} ATK)")
+    let turns = 0
+    while player.hp > 0 and monster.hp > 0 {
+        turns = turns + 1
+        print("")
+        show_status(player, monster)
+        let action = ask_action()
+        if action == "attack" {
+            player_attack(player, monster)
+        } else if action == "potion" {
+            use_potion(player)
+        } else {
+            print("You flee back to the torchlight.")
+            log_battle("fled", monster.name, turns)
+            return
+        }
+        if monster.hp <= 0 {
+            print(f"\nThe {monster.name} falls! You win.")
+            log_battle("win", monster.name, turns)
+            return
+        }
+        monster_attack(player, monster)
+        if player.hp <= 0 {
+            print(f"\nYou were slain by the {monster.name}...")
+            log_battle("loss", monster.name, turns)
+            return
+        }
+    }
+}
+
+def main() {
+    print("=== NOVALANG DUNGEON ===")
+    let name = trim(input("What is your name, adventurer? "))
+    if name == "" { name = "Wanderer" }
+    let player = make_player(name)
+    print(f"Welcome, {player.name}. Descend and survive.")
+
+    while player.hp > 0 {
+        fight(player)
+        if player.hp <= 0 { break }
+        let again = trim(lower(input("\nDescend further? (y/n) > ")))
+        if again != "y" and again != "yes" { break }
+    }
+
+    print("")
+    show_history()
+    print("\nThanks for playing.")
+}
+
+main()
