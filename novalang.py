@@ -6294,7 +6294,7 @@ def run_bootstrap(args):
         print("usage: novalang.py --bootstrap <target.nova> [script args...]", file=sys.stderr)
         return 2
     import bootstrap
-    return bootstrap.run_bootstrap(args[0], script_args=args[1:])
+    return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE)
 
 
 def dis_main(paths):
