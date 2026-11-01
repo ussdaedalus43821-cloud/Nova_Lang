@@ -5362,8 +5362,15 @@ def execute(interpreter, entry):
                         frame.ip = ip
                         frames.append(frame)
                         call_stack.append(callee.name)
-                        frame = function_frame(callee, call_args)
-                        code = frame.code
+                        # function_frame(), inline: the hottest path in a call.
+                        code = callee.code
+                        new_slots = [UNSET] * code.nslots
+                        for slot, value in zip(code.params, call_args):
+                            new_slots[slot] = value
+                        if code.cell_params:
+                            for slot in code.cell_params:
+                                new_slots[slot] = Cell(new_slots[slot])
+                        frame = Frame(code, new_slots, callee.cells, callee.globals, callee)
                         ops, args, consts, positions = (code.ops, code.args, code.constants,
                                                         code.positions)
                         slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
