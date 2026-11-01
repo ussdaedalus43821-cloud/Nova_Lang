@@ -1,0 +1,3 @@
+tests/typecheck/fail/returns.nova:4:12: T004 name_of() must return a string, but this returns an int
+tests/typecheck/fail/returns.nova:7:5: T004 nothing_back() must return an int, but this returns nothing
+tests/typecheck/fail/returns.nova:9:1: T005 sometimes() is declared to return an int, but can reach its end without returning anything

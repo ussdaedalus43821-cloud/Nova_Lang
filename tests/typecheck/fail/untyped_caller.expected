@@ -1,0 +1,2 @@
+tests/typecheck/fail/untyped_caller.nova:9:21: T002 argument 1 of geometry.area() must be a float, but this is a string
+tests/typecheck/fail/untyped_caller.nova:10:7: T003 tiles() takes 2 arguments but is given 1

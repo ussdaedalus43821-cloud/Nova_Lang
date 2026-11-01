@@ -1,0 +1,29 @@
+print("this line must never run")
+# Operators and other uses of a known type, exactly as the interpreter
+# would reject them at run time.
+let s: string = "text"
+let n: int = 3
+let f: float = 2.5
+let flag: bool = true
+let xs: list = [1, 2]
+let d: dict = {a: 1}
+print(s - n)                   # T007
+print(flag + 1)                # T007
+print(s * f)                   # T007: a repeat count must be whole
+print(xs < xs)                 # T007
+print(not n)                   # T007
+print(flag and s)              # T007
+print(-s)                      # T007
+print(n in s)                  # T007: only a string can be in a string
+if n { print("x") }            # T008: a condition must be a bool
+while s { print("x") }         # T008
+print(xs["first"])             # T008: a list index must be an int
+print(xs[f])                   # T008: a float may not be whole
+print(d[n])                    # T008: a key must be a string
+print(n.field)                 # T008: an int has no fields
+print(n(1))                    # T008: an int is not a function
+s[0] = "T"                     # T008: strings cannot be changed in place
+throw(n)                       # T008: throw needs a string
+for i = s to 3 { print(i) }    # T008
+for item in n { print(item) }  # T008
+print(s + s, xs + xs, d + d, s * n, xs * n, n // 2, f % 2, s < s, n in xs, s in d)

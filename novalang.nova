@@ -550,15 +550,28 @@ def parse_statement(p) {
     return parse_expression_statement(p)
 }
 
+# Type annotations (`a: int`, `-> int`, `let x: int`) are parsed and kept
+# but never acted on: like the host, this interpreter runs annotated code
+# exactly as it runs unannotated code. Checking them is nova-typecheck's job.
+def parse_optional_annotation(p) {
+    if p_current(p)["kind"] != "COLON" {
+        return ""
+    }
+    p_advance(p)
+    return p_expect(p, "IDENT", "a type name, such as int or string")["value"]
+}
+
 def parse_function_def(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a function name after 'def'")
     p_expect(p, "LPAREN", "a '(' after the function name")
     let params = []
+    let param_types = []
     if p_current(p)["kind"] != "RPAREN" {
         while true {
             let param = p_expect(p, "IDENT", "a parameter name")
             append(params, param["value"])
+            append(param_types, parse_optional_annotation(p))
             if p_current(p)["kind"] != "COMMA" {
                 break
             }
@@ -566,11 +579,22 @@ def parse_function_def(p) {
         }
     }
     p_expect(p, "RPAREN", "a ')' to close the parameter list")
+    # `->` is '-' then '>' with nothing between, as in the host parser.
+    let return_type = ""
+    let minus = p_current(p)
+    let after = p_peek(p, 1)
+    if minus["kind"] == "MINUS" and after["kind"] == "GT" and after["pos"] == minus["pos"] + 1 {
+        p_advance(p)
+        p_advance(p)
+        return_type = p_expect(p, "IDENT", "a type name, such as int or string")["value"]
+    }
     let body = parse_block(p)
     return {
         kind: "FunctionDef",
         name: name["value"],
         params: params,
+        param_types: param_types,
+        return_type: return_type,
         body: body,
         pos: keyword["pos"]
     }
@@ -737,10 +761,12 @@ def parse_for(p) {
 def parse_let(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a name after 'let'")
+    let type_name = parse_optional_annotation(p)
     p_expect(p, "EQUALS", "a '=' after the name in a 'let'")
     return {
         kind: "Let",
         name: name["value"],
+        type_name: type_name,
         value: parse_expression_statement(p),
         pos: keyword["pos"]
     }

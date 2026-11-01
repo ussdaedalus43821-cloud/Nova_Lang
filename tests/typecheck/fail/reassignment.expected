@@ -1,0 +1,5 @@
+tests/typecheck/fail/reassignment.nova:4:5: T006 'x' is declared int, but this assigns a string
+tests/typecheck/fail/reassignment.nova:7:18: T006 'whole' is declared int, but its value is a float
+tests/typecheck/fail/reassignment.nova:8:21: T006 'label' is declared string, but its value is an int
+tests/typecheck/fail/reassignment.nova:10:13: T006 'count' is declared int, but this assigns a string
+tests/typecheck/fail/reassignment.nova:23:10: T006 'helper' is a function, so it cannot be given an int

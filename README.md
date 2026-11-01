@@ -29,6 +29,7 @@ full history across all 14 build stages.
 - [Standard library](#standard-library)
 - [Self-hosting](#self-hosting)
 - [Toolchain: formatter & linter](#toolchain-formatter--linter)
+- [Type annotations](#type-annotations)
 - [Embedding NovaLang in Python](#embedding-novalang-in-python)
 - [ECS & particle engine](#ecs--particle-engine)
 - [Examples](#examples)
@@ -200,6 +201,7 @@ identical output, byte-for-byte, direct vs. `--bootstrap`.
 
 ```bash
 python3 novalang.py --check program.nova    # lint without running
+python3 novalang.py --typecheck program.nova  # check type annotations
 python3 novalang.py --format program.nova   # rewrite in the standard layout
 python3 tests/run_all.py                    # the full regression suite
 ```
@@ -223,6 +225,46 @@ comment survived, and a second run would change nothing. Run it directly
 with `--check` to fail CI when a file is not formatted. Calls and long
 expressions are never wrapped, because NovaLang's grammar does not allow
 them to span lines.
+
+## Type annotations
+
+Annotations are optional, and NovaLang stays dynamic wherever they are
+left out. Where they are written, they are contracts, checked **before the
+program runs**:
+
+```nova
+def add(a: int, b: int) -> int {
+    return a + b
+}
+let name: string = "nova"
+add(1, "two")        # refused before anything runs:
+                     # T002 argument 2 of add() must be an int, but this is a string
+```
+
+The types are `int`, `float`, `string`, `bool`, `list`, `dict` and `any`.
+An `int` is a whole number and fits wherever a `float` is expected
+(NovaLang has one number type at run time; `int` promises it is whole).
+Anything unannotated is `any`, and `any` fits everything, so it is the
+escape hatch.
+
+- **What is checked:** argument types and counts, return values against
+  `-> type`, a typed function that can reach its end without returning,
+  reassignments of declared variables, and operators, conditions, indexes
+  and fields wherever the types are known. Built-ins with clear signatures
+  (`upper`, `sqrt`, `len`, ...) are checked too.
+- **When:** `python3 novalang.py --typecheck file.nova` checks a file and
+  everything it imports. Running a program checks it automatically; this
+  covers direct runs, `--bootstrap`, imports and the embedding API. A
+  program with type errors is refused without running a single line.
+- **Untyped files** run exactly as before. A file with no annotations and
+  no imports never even loads the checker. A file with no annotations
+  that imports a typed module has only its calls into that module checked,
+  so the module's contracts cannot be bypassed.
+- **At run time** annotations are ignored, so annotated code runs at
+  exactly the speed of the same code without them.
+
+See `examples/types.nova` and `tools/nova-typecheck.py` (its docstring
+lists every error code).
 
 ## Embedding NovaLang in Python
 

@@ -42,6 +42,22 @@ def nova_string_literal(text):
     return '"' + escaped + '"'
 
 
+def type_check_graph(target_path):
+    """Lines describing every type error in `target_path` and the modules
+    it imports, or [] if there are none (or the target cannot be read or
+    parsed - novalang.nova reports those problems itself)."""
+    try:
+        with open(target_path, "r", encoding="utf-8") as handle:
+            source = handle.read()
+        ast = novalang.Parser(novalang.Lexer(source).tokenize()).parse()
+    except (OSError, NovaError):
+        return []
+    if not (ast.annotated or ast.imports):
+        return []
+    lines = novalang.typecheck_tool().check_file_graph(target_path)
+    return ["TypeCheckError: " + line for line in lines]
+
+
 def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None):
     """Run `target_path` through the self-hosted interpreter defined in
     `engine_path`. `script_args` become what the target's own args() call
@@ -57,6 +73,15 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None):
         return 1
 
     target_path = os.path.abspath(target_path)
+
+    # The self-hosted interpreter reads the target and its imports itself,
+    # out of sight of novalang.py's type gate, so the whole import graph
+    # is type-checked here, before novalang.nova ever sees it.
+    refusal = type_check_graph(target_path)
+    if refusal:
+        print("\n".join(refusal), file=sys.stderr)
+        return 1
+
     program = engine_source + "\nrun_file({})\n".format(nova_string_literal(target_path))
 
     interpreter = Interpreter()

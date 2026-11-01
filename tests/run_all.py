@@ -27,6 +27,16 @@ Stations, in order:
                   PYTHON_EXEMPT with the reason it is not run, so a new
                   script cannot slip past the line unnoticed.
 
+  7. types        nova-typecheck's operator and built-in rules agree with
+                  the real interpreter (tests/typecheck/crosscheck.py);
+                  tests/typecheck/pass/ checks clean and runs the same on
+                  both engines; every tests/typecheck/fail/ file gives
+                  exactly its .expected findings and is refused - without
+                  running a single line - by every way in: the CLI,
+                  --bootstrap, an import from an untyped file, and the
+                  embedding API; and every other annotated .nova file in
+                  the repo checks clean, so none can bypass the checker.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -291,6 +301,92 @@ def station_python(line):
                    "exit {}\n{}".format(status, output[-2000:]))
 
 
+SENTINEL = "this line must never run"
+
+EMBED_LOAD = (
+    "import sys; sys.path.insert(0, sys.argv[1]); import novalang\n"
+    "try:\n"
+    "    novalang.Nova().load_file(sys.argv[2])\n"
+    "except novalang.NovaLangError as error:\n"
+    "    print(error, file=sys.stderr)\n"
+    "    sys.exit(1)\n"
+)
+
+
+def annotated(path):
+    sys.path.insert(0, ROOT)
+    import novalang
+    source = read(path)
+    return novalang.Parser(novalang.Lexer(source).tokenize()).parse().annotated
+
+
+def station_types(line):
+    print("7. type checker")
+    sys.path.insert(0, os.path.join(HERE, "typecheck"))
+    import crosscheck
+    crosscheck.check(line)
+
+    novalang_py = os.path.join(ROOT, "novalang.py")
+
+    def python(*args):
+        done = subprocess.run([sys.executable] + list(args), cwd=ROOT,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=600)
+        return done.returncode, done.stdout, done.stderr
+
+    def cli(*args):
+        return python(novalang_py, *args)
+
+    def embed(path):
+        return python("-c", EMBED_LOAD, ROOT, path)
+
+    for path in sorted(glob.glob(os.path.join(HERE, "typecheck", "pass", "*.nova"))):
+        name = rel(path)
+        status, out, err = cli("--typecheck", name)
+        line.check(status == 0 and not out, name + " type-checks clean", out + err)
+        direct = cli(name)
+        booted = cli("--bootstrap", name)
+        line.check(direct[0] == 0, name + " runs", direct[2])
+        line.check(direct[:2] == booted[:2], name + " runs the same under --bootstrap",
+                   diff(direct[1], booted[1]) + booted[2])
+
+    scratch = tempfile.mkdtemp(prefix="nova-typecheck-")
+    try:
+        for path in sorted(glob.glob(os.path.join(HERE, "typecheck", "fail", "*.nova"))):
+            name = rel(path)
+            expected = read(path[:-len(".nova")] + ".expected")
+            status, out, err = cli("--typecheck", name)
+            line.check(status == 1 and out == expected, name + " gives its .expected findings",
+                       diff(expected, out) + err)
+            line.check(SENTINEL in read(path), name + " starts with the never-run sentinel")
+
+            wrapper = os.path.join(scratch, "imports_it.nova")
+            with open(wrapper, "w", encoding="utf-8") as handle:
+                handle.write('import "{}" as checked\n'.format(path.replace("\\", "/")))
+            doors = {
+                "run directly": cli(name),
+                "run with --bootstrap": cli("--bootstrap", name),
+                "imported by an untyped file": cli(wrapper),
+                "loaded through the embedding API": embed(path),
+            }
+            for door, (status, out, err) in doors.items():
+                line.check(
+                    status == 1 and SENTINEL not in out and "TypeCheckError" in err,
+                    "{} is refused when {}".format(name, door),
+                    "exit {}\nstdout: {}\nstderr: {}".format(status, out[-500:], err[-500:]),
+                )
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    fail_dir = os.path.join(HERE, "typecheck", "fail") + os.sep
+    for path in sorted(glob.glob(os.path.join(ROOT, "**", "*.nova"), recursive=True)):
+        if path.startswith(fail_dir) or not annotated(path):
+            continue
+        status, out, err = cli("--typecheck", rel(path))
+        line.check(status == 0, rel(path) + " has annotations, so it must type-check clean",
+                   out + err)
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -300,6 +396,7 @@ def main(argv):
     if not quick:
         station_parity(line)
     station_python(line)
+    station_types(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(
