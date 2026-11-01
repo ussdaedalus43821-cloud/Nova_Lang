@@ -1,0 +1,29 @@
+print("this line must never run")
+# A `-> type` is a promise about every way out of the function.
+def name_of(id: int) -> string {
+    return id  # T004: an int is not a string
+}
+def nothing_back() -> int {
+    return  # T004: a bare return gives nothing
+}
+def sometimes(flag: bool) -> int {
+    if flag {
+        return 1
+    }
+}  # T005: can fall off the end
+def always(flag: bool) -> int {
+    if flag {
+        return 1
+    } else {
+        return 2
+    }
+}
+def via_throw() -> int {
+    throw("never returns normally")
+}
+def unannotated(x) {
+    return "anything goes"
+}
+def open_ended(x: int) -> any {
+    return "any return is fine"
+}

@@ -1,0 +1,33 @@
+# types.nova - optional type annotations (gradual typing)
+#
+# Annotations are contracts that tools/nova-typecheck.py checks before the
+# program runs; the interpreter itself ignores them, so this file runs the
+# same as it would with every annotation deleted. Anything left
+# unannotated is `any`, and stays fully dynamic.
+
+def area(width: float, height: float) -> float {
+    return width * height
+}
+
+def label(name: string, count: int) -> string {
+    return f"{count} x {name}"
+}
+
+def is_even(n: int) -> bool {
+    return n % 2 == 0
+}
+
+# Untyped code mixes freely with typed code.
+def describe(thing) {
+    return "a " + type(thing)
+}
+
+let room: float = area(4, 2.5)  # an int is accepted where a float is expected
+let tag: string = label("widget", 3)
+let flags: list = [is_even(2), is_even(7)]
+let settings: dict = {verbose: true}
+let anything: any = "starts as a string"
+anything = 42  # `any` may change type freely
+
+print(room, tag, flags, settings.verbose, anything)
+print(describe(room), describe(tag))

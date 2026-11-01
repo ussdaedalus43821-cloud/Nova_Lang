@@ -111,8 +111,12 @@ repo as it is and on a fully formatted copy of it, and every runnable
 Python program under `examples/`, including both embedding-template test
 suites (`--quick` skips the slow bootstrap runs). A new `.py` file under
 `examples/` must be added to `PYTHON_PROGRAMS` or `PYTHON_EXEMPT` in
-`tests/run_all.py`, or the line stops. Run `python3 novalang.py --check` on any `.nova`
-file you touch. Before sending a change:
+`tests/run_all.py`, or the line stops. The type checker has its own
+station: if you change an operator, a built-in or a scope rule in
+`novalang.py`, `tests/typecheck/crosscheck.py` will tell you whether
+`tools/nova-typecheck.py` still agrees with it. Run
+`python3 novalang.py --check` (and `--typecheck`, if it has annotations)
+on any `.nova` file you touch. Before sending a change:
 
 - Run every file under `examples/` both directly and with `--bootstrap`;
   outputs must match byte-for-byte (`examples/self_host_test.nova` is

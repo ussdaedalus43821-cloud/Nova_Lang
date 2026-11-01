@@ -1,0 +1,5 @@
+tests/typecheck/fail/arguments.nova:9:8: T002 argument 2 of add() must be an int, but this is a string
+tests/typecheck/fail/arguments.nova:10:5: T002 argument 1 of add() must be an int, but this is a float
+tests/typecheck/fail/arguments.nova:11:1: T003 add() takes 2 arguments but is given 1
+tests/typecheck/fail/arguments.nova:12:1: T003 add() takes 2 arguments but is given 3
+tests/typecheck/fail/arguments.nova:14:7: T002 argument 1 of scale() must be a float, but this is a string

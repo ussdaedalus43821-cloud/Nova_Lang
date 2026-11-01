@@ -68,6 +68,11 @@ def bare_name(key):
     )
 
 
+def annotation(type_node):
+    """`: int` for an annotated name, '' for a plain one."""
+    return "" if type_node is None else ": " + type_node.name
+
+
 def after(col, text):
     """The column just past `text` when it is written starting at `col`."""
     if "\n" in text:
@@ -273,7 +278,12 @@ class Formatter(Visitor):
         self.clauses(parts, depth)
 
     def st_FunctionDef(self, node, depth, prefix):
-        header = "{}def {}({})".format(prefix, node.name, ", ".join(node.params))
+        params = ", ".join(
+            name + annotation(kind) for name, kind in zip(node.params, node.param_types)
+        )
+        header = "{}def {}({})".format(prefix, node.name, params)
+        if node.return_type is not None:
+            header += " -> " + node.return_type.name
         self.clauses([(header, node.body)], depth)
 
     def st_Try(self, node, depth, prefix):
@@ -289,7 +299,7 @@ class Formatter(Visitor):
         self.statement(node.inner, depth, prefix + "export ")
 
     def st_Let(self, node, depth, prefix):
-        text = "{}let {} = ".format(prefix, node.name)
+        text = "{}let {}{} = ".format(prefix, node.name, annotation(node.type_name))
         self.line(depth, text + self.value(node.value, depth, len(INDENT) * depth + len(text)))
 
     def st_Assignment(self, node, depth, prefix):
