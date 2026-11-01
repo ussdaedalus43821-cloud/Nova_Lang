@@ -1,0 +1,4 @@
+tests/lint/undefined.nova:3:7: E001 undefined name 'missing'
+tests/lint/undefined.nova:10:5: W001 'block_local' is assigned but never used
+tests/lint/undefined.nova:12:7: E001 undefined name 'block_local'
+tests/lint/undefined.nova:14:7: E001 undefined name 'i'

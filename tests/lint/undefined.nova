@@ -1,0 +1,20 @@
+# E001: names read but never defined
+print(PI, E, len([1]))          # predefined and built-in: fine
+print(missing)                  # E001
+def uses_later() {
+    return defined_after         # fine: resolved when called, not defined
+}
+let defined_after = 1
+print(uses_later())
+if true {
+    block_local = 5
+}
+print(block_local)              # E001: block locals vanish after the block
+for i = 1 to 3 { print(i) }
+print(i)                        # E001: loop variables do not leak
+try { throw("x") } catch err { print(err) }
+import "./helpers.nova" with tool
+import "./helpers.nova" as helpers
+print(tool, helpers)
+def recursive(n) { return recursive(n - 1) }
+print(recursive)

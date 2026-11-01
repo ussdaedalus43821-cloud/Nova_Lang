@@ -28,6 +28,7 @@ full history across all 14 build stages.
 - [Language syntax](#language-syntax)
 - [Standard library](#standard-library)
 - [Self-hosting](#self-hosting)
+- [Toolchain: formatter & linter](#toolchain-formatter--linter)
 - [Embedding NovaLang in Python](#embedding-novalang-in-python)
 - [ECS & particle engine](#ecs--particle-engine)
 - [Examples](#examples)
@@ -194,6 +195,34 @@ combined program to `novalang.py`'s own engine — which only ever sees
 `examples/self_host_test.nova` exists specifically to be run both ways and
 diffed; every example in this repository is held to the same standard:
 identical output, byte-for-byte, direct vs. `--bootstrap`.
+
+## Toolchain: formatter & linter
+
+```bash
+python3 novalang.py --check program.nova    # lint without running
+python3 novalang.py --format program.nova   # rewrite in the standard layout
+python3 tests/run_all.py                    # the full regression suite
+```
+
+**`--check`** (`tools/nova-lint.py`) reads the program with the real
+Lexer and Parser and never executes it. It reports undefined names
+(`E001`, exit status 1), and variables that are assigned but never read
+(`W001`) or code after a `return` / `break` / `continue` / `throw`
+(`W002`) as warnings; `--strict` makes warnings fail too. Its scope model
+is the interpreter's: a name first assigned inside a block is gone after
+it, and loop variables do not leak. A script for an embedding host can
+declare the names the host provides with `# nova-lint: globals a, b`.
+
+**`--format`** (`tools/nova-fmt.py`) applies one layout: 4-space indents,
+`{` on the header line, `} else {`, one statement per line, spaces around
+binary operators, at most one blank line in a row, lists and dictionaries
+on one line when they fit in 100 columns. It never changes how a literal
+is spelled and keeps every comment. Before writing anything it re-parses
+its own output and refuses to proceed unless the AST is unchanged, every
+comment survived, and a second run would change nothing. Run it directly
+with `--check` to fail CI when a file is not formatted. Calls and long
+expressions are never wrapped, because NovaLang's grammar does not allow
+them to span lines.
 
 ## Embedding NovaLang in Python
 

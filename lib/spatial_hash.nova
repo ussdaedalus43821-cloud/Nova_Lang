@@ -32,8 +32,8 @@
 export def spatial_hash_new(cell_size) {
     return {
         cell_size: cell_size,
-        cells: {},          # "cx:cy" -> {"<id>": true}
-        positions: {}        # "<id>" -> {x: .., y: .., cx: .., cy: ..}
+        cells: {},     # "cx:cy" -> {"<id>": true}
+        positions: {}  # "<id>" -> {x: .., y: .., cx: .., cy: ..}
     }
 }
 

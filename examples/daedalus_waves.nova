@@ -24,7 +24,7 @@ export def enemy_stats(kind) {
     if kind == "boss" {
         return {hp: 800, speed: 1.0, damage: 40}
     }
-    return {hp: 40, speed: 1.5, damage: 8}          # "normal", or unrecognized
+    return {hp: 40, speed: 1.5, damage: 8}  # "normal", or unrecognized
 }
 
 export def spawn_wave(count, kind) {
