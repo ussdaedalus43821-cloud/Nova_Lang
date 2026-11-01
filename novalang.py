@@ -3980,7 +3980,7 @@ OPCODES = [
     "LOAD_CONST", "POP", "DUP",
     # names
     "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL",
-    "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS",
+    "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS", "RESET_SLOTS",
     # arithmetic, comparison, logic
     "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
     "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
@@ -4010,13 +4010,14 @@ COMPARE_OPS = {"==": "EQ", "!=": "NE", "<": "LT", ">": "GT", "<=": "LE", ">=": "
 class Var:
     """One binding that lives in a frame slot: a name in one scope."""
 
-    __slots__ = ("name", "scope", "slot", "captured")
+    __slots__ = ("name", "scope", "slot", "captured", "maybe")
 
     def __init__(self, name, scope, slot):
         self.name = name
         self.scope = scope
         self.slot = slot
         self.captured = False           # read by an inner function: a cell
+        self.maybe = False              # tested "is it set?" at run time
 
 
 class GlobalVar:
@@ -4145,6 +4146,7 @@ class Resolver:
             return
         if candidates:
             self.scope.status[name] = "maybe"   # it might have gone to one of those
+            here.maybe = True
         self.result.stores[(node_key, name)] = ("assign", candidates + [here])
 
     def read(self, node):
@@ -4353,9 +4355,10 @@ class TryContext:
     """A try being compiled: where its protected ranges are, and its
     finally body (to inline on break/continue/return)."""
 
-    def __init__(self, node):
+    def __init__(self, node, loops_depth):
         self.node = node
         self.finally_block = node.finally_block
+        self.loops_depth = loops_depth  # loops around the try, not inside it
         self.catch_ranges = []          # closed [start, end) of the try body
         self.finally_ranges = []        # closed ranges of try body + catch body
         self.open_catch = None
@@ -4474,11 +4477,17 @@ class Compiler:
         self.emit("STORE_CHAIN", self.code.const(chain), position)
 
     def new_cells(self, scope, skip=()):
-        cells = tuple(var.slot for name, var in sorted(scope.vars.items(),
-                                                       key=lambda item: item[1].slot)
-                      if var.captured and name not in skip)
+        """On entering a scope: fresh cells for its captured names, and its
+        maybe-slots emptied. A scope is new each time it is entered (each
+        loop iteration), and a slot whose "is it set?" is tested at run
+        time must not still hold the last time's value."""
+        ordered = sorted(scope.vars.items(), key=lambda item: item[1].slot)
+        cells = tuple(var.slot for name, var in ordered if var.captured and name not in skip)
         if cells:
             self.emit("NEW_CELLS", self.code.const(cells), None)
+        resets = tuple(var.slot for name, var in ordered if var.maybe and not var.captured)
+        if resets:
+            self.emit("RESET_SLOTS", self.code.const(resets), None)
 
     # -- statement lists and blocks -----------------------------------------------
 
@@ -4635,10 +4644,14 @@ class Compiler:
                 continue
             for inner in self.tries[index:]:
                 self.suspend(inner)
-            saved_tries = self.tries
+            # Compile the copy where the finally block really is: outside
+            # this try and every loop inside it, so a `break` in it leaves
+            # the loops around the try (or is stray), as when it runs normally.
+            saved_tries, saved_loops = self.tries, self.loops
             self.tries = self.tries[:index]
+            self.loops = self.loops[:context.loops_depth]
             self.block(context.finally_block, False)
-            self.tries = saved_tries
+            self.tries, self.loops = saved_tries, saved_loops
             for inner in self.tries[index:]:
                 self.resume(inner)
 
@@ -4754,7 +4767,7 @@ class Compiler:
         self.loop_end(node, loop, want)
 
     def s_TryNode(self, node, want):
-        context = TryContext(node)
+        context = TryContext(node, len(self.loops))
         self.tries.append(context)
         context.open_catch = self.here() if node.catch_block is not None else None
         context.open_finally = self.here() if node.finally_block is not None else None
@@ -4943,7 +4956,7 @@ def compile_source(source):
 STACK_EFFECT = {
     "LOAD_CONST": 1, "POP": -1, "DUP": 1,
     "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1,
-    "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0,
+    "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0, "RESET_SLOTS": 0,
     "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
     "NEG": 0, "POS": 0, "NOT": 0,
     "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
@@ -5123,9 +5136,9 @@ def describe_arg(code, name, arg):
         return ""
     if name in ("LOAD_CONST", "LOAD_CHAIN", "STORE_CHAIN", "BUILD_DICT", "GET_MEMBER",
                 "SET_MEMBER", "EXPORT", "IMPORT", "IMPORT_NAME", "STRAY", "FAIL", "LOOP_NUMBER",
-                "CHECK_BOOL", "NEW_CELLS", "MAKE_FUNCTION"):
+                "CHECK_BOOL", "NEW_CELLS", "RESET_SLOTS", "MAKE_FUNCTION"):
         value = code.constants[arg]
-        if name == "NEW_CELLS":
+        if name in ("NEW_CELLS", "RESET_SLOTS"):
             return " ".join("{}({})".format(s, code.slot_names[s]) for s in value)
         if name == "CHECK_BOOL":
             return "{} side of '{}'".format(*value)
@@ -5289,24 +5302,24 @@ def execute(interpreter, entry):
     LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
     STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
     LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
-    ADD_ = OP["ADD"]; SUB_ = OP["SUB"]; MUL_ = OP["MUL"]
-    DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]; MOD_ = OP["MOD"]
-    NEG_ = OP["NEG"]; POS_ = OP["POS"]; NOT_ = OP["NOT"]
-    EQ_ = OP["EQ"]; NE_ = OP["NE"]; LT_ = OP["LT"]
-    GT_ = OP["GT"]; LE_ = OP["LE"]; GE_ = OP["GE"]
-    IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]; JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]
-    JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]; BUILD_DICT_ = OP["BUILD_DICT"]
-    BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]; SLICE_TARGET_ = OP["SLICE_TARGET"]
-    SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]; GET_MEMBER_ = OP["GET_MEMBER"]
-    INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]; INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]
-    MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]; DELETE_TARGET_ = OP["DELETE_TARGET"]
-    DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]; JUMP_ = OP["JUMP"]
-    JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]; RANGE_PREP_ = OP["RANGE_PREP"]
-    RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]; ITER_NEXT_ = OP["ITER_NEXT"]
-    MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]; RETURN_ = OP["RETURN"]
-    THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]; STRAY_ = OP["STRAY"]
-    FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]; IMPORT_NAME_ = OP["IMPORT_NAME"]
-    EXPORT_ = OP["EXPORT"]
+    RESET_SLOTS_ = OP["RESET_SLOTS"]; ADD_ = OP["ADD"]; SUB_ = OP["SUB"]
+    MUL_ = OP["MUL"]; DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]
+    MOD_ = OP["MOD"]; NEG_ = OP["NEG"]; POS_ = OP["POS"]
+    NOT_ = OP["NOT"]; EQ_ = OP["EQ"]; NE_ = OP["NE"]
+    LT_ = OP["LT"]; GT_ = OP["GT"]; LE_ = OP["LE"]
+    GE_ = OP["GE"]; IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]
+    JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]; JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]
+    BUILD_DICT_ = OP["BUILD_DICT"]; BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]
+    SLICE_TARGET_ = OP["SLICE_TARGET"]; SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]
+    GET_MEMBER_ = OP["GET_MEMBER"]; INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]
+    INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]; MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]
+    DELETE_TARGET_ = OP["DELETE_TARGET"]; DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]
+    JUMP_ = OP["JUMP"]; JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]
+    RANGE_PREP_ = OP["RANGE_PREP"]; RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]
+    ITER_NEXT_ = OP["ITER_NEXT"]; MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]
+    RETURN_ = OP["RETURN"]; THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]
+    STRAY_ = OP["STRAY"]; FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]
+    IMPORT_NAME_ = OP["IMPORT_NAME"]; EXPORT_ = OP["EXPORT"]
 
     code = frame.code
     ops, args, consts, positions = code.ops, code.args, code.constants, code.positions
@@ -5604,6 +5617,9 @@ def execute(interpreter, entry):
                 elif op == NEW_CELLS_:
                     for slot in consts[arg]:
                         slots[slot] = Cell()
+                elif op == RESET_SLOTS_:
+                    for slot in consts[arg]:
+                        slots[slot] = UNSET
                 elif op == MAKE_FUNCTION_:
                     child = consts[arg]
                     closure = tuple(slots[where] if kind == "cell" else cells[where]

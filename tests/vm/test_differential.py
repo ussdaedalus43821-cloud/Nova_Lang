@@ -19,7 +19,9 @@ only thing masked.
      default), aimed at scopes, closures, try/finally and errors. A
      mismatch reports its seed and the program.
   4. The embedding API (Nova.exec/eval/call/compile/load_file) on both.
-  5. Coverage: between them, the generated programs and the repository
+  5. Regressions: tests/vm/regressions/, the cases that once made the
+     engines differ, each kept so it can never come back.
+  6. Coverage: between them, the generated programs and the repository
      compile to every opcode there is, so no instruction goes untested.
 """
 
@@ -170,6 +172,32 @@ def test_embedding(check):
           "tree-walker: {}\nvm: {}".format(tree, vm))
 
 
+def test_regressions(check):
+    """tests/vm/regressions/*.py: inputs that once made the engines differ,
+    each run as consecutive inputs to one interpreter (CHUNKS), with the
+    output both must give (EXPECTED). The .nova regressions there are
+    already compared with every other .nova file."""
+    import importlib.util
+    import contextlib
+    import io
+    found = 0
+    for path in sorted(glob.glob(os.path.join(HERE, "regressions", "*.py"))):
+        spec = importlib.util.spec_from_file_location("regression", path)
+        case = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(case)
+        for engine in ("tree", "vm"):
+            out = io.StringIO()
+            interpreter = nl.Interpreter(engine)
+            with contextlib.redirect_stdout(out):
+                for chunk in case.CHUNKS:
+                    nl.run(chunk, interpreter)
+            check(out.getvalue() == case.EXPECTED, "{} on the {}".format(
+                rel(path), "tree-walker" if engine == "tree" else "VM"),
+                "expected {!r}, got {!r}".format(case.EXPECTED, out.getvalue()))
+        found += 1
+    check(found > 0, "the regression cases were run ({})".format(found))
+
+
 def test_coverage(check):
     used = set()
 
@@ -190,7 +218,7 @@ def test_coverage(check):
 
 
 def run(check):
-    for test in (test_files, test_generated, test_embedding, test_coverage):
+    for test in (test_files, test_generated, test_embedding, test_regressions, test_coverage):
         try:
             test(check)
         except Exception as problem:  # noqa: BLE001
