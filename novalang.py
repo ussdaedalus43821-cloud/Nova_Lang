@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-# NovaLang v1.1.0 - a tiny language built from a hand-written lexer,
-# recursive-descent parser, AST and tree-walking interpreter.
+# NovaLang v2.0.0 - a small language built from a hand-written lexer,
+# recursive-descent parser, bytecode compiler and virtual machine.
 """
-NovaLang v1.1.0 - Stage 14: ECS & Particle Engine
+NovaLang v2.0.0 - a bytecode compiler and VM
 
-The pipeline has not changed since Stage 1, only widened:
+Since 2.0.0 a program runs as bytecode:
 
-    source text  ->  Lexer       ->  tokens
-    tokens       ->  Parser      ->  AST (Abstract Syntax Tree)
-    AST          ->  Interpreter ->  a value
+    source text  ->  Lexer     ->  tokens
+    tokens       ->  Parser    ->  AST (Abstract Syntax Tree)
+    AST          ->  type gate ->  refused, or allowed to run (M1)
+    AST          ->  Compiler  ->  a CodeObject (bytecode)
+    CodeObject   ->  VM        ->  a value
+
+The tree-walking Interpreter that ran every program up to 1.1.0 is still
+here, unchanged, as the fallback (`--tree-walk`, Nova(engine="tree")) and
+as the reference the VM is tested against: tests/vm/test_differential.py
+requires byte-identical output, errors and exit status from both.
 
 Stage 1:  numbers, + - * / ( ), variables, the REPL.
 Stage 2:  def / return, if / else, comparisons, booleans, strings,
@@ -55,6 +62,12 @@ Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
           choice. NovaLang owns the ECS and everything at gameplay
           scale: entities, components, queries, emitters, force fields,
           mouse-interaction rules.
+2.0.0:    tooling (M0: --format, --check), gradual typing (M1:
+          --typecheck and the type gate), packages (M2: tools/nova-pkg.py),
+          editor support (M3: the language server and VS Code extension),
+          and the bytecode compiler and VM (M4: --dis), now the default
+          engine. Every program runs the same on both engines; the few
+          deliberate changes from 1.1.0 are listed in CHANGELOG.md.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -72,7 +85,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -5840,7 +5853,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v1.1.0            ║
+║       NOVALANG v2.0.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""

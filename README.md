@@ -1,30 +1,32 @@
 # NovaLang
 
 **NovaLang** is a simple, embeddable scripting language, implemented twice
-over: once as a hand-written Python interpreter (`novalang.py`), and once
-again in NovaLang itself (`novalang.nova`) — a self-hosted implementation
-that the Python engine can load and run under. The language itself has no
+over: once in Python (`novalang.py`), as a bytecode compiler and virtual
+machine, and once again in NovaLang itself (`novalang.nova`) — a
+self-hosted implementation that the Python engine can load and run under. The language itself has no
 dependencies beyond the Python standard library, a real standard library
 of its own, and a two-way embedding API for calling between Python and
 NovaLang. (One example — the [ECS particle demo](#ecs--particle-engine) —
 needs NumPy and pygame; nothing else in this repo does.)
 
 ```
-source text  ->  Lexer       ->  tokens
-tokens       ->  Parser      ->  AST (Abstract Syntax Tree)
-AST          ->  Interpreter ->  a value
+source text  ->  Lexer     ->  tokens
+tokens       ->  Parser    ->  AST
+AST          ->  Compiler  ->  bytecode
+bytecode     ->  VM        ->  a value
 ```
 
-No `eval()`. No `exec()`. No parser generators. Every stage — lexer,
-parser, AST, tree-walking interpreter — is built by hand, in both the
-Python engine and the self-hosted one.
+No `eval()`. No `exec()`. No parser generators. Every stage is built by
+hand. See [Architecture](#architecture) for how the pieces fit, and for
+the tree-walking interpreter that is kept as the fallback and reference.
 
-**Current release: v1.1.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
-full history across all 14 build stages.
+**Current release: v2.0.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
+full history, from the 14 build stages of 1.x to the bytecode VM.
 
 ## Contents
 
 - [Quick start](#quick-start)
+- [Architecture](#architecture)
 - [Language syntax](#language-syntax)
 - [Standard library](#standard-library)
 - [Self-hosting](#self-hosting)
@@ -70,6 +72,98 @@ nova> vars               # list the globals you've defined
 nova> tree 1 + 2 * 3      # show the AST instead of running it
 nova> exit               # or quit, or Ctrl-D
 ```
+
+## Architecture
+
+Every way of running NovaLang — the command line, the REPL, `import`,
+`--bootstrap` and the embedding API — goes through the same pipeline in
+`novalang.py`:
+
+```
+source text ──Lexer──▶ tokens ──Parser──▶ AST ──type gate──▶ (refused, or)
+                                               │
+                                               ├──Compiler──▶ bytecode ──VM──▶ value    default
+                                               └──Interpreter (tree-walker)──▶ value     --tree-walk
+```
+
+1. **Lexer** (`Lexer`) turns source text into tokens, tracking the
+   position of each so every error can point at its line and column.
+2. **Parser** (`Parser`) is recursive descent: tokens become an AST of
+   `*Node` objects. Annotations (`x: int`, `-> string`) are parsed here
+   and ignored at run time.
+3. **Type gate** (`type_gate`). A program with annotations, or one that
+   imports modules, is checked by `tools/nova-typecheck.py` before a
+   single statement runs, and refused with a `TypeCheckError` if it
+   breaks a contract (see [Type annotations](#type-annotations)). Each
+   interpreter remembers what it has checked, so an import graph is
+   checked once per load. A program with neither skips the checker.
+4. **Compiler**, in two passes over the AST:
+   - `Resolver` decides where every name lives. Module globals stay a
+     dictionary. Other bindings get numbered frame slots, or cells when a
+     closure captures them. A name whose binding can only be known when
+     the program runs (a closure reading a variable that may be defined
+     later, or a REPL input assigning a global an earlier input made) is
+     compiled to a check that decides at run time, exactly as the
+     tree-walker would.
+   - `Compiler` emits about 60 opcodes for a stack machine into a
+     `CodeObject` (instructions, constants, names, line positions). Each
+     function body is its own `CodeObject`. `try`/`catch`/`finally` uses
+     an exception table in the style of CPython 3.11, so a `try` costs
+     nothing until something is thrown; a `finally` is copied onto each
+     way out of its block.
+   - `verify()` checks the result before it runs: every jump lands on an
+     instruction, every slot and constant exists, and the stack depth
+     agrees wherever two paths meet.
+
+   `python3 novalang.py --dis file.nova` prints the bytecode. A parsed
+   program is compiled once and the result kept on its AST, so a
+   `Nova.compile()` script, or a source string `eval()`/`exec()` has
+   already seen, is never compiled again.
+5. **VM** (`execute`) runs bytecode in a single loop. A call from one
+   NovaLang function to another pushes a `Frame` (its slots, its value
+   stack, its closure cells) rather than recursing in Python, so the
+   call depth limit (1200) is NovaLang's own. The hottest operations
+   (integer and float arithmetic, comparisons, indexing) take an inline
+   fast path when both operands have the same exact type; every other
+   case, and every error, goes through the same shared operation
+   functions the tree-walker uses.
+
+### The tree-walker: fallback and reference
+
+The `Interpreter` class that ran every program up to v1.1.0 still ships,
+unchanged in behavior. It evaluates the AST directly, node by node:
+
+```bash
+python3 novalang.py --tree-walk program.nova
+python3 novalang.py --tree-walk --bootstrap program.nova
+```
+
+```python
+Nova(engine="tree")          # or Interpreter("tree")
+```
+
+It is kept for two reasons. It is a fallback if a VM bug is ever found
+in the field. And it is the reference the VM is held to:
+`tests/run_all.py` station 11 runs every `.nova` file in the repository,
+every example under `--bootstrap`, 300 seeded random programs and the
+embedding API on both engines, and requires the same stdout, stderr and
+exit status, byte for byte. Both engines call the same functions for
+what an operation means (`binary_operation`, `compare_operation`,
+`index_operation` and the rest), so they cannot disagree about
+semantics, only about control flow, and that is what station 11 tests.
+
+### Around the core
+
+- `novalang.nova` is the self-hosted implementation: a lexer, parser and
+  tree-walking interpreter written in NovaLang, which itself runs on the
+  host's VM (see [Self-hosting](#self-hosting)).
+- `tools/` holds what reads NovaLang without running it: the formatter,
+  linter and type checker share one front end (`tools/nova_ast.py`, the
+  real Lexer and Parser with comments and spans kept) and one set of
+  scope rules (`tools/nova_scope.py`). The language server
+  (`tools/nova-lsp.py`) builds on all three, and `tools/nova-pkg.py`
+  installs packages.
+- `bootstrap.py` runs `novalang.nova` on whichever engine was asked for.
 
 ## Language syntax
 
@@ -182,8 +276,8 @@ function above, checked against its expected return value.
 
 `novalang.nova` is a second, complete Lexer/Parser/Interpreter for
 NovaLang — written in NovaLang itself, and loaded by the Python engine
-rather than run standalone (NovaLang has no compiler of its own to turn
-itself into an executable):
+rather than run standalone (NovaLang compiles to bytecode for its own VM,
+not to an executable, so something has to host it):
 
 ```bash
 python3 novalang.py --bootstrap program.nova [args...]
@@ -493,6 +587,22 @@ All in `examples/`, runnable directly or with `--bootstrap`:
 
 ## Performance
 
+The VM is the default because it is faster on every benchmark in
+`tests/bench/` (`python3 tests/bench/run_bench.py [--tree-walk]`). Whole
+process, best of 5, on the same machine:
+
+| Benchmark | VM | Tree-walker |
+|---|---|---|
+| fib(22) | 0.212 s | 0.406 s |
+| examples/fib.nova | 0.133 s | 0.192 s |
+| examples/fib.nova --bootstrap | 4.130 s | 10.573 s |
+| self_host_test --bootstrap | 0.632 s | 1.071 s |
+| loops (200k iterations) | 0.961 s | 2.546 s |
+| closures (100k closure calls) | 0.493 s | 0.694 s |
+
+Compiling costs a little at load time; a program that loads many modules
+and runs briefly gains less than one that loops.
+
 `examples/daedalus_integration.py` benchmarks `nova.call()` — 15 calls
 into a NovaLang wave-spawning script from a simulated game loop — and
 prints its own throughput:
@@ -503,8 +613,8 @@ inside a 60fps frame budget (16.7ms) even before compile() or eval()'s
 automatic per-source caching.
 ```
 
-Measured consistently around **~2,200 calls/sec** on ordinary developer
-hardware — comfortably inside a 60fps (16.7ms-per-frame) budget for a game
+Measured at about **2,800-3,700 calls/sec** on the VM (about 2,200 on
+1.1.0's tree-walker, on other hardware) — comfortably inside a 60fps (16.7ms-per-frame) budget for a game
 or simulation calling into NovaLang once or a few times per frame.
 `eval()`/`exec()` cache by source text automatically (`compile()` is
 available if you want to hold the parsed form yourself), so a script

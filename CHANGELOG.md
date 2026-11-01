@@ -5,22 +5,80 @@ All notable changes to NovaLang are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and NovaLang uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Every release is a single self-contained file, `novalang.py`, run with
+The language is one self-contained file, `novalang.py`, run with
 `python3 novalang.py` for the REPL or `python3 novalang.py program.nova` for a
-script. The implementation is a hand-written pipeline throughout — no `eval()`,
-no `exec()`, no parser generators, no regular expressions:
+script; since 2.0.0 its tools live beside it in `tools/`. The implementation
+is a hand-written pipeline throughout — no `eval()`, no `exec()`, no parser
+generators:
 
 ```
-source text  ->  Lexer       ->  tokens
-tokens       ->  Parser      ->  AST (Abstract Syntax Tree)
-AST          ->  Interpreter ->  a value
+source text  ->  Lexer     ->  tokens
+tokens       ->  Parser    ->  AST (Abstract Syntax Tree)
+AST          ->  type gate ->  refused, or allowed to run      (2.0.0)
+AST          ->  Compiler  ->  bytecode                       (2.0.0)
+bytecode     ->  VM        ->  a value                        (2.0.0)
+
+AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
+                                                  now --tree-walk)
 ```
 
 ---
 
-## [Unreleased] — M4: Bytecode VM (in progress)
+## [2.0.0] - 2026-11-01 — Bytecode compiler and VM
 
-### Added (phase 1: the compiler)
+Programs now run on a bytecode virtual machine. The tree-walking
+interpreter that ran every program up to 1.1.0 still ships, unchanged in
+behavior, as `--tree-walk` / `Nova(engine="tree")`. It is the reference
+the VM is tested against: station 11 requires the same stdout, stderr and
+exit status, byte for byte, from both engines on every `.nova` file in the
+repository, every example under `--bootstrap`, 300 seeded random programs
+and the embedding API.
+
+This release also collects the toolchain milestones M0-M3: the formatter
+and linter, gradual typing, packages and editor support. It is a major
+version because the engine every program runs on has been replaced, and
+because the type gate can now refuse a program before it runs.
+
+### Upgrading from 1.1.0
+- A program without annotations or packages needs no change. The
+  deliberate behavior differences are:
+  - a program that imports modules is type-checked before it runs. An
+    untyped program has no contracts of its own, so it is refused only
+    if it calls a typed module wrongly (M1);
+  - a lone `\r` is a line break in editor buffers, `exec()` strings and
+    the REPL (M3; files on disk were never affected);
+  - very deep recursion under `--bootstrap` reports "call depth of 1200
+    exceeded" instead of Python's RecursionError (M4);
+  - circular-import errors name modules inside packages as
+    `<package>/<file>`, and stale package installs are refused (M2).
+- An embedder that wants the old engine passes `Nova(engine="tree")` or
+  `Interpreter("tree")`; the command line takes `--tree-walk`.
+- `__version__` is `"2.0.0"`. A host that pins the version must update
+  its pin.
+
+### M5: Release fixes
+
+#### Fixed
+- The type gate checked an import graph once per importer instead of
+  once per load. Every gate started an empty type checker, so a module
+  imported by many others was checked again for each of them: OmniCalc's
+  startup ran the checker 159 times for 37 module loads. Each interpreter
+  now keeps its gate results for its lifetime, one per absolute module
+  path, so a graph is checked once. A result is reused only for the
+  exact source it was checked from. A changed source, or a failed module
+  load (the one time the interpreter reads a file again), discards every
+  result, because modules checked against the old version must be
+  checked again too. OmniCalc's startup (best of 7): 0.79 s before,
+  0.48 s after; 0.27 s on 1.1.0.
+- Station 7 counts real checker runs on a heavily shared import graph
+  (`tests/typecheck/gate_cache.py`): exactly one per file, on both
+  engines and through the embedding API, and never a stale result. Each
+  of seven mutants of the cache is caught.
+
+
+### M4: Bytecode compiler and VM
+
+#### Added (phase 1: the compiler)
 - A bytecode compiler in `novalang.py`. `Resolver` decides where every name
   lives: module globals stay a dictionary, and other bindings get frame
   slots, or cells when a closure reads them. Late-bound reads in closures
@@ -29,8 +87,7 @@ AST          ->  Interpreter ->  a value
   try/catch/finally. `verify()` checks every jump, slot, constant and
   stack depth on every path.
 - `python3 novalang.py --dis file.nova` (and `tools/nova_compiler.py`)
-  prints the bytecode. Nothing runs it yet: the tree-walking interpreter
-  is still the only engine.
+  prints the bytecode.
 - `tests/run_all.py` station 10. It checks golden disassembly (closures
   three levels deep, a closure per loop iteration, every way out of
   try/finally), every `.nova` file compiling and verifying, verify()
@@ -38,7 +95,7 @@ AST          ->  Interpreter ->  a value
   `tools/nova_scope.py` about the scope of every name read in the
   repository.
 
-### Added (phase 2: the virtual machine)
+#### Added (phase 2: the virtual machine)
 - The bytecode VM is now the default engine. It is a single loop: a call
   from one NovaLang function to another pushes a frame (slots, a value
   stack, closure cells) instead of recursing in Python. `MAX_CALL_DEPTH`
@@ -56,16 +113,57 @@ AST          ->  Interpreter ->  a value
   seeded random programs (`tests/vm/generator.py`), and on the embedding
   API.
 
-### Changed
+#### Changed (phase 3: tuning)
+Each change was profiled first and kept only if it measured faster, with
+station 11 green after every step. Whole process, best of 5:
+
+| Benchmark | VM, phase 2 | VM, 2.0.0 | Tree-walker |
+|---|---|---|---|
+| fib(22) | 0.298 s | 0.212 s | 0.406 s |
+| examples/fib.nova | 0.166 s | 0.133 s | 0.192 s |
+| examples/fib.nova --bootstrap | 7.120 s | 4.130 s | 10.573 s |
+| self_host_test --bootstrap | 0.998 s | 0.632 s | 1.071 s |
+| loops (200k iterations) | 1.512 s | 0.961 s | 2.546 s |
+| closures (100k closure calls) | 0.544 s | 0.493 s | 0.694 s |
+
+- The dispatch ladder is ordered by measured opcode frequency.
+- Inline fast paths for arithmetic, comparison and indexing, taken only
+  when both operands have the same exact `type()` and the shared function
+  would do exactly the same Python operation. Every error and every
+  mixed case still goes through the shared function.
+- `CALL` builds the callee's frame inline.
+- Tried and reverted because they measured no faster: binding
+  `stack.append`/`stack.pop` to locals (slower on Python 3.13), and a
+  definite-cell shortcut for closure reads.
+- `tests/bench/`: the benchmarks above (`run_bench.py`).
+
+#### Fixed (phase 3)
+- A `finally` inlined on a `return` inside a loop was compiled as if
+  still in that loop, so a `break` in it left the loop instead of being
+  stray, and the `finally` ran twice. Found by a generator soak (seed 352).
+- A module-level block kept the previous iteration's value in a slot
+  that decides whether an assignment goes to a global, so the global was
+  never assigned (seed 3975). `RESET_SLOTS` now empties those slots on
+  every block entry.
+- `--tree-walk --bootstrap` ran `novalang.nova` on the VM: `bootstrap.py`
+  imported a second copy of `novalang`, whose default engine was still the
+  VM, so station 11's bootstrap comparison had compared the VM with
+  itself. The engine is now passed explicitly, and station 11 checks it.
+- The VM raises `VMError` if a frame returns with values left on its
+  stack, so a missing `POP` in the compiler cannot go unnoticed.
+- Station 11 gained richer indexing in the generator (every kind of
+  target with every kind of index), REPL-style chunked programs, and
+  `tests/vm/regressions/`. Each was added because mutation testing or a
+  soak found a gap.
+
+#### Changed
 - Very deep recursion under `--bootstrap` reports NovaLang's own "call
   depth of 1200 exceeded" instead of Python's RecursionError ("ran out of
   stack"), because NovaLang calls no longer use Python's stack.
 
----
+### M3: Editor tooling
 
-## [Unreleased] — M3: Editor tooling
-
-### Added
+#### Added
 - `tools/nova-lsp.py`: a Language Server Protocol server over stdio,
   standard library only. It provides diagnostics (lint, type check and
   parse errors), formatting, go-to-definition (in this file, in imported
@@ -82,17 +180,15 @@ AST          ->  Interpreter ->  a value
   language's own keywords, built-ins and types (the drift guard), and
   runs `extension.js` under Node.
 
-### Fixed
+#### Fixed
 - A lone `\r` is a line break, as in editors, LSP and Python. It used to
   be skipped as whitespace, which could fold the next line into a
   comment. Files on disk were never affected, because text mode already
   translated it; editor buffers, `exec()` strings and the REPL were.
 
----
+### M2: Packages
 
-## [Unreleased] — M2: Packages
-
-### Added
+#### Added
 - Package imports. `import "math-utils"` loads
   `.nova_modules/math-utils/<main>`, found by walking up from the importing
   file, and binds `math_utils`. Both engines and the type checker share the
@@ -108,15 +204,13 @@ AST          ->  Interpreter ->  a value
 - `.nova_modules/.gitignore` keeps installed packages out of git.
 - `tests/run_all.py` station 8, driven by the fixtures in `tests/pkg/`.
 
-### Changed
+#### Changed
 - Circular-import errors name modules inside packages as
   `<package>/<file>`, since every package's entry file is `main.nova`.
 
----
+### M1: Gradual typing
 
-## [Unreleased] — M1: Gradual typing
-
-### Added
+#### Added
 - Optional type annotations: `def f(a: int) -> string { }` and
   `let x: float = 1`. The types are `int`, `float`, `string`, `bool`,
   `list`, `dict` and `any`. Both interpreters parse them and ignore them
@@ -138,18 +232,16 @@ AST          ->  Interpreter ->  a value
   that every annotated `.nova` file in the repo type-checks clean.
 - Station 6 now runs every Python program under `examples/`.
 
-### Fixed
+#### Fixed
 - `examples/particle_engine.py` silently dropped collisions for particles
   beyond `max_per_cell` in a crowded grid cell. Dense cells are now
   handled exactly.
 - The daedalus template's contact test could never fail (`hit or True`).
   It now asserts exact damage and score.
 
----
+### M0: Toolchain
 
-## [Unreleased] — M0: Toolchain
-
-### Added
+#### Added
 - `tools/nova-fmt.py` and `novalang.py --format`: the NovaLang formatter.
   It keeps every comment and literal spelling, and checks its own output
   (same AST, same comments, idempotent) before writing anything.
