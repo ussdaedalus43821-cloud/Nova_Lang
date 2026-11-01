@@ -2870,6 +2870,9 @@ class Environment:
 # ---------------------------------------------------------------------------
 # Shared operations (M4). What each operation *means* lives here, once, and
 # both engines call it: the tree-walking Interpreter and the bytecode VM.
+# The VM's only shortcuts are inline fast paths for the commonest cases -
+# two operands of the same exact type(), where the function here would do
+# exactly the same Python operation - and station 11 holds them to it.
 # The engines differ only in how they get the operands - and in what order
 # they evaluate them, which each preserves exactly - never in what an
 # operation does with them, so they cannot drift apart.
@@ -5385,7 +5388,12 @@ def execute(interpreter, entry):
                     stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
                 elif op == EQ_:
                     right = stack.pop()
-                    stack[-1] = compare_operation("==", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                        stack[-1] = left == right
+                    else:
+                        stack[-1] = compare_operation("==", left, right, positions[ip - 1])
                 elif op == STORE_FAST_:
                     slots[arg] = stack.pop()
                 elif op == LOAD_CHAIN_:
@@ -5406,16 +5414,36 @@ def execute(interpreter, entry):
                         raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
                 elif op == ADD_:
                     right = stack.pop()
-                    stack[-1] = binary_operation("+", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left + right
+                    else:
+                        stack[-1] = binary_operation("+", left, right, positions[ip - 1])
                 elif op == SUB_:
                     right = stack.pop()
-                    stack[-1] = binary_operation("-", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float):
+                        stack[-1] = left - right
+                    else:
+                        stack[-1] = binary_operation("-", left, right, positions[ip - 1])
                 elif op == LT_:
                     right = stack.pop()
-                    stack[-1] = compare_operation("<", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left < right
+                    else:
+                        stack[-1] = compare_operation("<", left, right, positions[ip - 1])
                 elif op == MOD_:
                     right = stack.pop()
-                    stack[-1] = binary_operation("%", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float) and right != 0:
+                        stack[-1] = left % right
+                    else:
+                        stack[-1] = binary_operation("%", left, right, positions[ip - 1])
                 elif op == STORE_GLOBAL_:
                     glob[arg] = stack.pop()
                 elif op == JUMP_:
@@ -5461,22 +5489,52 @@ def execute(interpreter, entry):
                     stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
                 elif op == NE_:
                     right = stack.pop()
-                    stack[-1] = compare_operation("!=", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                        stack[-1] = left != right
+                    else:
+                        stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
                 elif op == GT_:
                     right = stack.pop()
-                    stack[-1] = compare_operation(">", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left > right
+                    else:
+                        stack[-1] = compare_operation(">", left, right, positions[ip - 1])
                 elif op == LE_:
                     right = stack.pop()
-                    stack[-1] = compare_operation("<=", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left <= right
+                    else:
+                        stack[-1] = compare_operation("<=", left, right, positions[ip - 1])
                 elif op == GE_:
                     right = stack.pop()
-                    stack[-1] = compare_operation(">=", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left >= right
+                    else:
+                        stack[-1] = compare_operation(">=", left, right, positions[ip - 1])
                 elif op == MUL_:
                     right = stack.pop()
-                    stack[-1] = binary_operation("*", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float):
+                        stack[-1] = left * right
+                    else:
+                        stack[-1] = binary_operation("*", left, right, positions[ip - 1])
                 elif op == FLOOR_DIV_:
                     right = stack.pop()
-                    stack[-1] = binary_operation("//", stack[-1], right, positions[ip - 1])
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float) and right != 0:
+                        stack[-1] = left // right
+                    else:
+                        stack[-1] = binary_operation("//", left, right, positions[ip - 1])
                 elif op == DIV_:
                     right = stack.pop()
                     stack[-1] = binary_operation("/", stack[-1], right, positions[ip - 1])
