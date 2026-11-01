@@ -3,30 +3,31 @@ code <module>
              0 LOAD_CONST           0 (0)
      2       1 STORE_GLOBAL         seen
              2 LOAD_CONST           1 (True)
-     3       3 JUMP_IF_NOT_TRUE     to 17 (if condition)
-     4       4 LOAD_GLOBAL          seen
-             5 LOAD_CONST           3 (1)
-             6 ADD
-             7 STORE_GLOBAL         seen
-             8 LOAD_CONST           3 (1)
-     5       9 STORE_CHAIN          4 (global:fresh -> fast:0)
-            10 LOAD_CONST           5 (2)
-     6      11 STORE_FAST           1 (local@block)
-     7      12 LOAD_CONST           6 (<built-in print>)
-            13 LOAD_CHAIN           7 (fast:0 -> global:fresh)
-            14 LOAD_FAST            1 (local@block)
-            15 CALL                 2
-            16 POP
-    10 >>   17 MAKE_FUNCTION        8 (<code counter>)
-            18 STORE_GLOBAL         counter
-    15      19 MAKE_FUNCTION        9 (<code shadow>)
-            20 STORE_GLOBAL         shadow
-    23      21 MAKE_FUNCTION        10 (<code reads_global_late>)
-            22 STORE_GLOBAL         reads_global_late
-            23 LOAD_CONST           3 (1)
-            24 DUP
-    26      25 STORE_GLOBAL         defined_after
-            26 RETURN
+     3       3 JUMP_IF_NOT_TRUE     to 18 (if condition)
+             4 RESET_SLOTS          0(fresh@block)
+     4       5 LOAD_GLOBAL          seen
+             6 LOAD_CONST           4 (1)
+             7 ADD
+             8 STORE_GLOBAL         seen
+             9 LOAD_CONST           4 (1)
+     5      10 STORE_CHAIN          5 (global:fresh -> fast:0)
+            11 LOAD_CONST           6 (2)
+     6      12 STORE_FAST           1 (local@block)
+     7      13 LOAD_CONST           7 (<built-in print>)
+            14 LOAD_CHAIN           8 (fast:0 -> global:fresh)
+            15 LOAD_FAST            1 (local@block)
+            16 CALL                 2
+            17 POP
+    10 >>   18 MAKE_FUNCTION        9 (<code counter>)
+            19 STORE_GLOBAL         counter
+    15      20 MAKE_FUNCTION        10 (<code shadow>)
+            21 STORE_GLOBAL         shadow
+    23      22 MAKE_FUNCTION        11 (<code reads_global_late>)
+            23 STORE_GLOBAL         reads_global_late
+            24 LOAD_CONST           4 (1)
+            25 DUP
+    26      26 STORE_GLOBAL         defined_after
+            27 RETURN
 
 code counter
   slots: 0=seen
