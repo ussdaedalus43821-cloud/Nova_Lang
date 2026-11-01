@@ -1,0 +1,11 @@
+# Package imports from a subdirectory (found by walking up), next to an
+# ordinary relative import, which must behave exactly as before M2.
+import "math-utils"
+import "math-utils" as mu
+import "local-lib"
+import "git-lib"
+import "./helper.nova" with twice
+
+print(math_utils.version(), mu.area(7), twice(21))
+print(local_lib.hello())
+print(git_lib.hello())

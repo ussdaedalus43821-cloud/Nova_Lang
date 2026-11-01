@@ -1,0 +1,11 @@
+# math-utils 1.2.0 - its own relative import, and a dependency of its own.
+import "./arith.nova" with square
+import "str-tools"
+
+export def version() {
+    return str_tools.tag("1.2.0")
+}
+
+export def area(side) {
+    return square(side)
+}

@@ -18,6 +18,30 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [Unreleased] — M2: Packages
+
+### Added
+- Package imports. `import "math-utils"` loads
+  `.nova_modules/math-utils/<main>`, found by walking up from the importing
+  file, and binds `math_utils`. Both engines and the type checker share the
+  same rule. File imports (anything ending in `.nova` or containing `/`)
+  are unchanged.
+- `tools/nova-pkg.py`: `install`, `install --frozen` and `verify`. It
+  resolves registry ranges, path dependencies and git refs into one flat
+  install, refuses version conflicts, and writes `nova.lock` with exact
+  versions, git commits and SHA-256 hashes.
+- The interpreter refuses stale installs: `nova.json` changed since
+  `nova.lock`, a missing lock, or packages not installed from the current
+  lock.
+- `.nova_modules/.gitignore` keeps installed packages out of git.
+- `tests/run_all.py` station 8, driven by the fixtures in `tests/pkg/`.
+
+### Changed
+- Circular-import errors name modules inside packages as
+  `<package>/<file>`, since every package's entry file is `main.nova`.
+
+---
+
 ## [Unreleased] — M1: Gradual typing
 
 ### Added

@@ -2258,6 +2258,41 @@ def is_package_import(raw_path) {
     return true
 }
 
+# Stop the line if a project's installed packages are not exactly what its
+# nova.json and nova.lock describe - the same three checks as the host's
+# check_installed, once per project per run.
+let CHECKED_PROJECTS = {}
+
+def check_installed(base, pos) {
+    if base in CHECKED_PROJECTS {
+        return
+    }
+    let modules = base + ".nova_modules"
+    let hint = " - run `python3 tools/nova-pkg.py install`"
+    let lead = "the packages in " + modules + " cannot be used: "
+    if not exists(base + "nova.lock") {
+        raise_error(lead + "there is no nova.lock beside them" + hint, pos)
+    }
+    if not exists(base + "nova.json") {
+        raise_error(lead + "there is no nova.json beside them" + hint, pos)
+    }
+    let lock_text = read(base + "nova.lock")
+    let lock = json.loads(lock_text)
+    let manifest = json.loads(read(base + "nova.json"))
+    let wanted = {}
+    if "dependencies" in manifest {
+        wanted = manifest["dependencies"]
+    }
+    if not ("requires" in lock) or lock["requires"] != wanted {
+        raise_error(lead + "nova.json has changed since nova.lock was written" + hint, pos)
+    }
+    let installed = modules + "/.installed.lock"
+    if not exists(installed) or read(installed) != lock_text {
+        raise_error(lead + "they were not installed from the current nova.lock" + hint, pos)
+    }
+    CHECKED_PROJECTS[base] = true
+}
+
 # Walk up from the importing file's directory to the first
 # .nova_modules/<name>/nova.json, as the host does.
 def resolve_package(name, pos) {
@@ -2273,6 +2308,7 @@ def resolve_package(name, pos) {
         }
         let package = base + ".nova_modules/" + name
         if exists(package + "/nova.json") {
+            check_installed(base, pos)
             let manifest = json.loads(read(package + "/nova.json"))
             let main = "main.nova"
             if type(manifest) == "dict" and "main" in manifest {

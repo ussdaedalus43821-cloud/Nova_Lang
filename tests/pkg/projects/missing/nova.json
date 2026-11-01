@@ -1,0 +1,8 @@
+{
+  "name": "missing",
+  "version": "1.0.0",
+  "registry": "../../registry",
+  "dependencies": {
+    "no-such-package": "^1.0.0"
+  }
+}

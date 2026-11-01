@@ -30,6 +30,7 @@ full history across all 14 build stages.
 - [Self-hosting](#self-hosting)
 - [Toolchain: formatter & linter](#toolchain-formatter--linter)
 - [Type annotations](#type-annotations)
+- [Packages](#packages)
 - [Embedding NovaLang in Python](#embedding-novalang-in-python)
 - [ECS & particle engine](#ecs--particle-engine)
 - [Examples](#examples)
@@ -265,6 +266,53 @@ escape hatch.
 
 See `examples/types.nova` and `tools/nova-typecheck.py` (its docstring
 lists every error code).
+
+## Packages
+
+A project lists its dependencies in a `nova.json` at its root:
+
+```json
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "registry": "../registry",
+  "dependencies": {
+    "math-utils": "^1.0.0",
+    "local-lib": {"path": "../local-lib"},
+    "remote-lib": {"git": "https://example.com/remote-lib.git", "ref": "v1.2.0"}
+  }
+}
+```
+
+```bash
+python3 tools/nova-pkg.py install            # resolve, write nova.lock, install
+python3 tools/nova-pkg.py install --frozen   # install exactly nova.lock (for CI)
+python3 tools/nova-pkg.py verify             # check nothing in .nova_modules was edited
+```
+
+Then any file in the project can write `import "math-utils"`, which binds
+`math_utils` (`as` still picks another name). A plain lowercase name is a
+package. Anything ending in `.nova`, or with a `/` in it, is a file, and
+resolves exactly as it always has.
+
+- **Sources.** Version ranges (`1.2.3`, `^1.2.3`, `~1.2.3`, `*`) come from
+  a local registry: `"registry"` in `nova.json` or `$NOVA_REGISTRY`, laid
+  out as `<registry>/<name>/<version>/`. Path and git dependencies point
+  at a directory or a repository.
+- **Flat install.** There is one version of each package, in
+  `.nova_modules/<name>/`, found by walking up from the importing file as
+  Node does. If two packages need versions no single version satisfies,
+  `install` stops and names them, instead of installing two copies.
+- **`nova.lock`** records each package's exact version, its source (a git
+  commit, not a tag) and a SHA-256 of its files. Commit it.
+  `.nova_modules` carries its own `.gitignore`, so it is never committed.
+- **Stop the line.** The interpreter refuses to import a package when
+  `nova.json` has changed since `nova.lock` was written, when `nova.lock`
+  is missing, or when the installed packages are not the ones it records.
+  The error says to run `nova-pkg.py install`.
+- **A package** is a directory with its own `nova.json`, whose `"main"`
+  names its entry file (default `main.nova`). Its own relative imports
+  work as usual.
 
 ## Embedding NovaLang in Python
 

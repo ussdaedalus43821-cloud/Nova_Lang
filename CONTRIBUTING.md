@@ -114,7 +114,9 @@ suites (`--quick` skips the slow bootstrap runs). A new `.py` file under
 `tests/run_all.py`, or the line stops. The type checker has its own
 station: if you change an operator, a built-in or a scope rule in
 `novalang.py`, `tests/typecheck/crosscheck.py` will tell you whether
-`tools/nova-typecheck.py` still agrees with it. Run
+`tools/nova-typecheck.py` still agrees with it. Package resolution lives
+in `novalang.py` (`resolve_package`) and `novalang.nova`, which must keep
+matching; station 8 runs every package scenario on both engines. Run
 `python3 novalang.py --check` (and `--typecheck`, if it has annotations)
 on any `.nova` file you touch. Before sending a change:
 
