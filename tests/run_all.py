@@ -75,6 +75,7 @@ PYTHON_PROGRAMS = [
     "examples/daedalus_integration.py",
     "examples/embedding_templates/reactor_game/test_reactor_logic.py",
     "examples/embedding_templates/daedalus_game/test_game_logic.py",
+    "examples/particle_engine_selftest.py",
 ]
 
 # Python files under examples/ that the line does not run, and why.
@@ -86,9 +87,6 @@ PYTHON_EXEMPT = {
     "examples/embedding_templates/daedalus_game/nova_bridge.py": "library, tested by its suite",
     "examples/embedding_templates/reactor_game/reactor.py": "library, tested by its suite",
     "examples/particle_engine.py": "library, tested by particle_engine_selftest.py",
-    "examples/particle_engine_selftest.py":
-        "FAILS on the base branch (cramped collision case, max diff 3.97e+04) - "
-        "pending a decision; remove this entry once the engine is fixed",
 }
 
 TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")

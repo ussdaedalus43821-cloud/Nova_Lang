@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """particle_engine_selftest.py - RUN THIS FIRST, before the full demo.
 
-particle_engine.py's collision code could not be executed in the
-environment that wrote it (no numpy, no network access to install it -
-see that file's module docstring for the full disclosure). What WAS
-validated there is the underlying algorithm, as plain-Python prototypes
-against a brute-force O(n^2) reference. This script re-runs that same
-cross-check against your actual installed NumPy, on the actual
-ParticleEngine class the demo uses - so if this passes, the transcription
-from validated algorithm to NumPy code was faithful; if it fails, that's
-real, actionable signal about where.
+Cross-checks particle_engine.py's vectorized collision code against a
+brute-force O(n^2) reference on the actual ParticleEngine class the demo
+uses, with your installed NumPy. The dense-pocket trials also confirm that
+they really overflow a grid cell, so the overflow path cannot go untested.
+tests/run_all.py runs this on every change.
 
 No pygame needed - just numpy.
 
@@ -92,7 +88,14 @@ def run_trial(n, width, height, seed, cell_size, max_per_cell, spring_k, cramped
     diff = np.abs(grid_dvel - ref_dvel)
     max_diff = float(np.max(diff)) if diff.size else 0.0
     tolerance = 1e-6 * max(1.0, float(np.max(np.abs(ref_dvel))) if ref_dvel.size else 1.0)
-    return max_diff, tolerance, n
+    return max_diff, tolerance, n, busiest_cell(pos_view, cell_size)
+
+
+def busiest_cell(positions, cell_size):
+    """How many particles share the most crowded grid cell."""
+    cells = np.floor(positions / cell_size).astype(np.int64)
+    _, counts = np.unique(cells, axis=0, return_counts=True)
+    return int(counts.max())
 
 
 def main():
@@ -103,22 +106,33 @@ def main():
     trials = [
         dict(n=50, width=800, height=600, seed=1, cell_size=20.0, max_per_cell=12, spring_k=4000.0),
         dict(n=200, width=800, height=600, seed=2, cell_size=15.0, max_per_cell=12, spring_k=4000.0),
-        dict(n=200, width=800, height=600, seed=3, cell_size=15.0, max_per_cell=4, spring_k=4000.0),  # small cap -> overflow
+        dict(n=200, width=800, height=600, seed=3, cell_size=15.0, max_per_cell=4, spring_k=4000.0),
         dict(n=400, width=1000, height=800, seed=4, cell_size=25.0, max_per_cell=16, spring_k=2500.0),
+        # Dense pockets: cells far over max_per_cell must still be exact.
         dict(n=150, width=800, height=600, seed=5, cell_size=20.0, max_per_cell=12, spring_k=4000.0, cramped=True),
+        dict(n=300, width=800, height=600, seed=7, cell_size=20.0, max_per_cell=4, spring_k=4000.0, cramped=True),
+        dict(n=400, width=800, height=600, seed=8, cell_size=60.0, max_per_cell=12, spring_k=4000.0, cramped=True),
         dict(n=2, width=800, height=600, seed=6, cell_size=20.0, max_per_cell=12, spring_k=4000.0),
     ]
 
     all_ok = True
     for trial in trials:
-        max_diff, tolerance, n = run_trial(**trial)
+        max_diff, tolerance, n, busiest = run_trial(**trial)
         ok = max_diff <= tolerance
         all_ok &= check(
-            "n={} cell_size={} max_per_cell={} cramped={}: max diff {:.2e} (tolerance {:.2e})".format(
+            "n={} cell_size={} max_per_cell={} cramped={} busiest cell={}: "
+            "max diff {:.2e} (tolerance {:.2e})".format(
                 trial["n"], trial["cell_size"], trial["max_per_cell"], trial.get("cramped", False),
-                max_diff, tolerance),
+                busiest, max_diff, tolerance),
             ok,
         )
+        if trial.get("cramped"):
+            # A dense-pocket trial that never overflows a cell proves nothing.
+            all_ok &= check(
+                "  ...and that trial really overflows max_per_cell ({} > {})".format(
+                    busiest, trial["max_per_cell"]),
+                busiest > trial["max_per_cell"],
+            )
 
     # A quick, separate sanity check that spawn/step/boundary don't crash
     # at a realistic size, and that particles stay on screen.

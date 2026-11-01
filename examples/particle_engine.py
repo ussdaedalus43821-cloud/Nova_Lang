@@ -18,20 +18,14 @@ loop - this is struct-of-arrays specifically so every operation below is
 a single vectorized call over the whole population, not a Python loop
 over particles at all).
 
-A HONEST NOTE ON TESTING - the sandbox this was written in has no numpy,
-no pygame, and no network access to install either, so none of the
-NumPy-specific code below has actually been executed. The ALGORITHM (the
-uniform-grid neighbor-pairing technique used for collision) WAS validated
-- against a brute-force O(n^2) reference, and separately for the exact
-"sort + cumsum rank-in-cell" bucketing trick used to vectorize it - as
-plain Python prototypes, runnable with nothing but the standard library
-(see the two scripts referenced in the README's Testing section). That
-gives real confidence the ALGORITHM is correct; it does not confirm this
-particular NumPy transcription has no typos or off-by-one slips in the
-array-API calls themselves. Run particle_engine_selftest.py first, before
-trusting a big FPS number - it re-runs the same brute-force cross-check
-using your actual installed NumPy, so it catches those errors that
-pure-Python prototyping cannot.
+A NOTE ON TESTING - this file was first written where NumPy was not
+available, with only the algorithm validated as plain-Python prototypes.
+When particle_engine_selftest.py first ran against real NumPy (2.5.3) it
+caught a genuine bug: particles beyond max_per_cell in a crowded cell were
+dropped from collision, so dense pockets passed through each other. Dense
+cells are now handled exactly (see _resolve_collisions), and the self-test,
+which tests/run_all.py runs, checks every trial against an O(n^2)
+brute-force reference, including trials that really do overflow a cell.
 
 Coordinate convention: +x right, +y down (matching pygame's screen
 space), so "gravity" is a positive y-acceleration.
@@ -255,9 +249,49 @@ class ParticleEngine:
     # no Python loop over particles or cells), then for each of 5 fixed
     # neighbor offsets, compare every occupied cell's bucket against its
     # neighbor's bucket with one broadcasted NumPy operation covering
-    # every cell at once. Candidate pairs beyond max_per_cell in a single
-    # cell are dropped for collision purposes only (not from the
-    # simulation) - a documented approximation for very dense pockets.
+    # every cell at once. Cells holding more than max_per_cell particles
+    # are compared separately at full width, so the result is exact
+    # however dense a pocket gets (particle_engine_selftest.py checks this
+    # against an O(n^2) reference); max_per_cell only decides which cells
+    # count as dense.
+
+    @staticmethod
+    def collide_buckets(self_bucket, other_bucket, same_cell, pos, radius, mass, spring_k, total_dvel):
+        """Collide every particle in each row of `self_bucket` (k, cap) with
+        every particle in the same row of `other_bucket`, adding the spring
+        impulses into total_dvel. -1 marks an empty slot."""
+        idx_a = self_bucket[:, :, None]                        # (k, cap, 1)
+        idx_b = other_bucket[:, None, :]                       # (k, 1, cap)
+
+        valid_pair = (idx_a != -1) & (idx_b != -1)
+        if same_cell:
+            # Within one cell, keeping only idx_a < idx_b counts each pair
+            # once and never pairs a particle with itself.
+            valid_pair &= idx_a < idx_b
+        if not np.any(valid_pair):
+            return
+
+        flat_valid = valid_pair.reshape(-1)
+        flat_a = np.broadcast_to(idx_a, valid_pair.shape).reshape(-1)[flat_valid]
+        flat_b = np.broadcast_to(idx_b, valid_pair.shape).reshape(-1)[flat_valid]
+
+        delta = pos[flat_a] - pos[flat_b]
+        dist = np.sqrt(np.sum(delta * delta, axis=1))
+        dist_safe = np.maximum(dist, 1e-6)
+        overlap = radius[flat_a] + radius[flat_b] - dist
+        colliding = overlap > 0.0
+        if not np.any(colliding):
+            return
+
+        direction = delta[colliding] / dist_safe[colliding, None]
+        force_mag = spring_k * overlap[colliding]
+        ma = mass[flat_a[colliding]]
+        mb = mass[flat_b[colliding]]
+        total_mass = ma + mb
+        impulse = direction * force_mag[:, None]
+
+        np.add.at(total_dvel, flat_a[colliding], impulse * (mb / total_mass)[:, None])
+        np.add.at(total_dvel, flat_b[colliding], -impulse * (ma / total_mass)[:, None])
 
     def _resolve_collisions(self, pos, vel, radius, mass, directives):
         n = len(pos)
@@ -289,7 +323,14 @@ class ParticleEngine:
         cell_start_pos = np.nonzero(change)[0]
         rank_in_cell = np.arange(n) - cell_start_pos[group_id]
 
-        keep = rank_in_cell < max_per_cell
+        counts = np.bincount(group_id, minlength=num_groups)
+        dense = counts > max_per_cell
+
+        # Tier 1 - pairs of ordinary cells: every cell's particles fit in a
+        # (num_groups x max_per_cell) bucket, compared with one broadcast
+        # per neighbor offset. Dense cells are left out of the bucket here
+        # and handled exactly by tier 2 instead.
+        keep = (rank_in_cell < max_per_cell) & ~dense[group_id]
         bucket = np.full((num_groups, max_per_cell), -1, dtype=np.int64)
         bucket[group_id[keep], rank_in_cell[keep]] = order[keep]
 
@@ -302,51 +343,38 @@ class ParticleEngine:
         lookup[group_cy + 2, group_cx + 2] = np.arange(num_groups)
 
         total_dvel = np.zeros_like(vel)
+        all_groups = np.arange(num_groups)
+        widest = int(counts.max())
+
+        def full_rows(groups):
+            """Every particle of each cell in `groups`, one row per cell,
+            padded with -1 to the widest cell's count."""
+            columns = np.arange(widest)[None, :]
+            index = np.minimum(cell_start_pos[groups][:, None] + columns, n - 1)
+            return np.where(columns < counts[groups][:, None], order[index], -1)
 
         for (dx, dy) in NEIGHBOR_OFFSETS:
             neighbor_group = lookup[group_cy + 2 + dy, group_cx + 2 + dx]
-            valid_cell = neighbor_group != -1
-            if not np.any(valid_cell):
-                continue
+            has_neighbor = neighbor_group != -1
+            safe_neighbor = np.maximum(neighbor_group, 0)
+            same_cell = (dx, dy) == (0, 0)
 
-            self_bucket = bucket[valid_cell]                      # (k, cap)
-            other_bucket = bucket[neighbor_group[valid_cell]]      # (k, cap)
+            ordinary = has_neighbor & ~dense & ~dense[safe_neighbor]
+            if np.any(ordinary):
+                self.collide_buckets(
+                    bucket[ordinary], bucket[neighbor_group[ordinary]], same_cell,
+                    pos, radius, mass, spring_k, total_dvel,
+                )
 
-            idx_a = self_bucket[:, :, None]                        # (k, cap, 1)
-            idx_b = other_bucket[:, None, :]                       # (k, 1, cap)
-
-            valid_pair = (idx_a != -1) & (idx_b != -1)
-            if (dx, dy) == (0, 0):
-                valid_pair &= idx_a < idx_b   # same cell: each pair once, no self-pairs
-            valid_pair &= idx_a != idx_b       # safety net against any accidental self-pair
-
-            if not np.any(valid_pair):
-                continue
-
-            flat_valid = valid_pair.reshape(-1)
-            flat_a = np.broadcast_to(idx_a, valid_pair.shape).reshape(-1)[flat_valid]
-            flat_b = np.broadcast_to(idx_b, valid_pair.shape).reshape(-1)[flat_valid]
-
-            pa = pos[flat_a]
-            pb = pos[flat_b]
-            delta = pa - pb
-            dist = np.sqrt(np.sum(delta * delta, axis=1))
-            dist_safe = np.maximum(dist, 1e-6)
-            min_dist = radius[flat_a] + radius[flat_b]
-            overlap = min_dist - dist
-            colliding = overlap > 0.0
-            if not np.any(colliding):
-                continue
-
-            direction = delta[colliding] / dist_safe[colliding, None]
-            force_mag = spring_k * overlap[colliding]
-            ma = mass[flat_a[colliding]]
-            mb = mass[flat_b[colliding]]
-            total_mass = ma + mb
-            impulse = direction * force_mag[:, None]
-
-            np.add.at(total_dvel, flat_a[colliding], impulse * (mb / total_mass)[:, None])
-            np.add.at(total_dvel, flat_b[colliding], -impulse * (ma / total_mass)[:, None])
+            # Tier 2 - any cell pair involving a dense cell, at full width:
+            # exact however crowded the pocket, and only as many rows as
+            # there are such pairs.
+            crowded = has_neighbor & (dense | dense[safe_neighbor])
+            if np.any(crowded):
+                self.collide_buckets(
+                    full_rows(all_groups[crowded]), full_rows(neighbor_group[crowded]), same_cell,
+                    pos, radius, mass, spring_k, total_dvel,
+                )
 
         vel += total_dvel
 
