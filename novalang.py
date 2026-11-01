@@ -5385,7 +5385,20 @@ def execute(interpreter, entry):
                     stack.append(value)
                 elif op == INDEX_:
                     index = stack.pop()
-                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                    target = stack[-1]
+                    kind = type(target)
+                    # Fast: a present string key, or an in-range non-negative
+                    # whole index. Anything else - negative indexes, misses
+                    # and every error - goes through index_operation.
+                    if kind is dict:
+                        if type(index) is str and index in target:
+                            stack[-1] = target[index]
+                            continue
+                    elif kind is list or kind is str:
+                        if type(index) is int and 0 <= index < len(target):
+                            stack[-1] = target[index]
+                            continue
+                    stack[-1] = index_operation(target, index, positions[ip - 1])
                 elif op == EQ_:
                     right = stack.pop()
                     left = stack[-1]
