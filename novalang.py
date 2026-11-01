@@ -3040,8 +3040,11 @@ class Interpreter:
         return value
 
     def resolve_import(self, raw_path, position):
-        """Search relative to the importing file, then the current directory."""
+        """A package name goes through resolve_package; a file path is
+        searched relative to the importing file, then the current directory."""
         current_dir = self.file_stack[-1] if self.file_stack else None
+        if is_package_import(raw_path):
+            return resolve_package(raw_path, current_dir, position)
         candidates = []
         if current_dir is not None:
             candidates.append(os.path.normpath(os.path.join(current_dir, raw_path)))
@@ -3592,9 +3595,71 @@ def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+# ---------------------------------------------------------------------------
+# Packages (M2). `import "math-utils"` names a package installed by
+# tools/nova-pkg.py; anything else - every path ending in .nova, or with a
+# '/' in it - is a file, resolved exactly as before packages existed.
+# ---------------------------------------------------------------------------
+
+PACKAGE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
+PACKAGE_DIR = ".nova_modules"
+
+
+def is_package_import(raw_path):
+    return bool(PACKAGE_NAME.match(raw_path)) and not raw_path.endswith(".nova")
+
+
+def resolve_package(name, start_dir, position):
+    """The entry file of package `name`, found the way Node finds
+    node_modules: walk up from `start_dir` (the importing file's directory,
+    or the current directory) to the first `.nova_modules/<name>/nova.json`.
+    Walking up is what lets a package's own imports find its dependencies,
+    which nova-pkg installs side by side in the project's .nova_modules."""
+    directory = os.path.abspath(start_dir or os.getcwd())
+    searched = []
+    while True:
+        package = os.path.join(directory, PACKAGE_DIR, name)
+        if os.path.isfile(os.path.join(package, "nova.json")):
+            break
+        searched.append(os.path.join(directory, PACKAGE_DIR))
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            raise NovaError(
+                'cannot find package "{}" - looked in:\n{}\nIs it in nova.json, and has '
+                "`python3 tools/nova-pkg.py install` been run?".format(
+                    name, "\n".join("  " + path for path in searched[:6])
+                    + ("\n  ..." if len(searched) > 6 else "")
+                ),
+                position, label="ImportError",
+            )
+        directory = parent
+
+    manifest_path = os.path.join(package, "nova.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as handle:
+            manifest = json_module.load(handle)
+    except (OSError, ValueError) as problem:
+        raise NovaError('package "{}" has an unreadable nova.json: {}'.format(name, problem),
+                        position, label="ImportError")
+    main = manifest.get("main", "main.nova") if isinstance(manifest, dict) else None
+    if not isinstance(main, str) or not main.endswith(".nova"):
+        raise NovaError('package "{}": "main" in its nova.json must name a .nova file'.format(name),
+                        position, label="ImportError")
+    entry = os.path.normpath(os.path.join(package, main))
+    if not os.path.isfile(entry):
+        raise NovaError('package "{}" has no entry file {}'.format(name, main),
+                        position, label="ImportError")
+    return entry
+
+
 def default_module_name(raw_path, position):
-    """The name a bare `import "path.nova"` binds, absent an alias."""
-    stem = os.path.splitext(os.path.basename(raw_path))[0]
+    """The name a bare `import "path.nova"` binds, absent an alias. A
+    package binds its name with '-' and '.' made '_': "math-utils" binds
+    math_utils."""
+    if is_package_import(raw_path):
+        stem = raw_path.replace("-", "_").replace(".", "_")
+    else:
+        stem = os.path.splitext(os.path.basename(raw_path))[0]
     valid = stem and (stem[0].isalpha() or stem[0] == "_") and all(
         char.isalnum() or char == "_" for char in stem
     )
