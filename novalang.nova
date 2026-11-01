@@ -162,7 +162,7 @@ def lex_string(state) {
     let text = ""
     while true {
         let ch = lex_peek(state, 0)
-        if ch == "" or ch == "\n" {
+        if ch == "" or ch == "\n" or ch == "\r" {
             lex_error("this string is never closed", start)
         }
         state["index"] = state["index"] + 1
@@ -183,7 +183,7 @@ def lex_fstring_placeholder(state, begin) {
     let inside = ""
     while true {
         let ch = lex_peek(state, 0)
-        if ch == "" or ch == "\n" {
+        if ch == "" or ch == "\n" or ch == "\r" {
             lex_error("this f-string placeholder needs a closing '}'", begin)
         }
         if inside != "" {
@@ -229,7 +229,7 @@ def lex_fstring(state) {
     let text = ""
     while true {
         let ch = lex_peek(state, 0)
-        if ch == "" or ch == "\n" {
+        if ch == "" or ch == "\n" or ch == "\r" {
             lex_error("this f-string is never closed", start)
         }
         if ch == quote {
@@ -293,12 +293,17 @@ def tokenize(source) {
         if is_space(ch) {
             state["index"] = state["index"] + 1
         } else if ch == "\r" {
+            # "\r\n" is one line break (its "\n" makes the token); a lone
+            # "\r" is a line break too, as in editors and the host.
             state["index"] = state["index"] + 1
+            if lex_peek(state, 0) != "\n" {
+                push_token(state, "NEWLINE", "\n", start)
+            }
         } else if ch == "\n" or ch == ";" {
             state["index"] = state["index"] + 1
             push_token(state, "NEWLINE", ch, start)
         } else if ch == "#" {
-            while state["index"] < length and state["source"][state["index"]] != "\n" {
+            while state["index"] < length and state["source"][state["index"]] != "\n" and state["source"][state["index"]] != "\r" {
                 state["index"] = state["index"] + 1
             }
         } else if is_digit(ch) or (ch == "." and lex_peek(state, 1) != "" and is_digit(lex_peek(state, 1))) {

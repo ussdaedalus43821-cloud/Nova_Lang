@@ -660,6 +660,9 @@ def format_source(source, verify=True):
 
     Raises NovaError if `source` does not parse, and FormatError if the
     result fails any of the built-in checks (nothing should be written)."""
+    # Output always uses "\n"; reading every break as one up front also
+    # keeps blank-line detection right for "\r\n" and lone-"\r" files.
+    source = nl.LINE_BREAK.sub("\n", source)
     original = nova_ast.parse(source)
     result = render(original)
     if not verify:

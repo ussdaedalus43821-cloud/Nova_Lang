@@ -234,10 +234,8 @@ class LineIndex:
     """Offset -> 1-based (line, column), by bisecting the newline offsets."""
 
     def __init__(self, source):
-        self.starts = [0]
-        for index, char in enumerate(source):
-            if char == "\n":
-                self.starts.append(index + 1)
+        # Lines break where the Lexer breaks them: "\n", "\r\n", lone "\r".
+        self.starts = [start for start, _ in nl.line_spans(source)]
 
     def line(self, offset):
         return bisect.bisect_right(self.starts, offset)
