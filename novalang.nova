@@ -2268,7 +2268,6 @@ def run_module(resolved_path, raw_path, pos) {
         return MODULE_CACHE[resolved_path]
     }
     if resolved_path in MODULE_LOADING {
-        let chain = MODULE_LOADING[0]
         let names = ""
         let started = false
         for loading_path in MODULE_LOADING {
