@@ -107,8 +107,11 @@ NovaLang tests itself with `.nova` scripts. `python3 tests/run_all.py`
 runs the whole line: the formatter and linter golden files under
 `tests/`, the formatter's self-checks on every `.nova` file, and the
 direct-vs-`--bootstrap` comparison below for every example, both on the
-repo as it is and on a fully formatted copy of it (`--quick` skips the
-slow bootstrap runs). Run `python3 novalang.py --check` on any `.nova`
+repo as it is and on a fully formatted copy of it, and every runnable
+Python program under `examples/`, including both embedding-template test
+suites (`--quick` skips the slow bootstrap runs). A new `.py` file under
+`examples/` must be added to `PYTHON_PROGRAMS` or `PYTHON_EXEMPT` in
+`tests/run_all.py`, or the line stops. Run `python3 novalang.py --check` on any `.nova`
 file you touch. Before sending a change:
 
 - Run every file under `examples/` both directly and with `--bootstrap`;
@@ -116,10 +119,10 @@ file you touch. Before sending a change:
   built specifically for this comparison).
 - Run `examples/stdlib_full_test.nova` both ways; it must print exactly
   `All standard library tests passed.`
-- If you touched the embedding API, run `examples/embedding_demo.py`,
-  `examples/reactor_sim_integration.py`, and
-  `examples/daedalus_integration.py` and confirm their output still
-  matches what they claim to do.
+- If you touched the embedding API, `tests/run_all.py` already runs
+  `examples/embedding_demo.py`, `examples/reactor_sim_integration.py` and
+  `examples/daedalus_integration.py`, but it only checks that they exit
+  0. Read their output to confirm it still matches what they claim to do.
 - Add a new `examples/*.nova` file (or extend an existing one) for any
   new language feature or built-in, rather than only testing it by hand
   at the REPL.

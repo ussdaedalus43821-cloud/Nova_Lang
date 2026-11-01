@@ -3,7 +3,7 @@
 tests/run_all.py - the Andon cord. Any failure stops the line (exit 1).
 
     python3 tests/run_all.py            everything
-    python3 tests/run_all.py --quick    skip the slow bootstrap stations
+    python3 tests/run_all.py --quick    skip the slow bootstrap stations (4-5)
 
 Stations, in order:
 
@@ -20,6 +20,12 @@ Stations, in order:
                     the *formatted* novalang.nova - and must match the
                     original runs. This is the proof that formatting the
                     self-hosted interpreter keeps bootstrap parity.
+
+  6. python        every runnable Python program under examples/ - the
+     programs     embedding demos and the embedding-template test suites -
+                  exits 0. Any other .py file there must be listed in
+                  PYTHON_EXEMPT with the reason it is not run, so a new
+                  script cannot slip past the line unnoticed.
 
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
@@ -59,6 +65,30 @@ lint = load("nova-lint.py")
 # engine, so only their exit status is compared.
 NONDETERMINISTIC = {
     "examples/reactor_sim.nova": "uses random()",
+}
+
+# Python programs the line runs (each from its own directory, as their
+# docs say to run them) and that must exit 0.
+PYTHON_PROGRAMS = [
+    "examples/embedding_demo.py",
+    "examples/reactor_sim_integration.py",
+    "examples/daedalus_integration.py",
+    "examples/embedding_templates/reactor_game/test_reactor_logic.py",
+    "examples/embedding_templates/daedalus_game/test_game_logic.py",
+]
+
+# Python files under examples/ that the line does not run, and why.
+PYTHON_EXEMPT = {
+    "examples/ecs_demo.py": "interactive pygame window",
+    "examples/embedding_templates/reactor_game/main.py": "interactive pygame window",
+    "examples/embedding_templates/daedalus_game/main.py": "interactive pygame window",
+    "examples/embedding_templates/reactor_game/nova_bridge.py": "library, tested by its suite",
+    "examples/embedding_templates/daedalus_game/nova_bridge.py": "library, tested by its suite",
+    "examples/embedding_templates/reactor_game/reactor.py": "library, tested by its suite",
+    "examples/particle_engine.py": "library, tested by particle_engine_selftest.py",
+    "examples/particle_engine_selftest.py":
+        "FAILS on the base branch (cramped collision case, max diff 3.97e+04) - "
+        "pending a decision; remove this entry once the engine is fixed",
 }
 
 TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
@@ -235,6 +265,34 @@ def station_parity(line):
         shutil.rmtree(os.path.dirname(scratch), ignore_errors=True)
 
 
+def station_python(line):
+    print("6. Python programs under examples/")
+    present = {
+        rel(path) for path in glob.glob(os.path.join(ROOT, "examples", "**", "*.py"), recursive=True)
+    }
+    for path in sorted(present - set(PYTHON_PROGRAMS) - set(PYTHON_EXEMPT)):
+        line.check(False, path + " is neither run by the line nor listed in PYTHON_EXEMPT")
+    for path in sorted((set(PYTHON_PROGRAMS) | set(PYTHON_EXEMPT)) - present):
+        line.check(False, path + " is listed in run_all.py but no longer exists")
+
+    def run_one(program):
+        folder, name = os.path.split(os.path.join(ROOT, program))
+        try:
+            done = subprocess.run(
+                [sys.executable, name], cwd=folder, stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            return "timeout", ""
+        return done.returncode, done.stdout + done.stderr
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = dict(zip(PYTHON_PROGRAMS, pool.map(run_one, PYTHON_PROGRAMS)))
+    for program, (status, output) in results.items():
+        line.check(status == 0, "{} exits 0".format(program),
+                   "exit {}\n{}".format(status, output[-2000:]))
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -243,6 +301,7 @@ def main(argv):
     station_fmt_repo(line)
     if not quick:
         station_parity(line)
+    station_python(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(
