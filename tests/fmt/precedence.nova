@@ -1,0 +1,19 @@
+# Parentheses: kept exactly where the grouping needs them (or a reader does).
+let a1 = a - (b - c)
+let a2 = (a - b) - c
+let a3 = a / (b * c)
+let a4 = (a + b) * (c - d)
+let a5 = -(a + b)
+let a6 = (-a) * b
+let a7 = (a < b) == true
+let a8 = not (a == b)
+let a9 = (not a) == b
+let b1 = a or (b or c)
+let b2 = (a or b) and c
+let b3 = (a.b)(c)[d].e
+let b4 = (a + b).c
+let b5 = (1).x
+let b6 = f(a)(b)
+let b7 = x[1:][:2]
+let b8 = (((a)))
+let b9 = f"{ {k: 1}["k"] } and {a - (b - c)}"

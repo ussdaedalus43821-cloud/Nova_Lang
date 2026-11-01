@@ -1,0 +1,30 @@
+# W002: statements that can never run
+def early(x) {
+    return x
+    print("after return")       # W002
+    print("only reported once")
+}
+print(early(1))
+while true {
+    break
+    print("after break")        # W002
+}
+for i = 1 to 3 {
+    continue
+    print(i)                    # W002
+}
+def both(x) {
+    if x { return 1 } else { return 2 }
+    print("after an if whose branches both return")   # W002
+}
+print(both(true))
+def one_branch(x) {
+    if x { return 1 }
+    return 2                    # fine: the if can fall through
+}
+print(one_branch(true))
+def thrower() {
+    throw("boom")
+    print("after throw")        # W002
+}
+print(thrower)

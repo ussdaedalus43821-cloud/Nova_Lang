@@ -1,0 +1,25 @@
+# W001: variables assigned but never read
+let used = 1
+print(used)
+let never_read = 2              # W001
+let _ignored = 3                # leading underscore: deliberately unused
+export let shared = 4           # exported: used by importers
+def f(param_unused) {           # parameters are not reported
+    let local = 1               # W001
+    count = 0
+    count = count + 1
+    return count
+}
+print(f(1))
+for i = 1 to 2 { print("loop variables are not reported") }
+def counter() {
+    total = 0                   # W001: assigned twice, never read
+    total = 5
+}
+print(counter)
+def closure() {
+    let captured = 1
+    def inner() { return captured }
+    return inner
+}
+print(closure)

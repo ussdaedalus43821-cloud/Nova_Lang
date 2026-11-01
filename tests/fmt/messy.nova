@@ -1,0 +1,45 @@
+# messy.nova - every layout sin the formatter must straighten out
+let total=1+2*3   # trailing comment
+let ratio = (a+b)/2;let flag=not (x in xs)
+let mixed=(m//2)%3
+let neg = -(-1)
+let clear = (a and b) or c
+let tight = (((x)))
+let spelled = [1.50, .5, 007, 'single', "dou\"ble", 'it\'s']
+
+
+
+def   add( a,b ){
+  return a+b
+}
+def nothing() {
+}
+if total>3 { print("big") } else { print("small") }
+if total == 1
+{
+        print("one")
+}
+else if total == 2 {
+  # only a comment here
+}
+else {
+    print("many")
+}
+while flag { flag = false }
+for i=10 downto 0 step 2 { print(i) }
+for k,v in {a:1,"b c":2} { print(f"{k}={v + 1} {{literal}}") }
+try { throw ("boom") } catch e { print(e) } finally { print("done") }
+let table = {
+    one: 1, two: 2,   # first row
+    three: 3,
+    "four": 4
+}
+let nested = {outer: {inner: [1, 2, 3]}}
+delete table.one
+delete table["two"]
+delete ("scratch.txt")
+import "lib.nova" as lib
+export def helper(x) { return x }
+person.name = "Ada"; scores[0] = 99
+a = b = 3
+# a dangling comment at the end

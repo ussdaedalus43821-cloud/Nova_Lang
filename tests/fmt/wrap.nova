@@ -1,0 +1,5 @@
+let short = [1, 2, 3]
+let long_list = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"]
+let long_dict = {name: "NovaLang", version: "1.1.0", stage: 12, self_hosted: true, license: "MIT"}
+register("component", {kind: "position", fields: ["x", "y", "z"], defaults: [0.0, 0.0, 0.0], size: 3})
+let nested = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15], [16, 17, 18], [19, 20, 21]]

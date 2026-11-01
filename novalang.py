@@ -3816,6 +3816,10 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Finish the block with '}' (or press Ctrl-C to throw the draft away).
   Ctrl-C also stops a runaway loop.
 
+  Toolchain: `novalang.py --check file.nova` lints a program without
+  running it (undefined names, unused variables, unreachable code), and
+  `novalang.py --format file.nova` rewrites it in the standard layout.
+
   Self-hosting: `novalang.py --bootstrap file.nova` runs file.nova through
   novalang.nova - a second Lexer, Parser and Interpreter for this same
   language, written in NovaLang and loaded by this Python engine, rather
@@ -4145,6 +4149,17 @@ def run_bootstrap(args):
     return bootstrap.run_bootstrap(args[0], script_args=args[1:])
 
 
+def load_tool(filename):
+    """Load tools/<filename> (nova-fmt.py, nova-lint.py). Their names have
+    dashes, so they are loaded by path rather than imported by name."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", filename)
+    spec = importlib.util.spec_from_file_location(filename[:-3].replace("-", "_"), path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main(argv):
     args = argv[1:]
 
@@ -4153,6 +4168,17 @@ def main(argv):
 
     if args[0] == "--bootstrap":
         return run_bootstrap(args[1:])
+
+    # `--check file.nova` lints without running; `--format file.nova`
+    # rewrites the file in the house style. See tools/nova-lint.py and
+    # tools/nova-fmt.py, which can also be run directly.
+    if args[0] == "--check":
+        return load_tool("nova-lint.py").main(["novalang.py --check"] + args[1:])
+    if args[0] == "--format":
+        if len(args) < 2:
+            print("usage: novalang.py --format file.nova [more.nova ...]", file=sys.stderr)
+            return 2
+        return load_tool("nova-fmt.py").main(["novalang.py --format", "--write"] + args[1:])
 
     # `python3 novalang.py program.nova`  or  `python3 novalang.py "1 + 2"`
     try:

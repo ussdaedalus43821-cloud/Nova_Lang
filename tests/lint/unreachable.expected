@@ -1,0 +1,5 @@
+tests/lint/unreachable.nova:4:5: W002 this code can never run - the 'return' before it always leaves the block
+tests/lint/unreachable.nova:10:5: W002 this code can never run - the 'break' before it always leaves the block
+tests/lint/unreachable.nova:14:5: W002 this code can never run - the 'continue' before it always leaves the block
+tests/lint/unreachable.nova:18:5: W002 this code can never run - every branch of the 'if' before it leaves the block
+tests/lint/unreachable.nova:28:5: W002 this code can never run - the 'throw' before it always leaves the block
