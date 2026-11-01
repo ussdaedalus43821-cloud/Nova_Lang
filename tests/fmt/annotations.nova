@@ -1,0 +1,10 @@
+# Type annotations: one space after ':' and around '->', none before ':'.
+def add(a:int,b :int)->int { return a+b }
+def mixed(a, b:string) -> any {
+    return a
+}
+def untyped_return(x: float) { return x }
+export def shout(text:string)->string { return upper(text) }
+let count:int=add(1,2)
+export let name :string = "nova"
+let plain = 3 - 1 > 1

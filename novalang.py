@@ -791,9 +791,20 @@ class ExportNode(Node):
 class LetNode(Node):
     """`let x = value` - always binds in the current scope."""
 
-    def __init__(self, name, value, position):
+    def __init__(self, name, value, position, type_name=None):
         self.name = name
         self.value = value
+        self.position = position
+        self.type_name = type_name     # TypeNode for `let x: int = ...`, else None
+
+
+class TypeNode(Node):
+    """A type annotation such as the `int` in `let x: int = 5`. Only the
+    type checker (tools/nova-typecheck.py) reads these; the interpreter
+    ignores them, so annotated code runs exactly as unannotated code does."""
+
+    def __init__(self, name, position):
+        self.name = name
         self.position = position
 
 
@@ -854,11 +865,14 @@ class ContinueNode(Node):
 
 
 class FunctionDefNode(Node):
-    def __init__(self, name, params, body, position):
+    def __init__(self, name, params, body, position, param_types=None, return_type=None):
         self.name = name
         self.params = params           # list of parameter names
         self.body = body               # BlockNode
         self.position = position
+        # One TypeNode or None per parameter, and the `-> type`, if written.
+        self.param_types = param_types if param_types is not None else [None] * len(params)
+        self.return_type = return_type
 
 
 class ReturnNode(Node):
@@ -868,8 +882,9 @@ class ReturnNode(Node):
 
 
 class ProgramNode(Node):
-    def __init__(self, statements):
+    def __init__(self, statements, annotated=False):
         self.statements = statements
+        self.annotated = annotated     # True if any type annotation appears
 
 
 # Statements that end in '}' and therefore need no separator after them.
@@ -934,6 +949,7 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.index = 0
+        self.annotated = False          # set by the first type annotation
 
     # -- token helpers ------------------------------------------------------
 
@@ -1007,7 +1023,7 @@ class Parser:
             statements.append(statement)
             self.end_statement(statement, (TT_EOF,))
             self.skip_newlines()
-        return ProgramNode(statements)
+        return ProgramNode(statements, self.annotated)
 
     def block(self):
         # The '{' may sit on the line after the header, so allow a break here.
@@ -1065,6 +1081,7 @@ class Parser:
 
         self.expect(TT_LPAREN, "a '(' after the function name")
         params = []
+        param_types = []
         if self.current.type != TT_RPAREN:
             while True:
                 param = self.expect(TT_IDENT, "a parameter name")
@@ -1074,13 +1091,43 @@ class Parser:
                         "parameter {!r} is listed twice".format(param.value), param.position
                     )
                 params.append(param.value)
+                param_types.append(self.optional_annotation())
                 if self.current.type != TT_COMMA:
                     break
                 self.advance()
         self.expect(TT_RPAREN, "a ')' to close the parameter list")
 
+        # `-> type`. There is no arrow token: '-' then '>' with nothing in
+        # between, which cannot appear here any other way (a '{' must come
+        # next), so neither lexer needed to change.
+        return_type = None
+        if (
+            self.current.type == TT_MINUS
+            and self.peek().type == TT_GT
+            and self.peek().position == self.current.position + 1
+        ):
+            self.advance()
+            self.advance()
+            return_type = self.annotation()
+
         body = self.block()
-        return FunctionDefNode(name_token.value, params, body, keyword.position)
+        return FunctionDefNode(
+            name_token.value, params, body, keyword.position, param_types, return_type
+        )
+
+    def optional_annotation(self):
+        """`: type` after a name, or None if there is no ':'."""
+        if self.current.type != TT_COLON:
+            return None
+        self.advance()
+        return self.annotation()
+
+    def annotation(self):
+        """A type name. Which names are real types is the type checker's
+        call, so that it can say what was probably meant."""
+        token = self.expect(TT_IDENT, "a type name, such as int or string")
+        self.annotated = True
+        return TypeNode(token.value, token.position)
 
     def return_statement(self):
         keyword = self.advance()                        # 'return'
@@ -1166,8 +1213,11 @@ class Parser:
         keyword = self.advance()                        # 'let'
         name_token = self.expect(TT_IDENT, "a name after 'let'")
         guard_name(name_token.value, name_token.position, "a variable")
+        type_name = self.optional_annotation()
         self.expect(TT_EQUALS, "a '=' after the name in a 'let'")
-        return LetNode(name_token.value, self.expression_statement(), keyword.position)
+        return LetNode(
+            name_token.value, self.expression_statement(), keyword.position, type_name
+        )
 
     def try_statement(self):
         keyword = self.advance()                        # 'try'
@@ -3806,6 +3856,10 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     export def f() { }   export let x = 1   mark a name as importable
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in
+    def f(a: int) -> int { }   let x: string = "hi"
+                         optional type annotations: checked before the
+                         program runs (types: int float string bool list
+                         dict any), ignored while it runs
 
   Scoping
     A name first assigned inside a block belongs to that block and is gone
