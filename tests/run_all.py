@@ -90,6 +90,7 @@ def load(filename):
 
 fmt = load("nova-fmt.py")
 lint = load("nova-lint.py")
+typecheck = load("nova-typecheck.py")
 
 # Examples whose stdout legitimately differs between two runs of the *same*
 # engine, so only their exit status is compared.
@@ -179,11 +180,40 @@ def station_lint_golden(line):
     for source_path in sorted(glob.glob(os.path.join(HERE, "lint", "*.nova"))):
         expected = read(source_path[:-len(".nova")] + ".expected")
         findings, parsed = lint.lint_source(read(source_path))
+        check_spans(line, source_path, read(source_path), findings)
         actual = "".join(
             lint.format_finding(rel(source_path), parsed, finding) + "\n" for finding in findings
         )
         line.check(actual == expected, rel(source_path) + " gives its .expected findings",
                    diff(expected, actual))
+
+
+# Exact underlines an editor will show for a few findings (code, text).
+EXPECTED_SPANS = {
+    "tests/lint/undefined.nova": [("E001", "missing")],
+    "tests/lint/unused.nova": [("W001", "let never_read")],
+    "tests/lint/unreachable.nova": [("W002", 'print("after return")')],
+    "tests/typecheck/fail/operators.nova": [("T007", "s - n"), ("T007", "n in s")],
+    "tests/typecheck/fail/returns.nova": [("T004", "return"), ("T005", "def sometimes")],
+    "tests/typecheck/fail/arguments.nova": [("T002", '"two"'), ("T003", "add")],
+    "tests/typecheck/fail/unknown_types.nova": [("T001", "integer")],
+}
+
+
+def check_spans(line, path, source, findings):
+    """Every finding knows where it ends, after it starts and on its line
+    - an editor underlines exactly that - and the spot checks match."""
+    for finding in findings:
+        text = source[finding.position:finding.end] if finding.end is not None else None
+        line.check(
+            text is not None and finding.end > finding.position and "\n" not in text,
+            "{}: {} at {} has a one-line end".format(rel(path), finding.code, finding.position),
+            repr(text),
+        )
+    shown = [(f.code, source[f.position:f.end]) for f in findings if f.end is not None]
+    for wanted in EXPECTED_SPANS.get(rel(path), []):
+        line.check(wanted in shown, "{}: {} underlines {!r}".format(rel(path), *wanted),
+                   repr(shown))
 
 
 def station_fmt_repo(line):
@@ -452,6 +482,8 @@ def station_types(line):
     try:
         for path in sorted(glob.glob(os.path.join(HERE, "typecheck", "fail", "*.nova"))):
             name = rel(path)
+            _, module = typecheck.check_source(read(path), path)
+            check_spans(line, path, read(path), module.findings)
             expected = read(path[:-len(".nova")] + ".expected")
             status, out, err = cli("--typecheck", name)
             line.check(status == 1 and out == expected, name + " gives its .expected findings",

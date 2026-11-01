@@ -42,10 +42,14 @@ PREDEFINED = frozenset(nl.BUILTINS) | frozenset(nl.Interpreter().globals.values)
 DIRECTIVE = re.compile(r"#\s*nova-lint:\s*globals?\s+(.*)$")
 
 class Finding:
-    def __init__(self, position, code, message):
+    """`end` is where the problem stops (exclusive), or None when only its
+    start is known; the command line shows only the start."""
+
+    def __init__(self, position, code, message, end=None):
         self.position = position
         self.code = code
         self.message = message
+        self.end = end
 
     @property
     def is_error(self):
@@ -76,28 +80,32 @@ class Linter(ScopeWalker):
                 and not binding.exported
                 and not binding.name.startswith("_")
             ):
+                span = self.parsed.name_after(binding.position, binding.name)
                 self.report(
                     binding.position, "W001",
                     "{!r} is assigned but never used".format(binding.name),
+                    end=span[1] if span else None,
                 )
         self.findings.sort(key=lambda finding: (finding.position or 0, finding.code))
         return self.findings
 
-    def report(self, position, code, message):
-        self.findings.append(Finding(position, code, message))
+    def report(self, position, code, message, end=None):
+        self.findings.append(Finding(position, code, message, end))
 
     def on_read(self, name, position, binding):
         if binding is None and name not in self.predefined:
-            self.report(position, "E001", "undefined name {!r}".format(name))
+            self.report(position, "E001", "undefined name {!r}".format(name),
+                        end=position + len(name))
 
     def on_unreachable(self, statement, following):
         self.report(
             statement_position(following), "W002",
             "this code can never run - " + describe_exit(statement),
+            end=getattr(following, "_end", None),
         )
 
     def on_import_error(self, node, error):
-        self.report(node.position, "E002", error.message)
+        self.report(node.position, "E002", error.message, end=getattr(node, "_end", None))
 
 
 def statement_position(node):
