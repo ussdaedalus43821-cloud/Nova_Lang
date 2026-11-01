@@ -1,0 +1,20 @@
+# Benchmark: closures made in a loop, each called many times, reading the
+# variables they captured.
+def make_adder(base) {
+    let offset = base * 2
+    def add(x) {
+        return x + base + offset
+    }
+    return add
+}
+let adders = []
+for i = 1 to 50 {
+    append(adders, make_adder(i))
+}
+let total = 0
+for pass = 1 to 2000 {
+    for adder in adders {
+        total = adder(total) % 1000003
+    }
+}
+print(total)

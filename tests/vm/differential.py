@@ -55,6 +55,14 @@ def outcome(source, engine, seconds=20):
                     else:
                         error = problem.render(chunk)
                         status = 1
+                except (nl.VMError, Timeout):
+                    raise
+                except Exception as problem:  # noqa: BLE001 - a Python error is an outcome too
+                    # Not a NovaError (e.g. printing an integer too long for
+                    # Python): both engines must still fail the same way.
+                    error = "<python {}: {}>".format(type(problem).__name__, problem)
+                    status = 2
+                    break
     except Timeout:
         error, status = "<did not finish in {} s>".format(seconds), -1
     finally:

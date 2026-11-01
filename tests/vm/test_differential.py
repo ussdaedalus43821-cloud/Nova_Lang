@@ -19,7 +19,9 @@ only thing masked.
      default), aimed at scopes, closures, try/finally and errors. A
      mismatch reports its seed and the program.
   4. The embedding API (Nova.exec/eval/call/compile/load_file) on both.
-  5. Coverage: between them, the generated programs and the repository
+  5. Regressions: tests/vm/regressions/, the cases that once made the
+     engines differ, each kept so it can never come back.
+  6. Coverage: between them, the generated programs and the repository
      compile to every opcode there is, so no instruction goes untested.
 """
 
@@ -44,6 +46,11 @@ NOVALANG = os.path.join(ROOT, "novalang.py")
 TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
 # Programs whose output differs between two runs of the same engine.
 NONDETERMINISTIC = {"examples/reactor_sim.nova": "uses random()"}
+# Programs that create files in the current directory (the repository
+# root), and one that counts its entries: run alone, after everything
+# else, so no other program changes the directory while one of them looks.
+ALONE = {"examples/file_demo.nova", "examples/stdlib_demo.nova",
+         "examples/stdlib_full_test.nova"}
 SEEDS = int(os.environ.get("NOVA_DIFF_SEEDS", "300"))
 
 
@@ -85,12 +92,57 @@ def both(args):
     return cli(["--tree-walk"] + args), cli(args)
 
 
+def run_all_of(paths, prefix):
+    """{path: (tree-walker, vm)}, in parallel except for the ALONE ones."""
+    shared = [p for p in paths if rel(p) not in ALONE]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = dict(zip(shared, pool.map(lambda p: both(prefix + [rel(p)]), shared)))
+    for path in paths:
+        if rel(path) in ALONE:
+            results[path] = both(prefix + [rel(path)])
+    return results
+
+
+# Runs novalang.py as __main__ (argv: repository, novalang.py, its args),
+# reporting on stderr the engine bootstrap builds its Interpreter with.
+ENGINE_SPY = """
+import runpy, sys
+sys.path.insert(0, sys.argv[1])
+import bootstrap
+real = bootstrap.Interpreter
+def spy(engine=None):
+    made = real(engine)
+    sys.stderr.write("ENGINE=" + made.engine + "\\n")
+    return made
+bootstrap.Interpreter = spy
+script = sys.argv[2]
+sys.argv = [script] + sys.argv[3:]
+runpy.run_path(script, run_name="__main__")
+"""
+
+
+def test_bootstrap_engine(check):
+    """--bootstrap must run novalang.nova on the engine asked for. Run as
+    the CLI runs it - novalang.py as __main__, so `import novalang` in
+    bootstrap.py is a second copy of the module - with a spy reporting
+    the engine bootstrap actually builds. (It once ignored --tree-walk,
+    which made the bootstrap comparison below compare the VM with itself.)"""
+    for flags, wanted in (([], "vm"), (["--tree-walk"], "tree")):
+        done = subprocess.run(
+            [sys.executable, "-c", ENGINE_SPY, ROOT, NOVALANG] + flags
+            + ["--bootstrap", "examples/math.nova"],
+            cwd=ROOT, capture_output=True, text=True, timeout=300)
+        used = re.findall(r"ENGINE=(\w+)", done.stderr)
+        check(used == [wanted], "{}--bootstrap runs novalang.nova on the {}".format(
+            " ".join(flags) + " " if flags else "", "tree-walker" if wanted == "tree" else "VM"),
+            "engines used: {}\n{}".format(used, done.stderr[-500:]))
+
+
 def test_files(check):
     paths = list(nova_files())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        results = dict(zip(paths, pool.map(lambda p: both([rel(p)]), paths)))
-        examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
-        booted = dict(zip(examples, pool.map(lambda p: both(["--bootstrap", rel(p)]), examples)))
+    results = run_all_of(paths, [])
+    examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
+    booted = run_all_of(examples, ["--bootstrap"])
     for path, (tree, vm) in results.items():
         name = rel(path)
         same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
@@ -170,6 +222,32 @@ def test_embedding(check):
           "tree-walker: {}\nvm: {}".format(tree, vm))
 
 
+def test_regressions(check):
+    """tests/vm/regressions/*.py: inputs that once made the engines differ,
+    each run as consecutive inputs to one interpreter (CHUNKS), with the
+    output both must give (EXPECTED). The .nova regressions there are
+    already compared with every other .nova file."""
+    import importlib.util
+    import contextlib
+    import io
+    found = 0
+    for path in sorted(glob.glob(os.path.join(HERE, "regressions", "*.py"))):
+        spec = importlib.util.spec_from_file_location("regression", path)
+        case = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(case)
+        for engine in ("tree", "vm"):
+            out = io.StringIO()
+            interpreter = nl.Interpreter(engine)
+            with contextlib.redirect_stdout(out):
+                for chunk in case.CHUNKS:
+                    nl.run(chunk, interpreter)
+            check(out.getvalue() == case.EXPECTED, "{} on the {}".format(
+                rel(path), "tree-walker" if engine == "tree" else "VM"),
+                "expected {!r}, got {!r}".format(case.EXPECTED, out.getvalue()))
+        found += 1
+    check(found > 0, "the regression cases were run ({})".format(found))
+
+
 def test_coverage(check):
     used = set()
 
@@ -190,7 +268,8 @@ def test_coverage(check):
 
 
 def run(check):
-    for test in (test_files, test_generated, test_embedding, test_coverage):
+    for test in (test_bootstrap_engine, test_files, test_generated, test_embedding,
+                 test_regressions, test_coverage):
         try:
             test(check)
         except Exception as problem:  # noqa: BLE001
