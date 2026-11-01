@@ -103,6 +103,41 @@ def run_all_of(paths, prefix):
     return results
 
 
+# Runs novalang.py as __main__ (argv: repository, novalang.py, its args),
+# reporting on stderr the engine bootstrap builds its Interpreter with.
+ENGINE_SPY = """
+import runpy, sys
+sys.path.insert(0, sys.argv[1])
+import bootstrap
+real = bootstrap.Interpreter
+def spy(engine=None):
+    made = real(engine)
+    sys.stderr.write("ENGINE=" + made.engine + "\\n")
+    return made
+bootstrap.Interpreter = spy
+script = sys.argv[2]
+sys.argv = [script] + sys.argv[3:]
+runpy.run_path(script, run_name="__main__")
+"""
+
+
+def test_bootstrap_engine(check):
+    """--bootstrap must run novalang.nova on the engine asked for. Run as
+    the CLI runs it - novalang.py as __main__, so `import novalang` in
+    bootstrap.py is a second copy of the module - with a spy reporting
+    the engine bootstrap actually builds. (It once ignored --tree-walk,
+    which made the bootstrap comparison below compare the VM with itself.)"""
+    for flags, wanted in (([], "vm"), (["--tree-walk"], "tree")):
+        done = subprocess.run(
+            [sys.executable, "-c", ENGINE_SPY, ROOT, NOVALANG] + flags
+            + ["--bootstrap", "examples/math.nova"],
+            cwd=ROOT, capture_output=True, text=True, timeout=300)
+        used = re.findall(r"ENGINE=(\w+)", done.stderr)
+        check(used == [wanted], "{}--bootstrap runs novalang.nova on the {}".format(
+            " ".join(flags) + " " if flags else "", "tree-walker" if wanted == "tree" else "VM"),
+            "engines used: {}\n{}".format(used, done.stderr[-500:]))
+
+
 def test_files(check):
     paths = list(nova_files())
     results = run_all_of(paths, [])
@@ -233,7 +268,8 @@ def test_coverage(check):
 
 
 def run(check):
-    for test in (test_files, test_generated, test_embedding, test_regressions, test_coverage):
+    for test in (test_bootstrap_engine, test_files, test_generated, test_embedding,
+                 test_regressions, test_coverage):
         try:
             test(check)
         except Exception as problem:  # noqa: BLE001
