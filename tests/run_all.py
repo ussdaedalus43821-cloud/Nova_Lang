@@ -70,6 +70,14 @@ Stations, in order:
                   handler; verify() refuses broken bytecode; and the
                   resolver agrees with nova_scope on every name read.
 
+ 11. differential the bytecode VM against the tree-walker, which is the
+                  reference: every .nova file through the CLI, every
+                  example under --bootstrap, 300 seeded random programs
+                  (tests/vm/generator.py) aimed at scopes, closures,
+                  try/finally and errors, and the embedding API - same
+                  stdout, stderr and exit status, byte for byte - and
+                  together they use every opcode.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -706,6 +714,14 @@ def station_compiler(line):
         ok, "compiler: " + label, "" if detail is None else str(detail)[:3000]))
 
 
+def station_differential(line):
+    print("11. differential (VM against the tree-walker)")
+    sys.path.insert(0, os.path.join(HERE, "vm"))
+    import test_differential
+    test_differential.run(lambda ok, label, detail=None: line.check(
+        ok, "vm: " + label, "" if detail is None else str(detail)[:4000]))
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -720,6 +736,7 @@ def main(argv):
     station_packages(line)
     station_editor(line)
     station_compiler(line)
+    station_differential(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(
