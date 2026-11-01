@@ -46,7 +46,7 @@ let loaded = split(read("nova_demo_planets.txt"), "\n")
 print("read back:", loaded, len(loaded) == len(planets))
 
 # ---- a log file built line by line ----
-delete(log_file)                       # start clean; deleting a missing file is fine
+delete(log_file)  # start clean; deleting a missing file is fine
 for number in range(1, 4) {
     append(log_file, f"step {str(number)} finished\n")
 }

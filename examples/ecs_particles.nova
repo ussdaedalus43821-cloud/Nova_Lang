@@ -34,7 +34,13 @@ def particles_world_new(width, height) {
 
     let mouse_id = spawn_entity(world)
     set_component(world, mouse_id, "position", {x: width / 2.0, y: height / 2.0})
-    set_component(world, mouse_id, "mouse_state", {mode: "none", radius: 220.0, strength: 3500.0, vx: 0.0, vy: 0.0})
+    set_component(world, mouse_id, "mouse_state", {
+        mode: "none",
+        radius: 220.0,
+        strength: 3500.0,
+        vx: 0.0,
+        vy: 0.0
+    })
 
     let sim = {
         world: world,
@@ -59,7 +65,12 @@ def particles_world_new(width, height) {
 
     let emitter_id = spawn_entity(world)
     set_component(world, emitter_id, "position", {x: width / 2.0, y: height / 4.0})
-    set_component(world, emitter_id, "emitter", {rate: 4000.0, accumulator: 0.0, speed: 140.0, hue: 0.0})
+    set_component(world, emitter_id, "emitter", {
+        rate: 4000.0,
+        accumulator: 0.0,
+        speed: 140.0,
+        hue: 0.0
+    })
 
     return sim
 }

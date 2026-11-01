@@ -10,12 +10,12 @@ print(a)
 # ---- append and pop ----
 append(a, 6)
 print(a, len(a))
-print(pop(a))          # last item
-print(pop(a, 0))       # by index
+print(pop(a))     # last item
+print(pop(a, 0))  # by index
 print(a)
 
 # ---- integer math ----
-print(10 % 3, 10 // 3, 7 // 2, 2 + 3 * 4 % 5)
+print(10 % 3, 10 // 3, 7 // 2, 2 + (3 * 4) % 5)
 print(-7 // 2, -7 % 3)
 
 # ---- concatenation and repetition ----

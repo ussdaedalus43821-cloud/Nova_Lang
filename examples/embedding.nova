@@ -48,7 +48,7 @@ try {
 # ---- a function defined here, ready for embedding_demo.py to call back
 # into with Nova.call("celsius_to_fahrenheit", ...) ----
 def celsius_to_fahrenheit(c) {
-    return c * 9 / 5 + 32
+    return (c * 9) / 5 + 32
 }
 print("celsius_to_fahrenheit(100):", celsius_to_fahrenheit(100))
 
