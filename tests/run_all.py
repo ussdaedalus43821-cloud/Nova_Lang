@@ -43,6 +43,9 @@ Stations, in order:
                   --bootstrap, an import from an untyped file, and the
                   embedding API; and every other annotated .nova file in
                   the repo checks clean, so none can bypass the checker.
+                  The gate checks an import graph once per load: on a
+                  heavily shared graph, one checker run per file
+                  (tests/typecheck/gate_cache.py), and never a stale one.
 
   8. packages     tests/pkg/ is copied to a scratch directory (sources/
                   git-lib becomes a real git repo there) and nova-pkg is
@@ -490,6 +493,8 @@ def station_types(line):
     sys.path.insert(0, os.path.join(HERE, "typecheck"))
     import crosscheck
     crosscheck.check(line)
+    import gate_cache
+    gate_cache.run(line.check)
 
     novalang_py = os.path.join(ROOT, "novalang.py")
 
