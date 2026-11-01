@@ -13,6 +13,13 @@ Stations, in order:
   3. fmt poka-yoke  every .nova file in the repo formats with all of the
                     formatter's own checks passing (same AST, same
                     comments, idempotent).
+  3b. line breaks  "\n", "\r\n" and a lone "\r" all end a line, as in
+                  editors and the Language Server Protocol: the same
+                  program written with each lexes to the same tokens (in
+                  both lexers, handed the raw text as an editor would), runs
+                  the same on both engines, ends comments and refuses
+                  open strings at the break, and reports errors on the
+                  same line.
   4. parity         every example gives the same stdout and exit status
                     run directly and through --bootstrap (CONTRIBUTING.md).
   5. formatted      the whole repo is formatted into a scratch copy, and
@@ -187,6 +194,84 @@ def station_fmt_repo(line):
             line.check(True, rel(path))
         except Exception as problem:  # noqa: BLE001
             line.check(False, rel(path) + " formats safely", str(problem))
+
+
+LINE_BREAK_PROGRAM = [
+    'let greeting = "hi"  # a comment that must end at the break',
+    "print(greeting)",
+    "",
+    "def twice(x) {",
+    "    return x * 2",
+    "}",
+    "print(twice(21))",
+]
+
+
+def station_line_breaks(line):
+    print("3b. line breaks")
+    sys.path.insert(0, ROOT)
+    import novalang
+    variants = {name: brk.join(LINE_BREAK_PROGRAM) + brk
+                for name, brk in (("\\n", "\n"), ("\\r\\n", "\r\n"), ("lone \\r", "\r"))}
+
+    def tokens(source):
+        return [(t.type, t.value) for t in novalang.Lexer(source).tokenize()]
+
+    # Files reach both lexers through Python's text mode, which already
+    # turns "\r\n" and a lone "\r" into "\n" - so running files cannot
+    # tell whether a lexer handles "\r". Editor buffers (over LSP), exec()
+    # strings and the REPL never pass through a file, so each lexer is
+    # also handed the raw text directly: the host's, and novalang.nova's own.
+    self_hosted = novalang.Interpreter()
+    novalang.run(read(os.path.join(ROOT, "novalang.nova")), self_hosted)
+    self_hosted_tokenize = self_hosted.globals.get("tokenize")
+
+    def self_hosted_tokens(source):
+        found = self_hosted.call_value(self_hosted_tokenize, [source], 0)
+        return [(token["kind"], token["value"]) for token in found]
+
+    reference = tokens(variants["\\n"])
+    scratch = tempfile.mkdtemp(prefix="nova-breaks-")
+    try:
+        outputs = {}
+        for name, source in variants.items():
+            line.check(tokens(source) == reference, "{} lexes like \\n".format(name))
+            line.check(self_hosted_tokens(source) == self_hosted_tokens(variants["\\n"]),
+                       "{} lexes like \\n in novalang.nova too".format(name))
+            path = os.path.join(scratch, "program.nova")
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(source)
+            for engine in ([], ["--bootstrap"]):
+                done = subprocess.run([sys.executable, os.path.join(ROOT, "novalang.py")]
+                                      + engine + [path], capture_output=True, text=True,
+                                      timeout=600)
+                outputs[(name, tuple(engine))] = (done.returncode, done.stdout)
+            line.check(fmt.format_source(source) == variants["\\n"],
+                       "{} formats to the \\n layout".format(name))
+            for brk_name, brk in (("string", '"open'), ("f-string", 'f"open'),
+                                  ("f-string hole", 'f"{open')):
+                if name == "\\n":
+                    continue
+                broken = "let s = " + brk + ("\r" if "lone" in name else "\r\n") + '"\n'
+                try:
+                    novalang.Lexer(broken).tokenize()
+                    refused = False
+                except novalang.NovaError:
+                    refused = True
+                line.check(refused, "a {} cannot run across a {}".format(brk_name, name))
+            error = None
+            try:
+                novalang.run(source.replace("twice(21)", "twice(missing)"), novalang.Interpreter())
+            except novalang.NovaError as problem:
+                error = problem.render(source.replace("twice(21)", "twice(missing)"))
+            line.check(error is not None and "  7 | print(twice(missing))" in error,
+                       "{}: errors point at the right line".format(name), error or "")
+        expected = (0, "hi\n42\n")
+        for key, result in sorted(outputs.items()):
+            line.check(result == expected, "{} runs{}".format(
+                key[0], " under --bootstrap" if key[1] else ""), str(result))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def diff(expected, actual):
@@ -565,6 +650,7 @@ def main(argv):
     station_fmt_golden(line)
     station_lint_golden(line)
     station_fmt_repo(line)
+    station_line_breaks(line)
     if not quick:
         station_parity(line)
     station_python(line)
