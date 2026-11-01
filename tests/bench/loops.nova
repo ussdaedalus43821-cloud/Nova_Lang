@@ -1,0 +1,18 @@
+# Benchmark: a long for loop calling a small function, with arithmetic,
+# an if/else, a list append and a global accumulator.
+def advance(i, total) {
+    if i % 3 == 0 {
+        return total + i * 2
+    } else {
+        return total - 1
+    }
+}
+let total = 0
+let kept = []
+for i = 1 to 200000 {
+    total = advance(i, total)
+    if i % 1000 == 0 {
+        append(kept, total)
+    }
+}
+print(total, len(kept), kept[len(kept) - 1])
