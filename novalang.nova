@@ -2371,6 +2371,24 @@ def default_module_name(raw_path, pos) {
     return stem
 }
 
+# A file inside an installed package is named <package>/<file> in
+# messages, as the host does; any other file by its module name.
+def module_label(path, pos) {
+    let marker = "/.nova_modules/"
+    let at = -1
+    let i = 0
+    while i + len(marker) <= len(path) {
+        if path[i:i + len(marker)] == marker {
+            at = i
+        }
+        i = i + 1
+    }
+    if at >= 0 {
+        return path[at + len(marker):]
+    }
+    return default_module_name(path, pos)
+}
+
 def run_module(resolved_path, raw_path, pos) {
     if resolved_path in MODULE_CACHE {
         return MODULE_CACHE[resolved_path]
@@ -2386,10 +2404,10 @@ def run_module(resolved_path, raw_path, pos) {
                 if names != "" {
                     names = names + " -> "
                 }
-                names = names + default_module_name(loading_path, pos)
+                names = names + module_label(loading_path, pos)
             }
         }
-        names = names + " -> " + default_module_name(resolved_path, pos)
+        names = names + " -> " + module_label(resolved_path, pos)
         raise_error("circular import: " + names, pos)
     }
 

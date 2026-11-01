@@ -3079,7 +3079,7 @@ class Interpreter:
 
         if resolved_path in self.import_stack:
             cycle = self.import_stack[self.import_stack.index(resolved_path):] + [resolved_path]
-            chain = " -> ".join(os.path.basename(path) for path in cycle)
+            chain = " -> ".join(module_label(path) for path in cycle)
             raise NovaError(
                 "circular import: {}".format(chain), position, label="ImportError"
             )
@@ -3650,6 +3650,16 @@ def resolve_package(name, start_dir, position):
         raise NovaError('package "{}" has no entry file {}'.format(name, main),
                         position, label="ImportError")
     return entry
+
+
+def module_label(path):
+    """How a module is named in messages: a file inside an installed
+    package as <package>/<file> (every package's entry is main.nova, so a
+    bare file name would not say which), any other file by its name."""
+    marker = os.sep + PACKAGE_DIR + os.sep
+    if marker in path:
+        return path.rsplit(marker, 1)[1].replace(os.sep, "/")
+    return os.path.basename(path)
 
 
 def default_module_name(raw_path, position):
