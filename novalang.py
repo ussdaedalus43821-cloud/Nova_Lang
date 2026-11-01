@@ -1617,7 +1617,13 @@ NOTHING = Nothing()
 
 
 class NovaFunction:
-    """A function written in NovaLang."""
+    """A function written in NovaLang. The tree-walker's carry their `body`
+    and defining scope (`closure`); the VM's carry compiled `code`, the
+    `cells` they close over and their module's `globals`."""
+
+    code = None
+    cells = ()
+    globals = None
 
     def __init__(self, name, params, body, closure):
         self.name = name
@@ -3199,8 +3205,17 @@ def imported_name(exports, raw_path, name, position):
     return exports[name]
 
 
+# Which engine runs programs: "vm" (bytecode, the default) or "tree" (the
+# original tree-walker, kept for comparison - `novalang.py --tree-walk`).
+ENGINES = ("vm", "tree")
+DEFAULT_ENGINE = "vm"
+
+
 class Interpreter:
-    def __init__(self):
+    def __init__(self, engine=None):
+        self.engine = engine or DEFAULT_ENGINE
+        if self.engine not in ENGINES:
+            raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
         self.globals = Environment(barrier=True)
         self.env = self.globals
         self.call_stack = []            # function names, innermost last
@@ -3666,6 +3681,13 @@ class Interpreter:
                 position,
             )
 
+        if callee.code is not None:
+            # A compiled function: the VM runs it (and everything it calls),
+            # popping this name, attaching the stack trace and turning a
+            # stray break/continue into an error exactly as below.
+            self.call_stack.append(callee.name)
+            return execute(self, function_frame(callee, args))
+
         # A fresh barrier scope per call: this is what makes recursion work,
         # what keeps locals from leaking, and what stops an assignment inside
         # a function from reaching out and rewriting a global. Its parent is
@@ -3954,14 +3976,15 @@ OPCODES = [
     # stack
     "LOAD_CONST", "POP", "DUP",
     # names
-    "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "LOAD_FREE",
+    "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL",
     "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS",
     # arithmetic, comparison, logic
     "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
     "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
     "CHECK_BOOL", "JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP",
     # data
-    "BUILD_LIST", "BUILD_DICT", "BUILD_STRING", "INDEX", "SLICE", "GET_MEMBER",
+    "BUILD_LIST", "BUILD_DICT", "BUILD_STRING", "INDEX",
+    "SLICE_TARGET", "SLICE_BOUND", "SLICE", "GET_MEMBER",
     "INDEX_ASSIGN_TARGET", "INDEX_ASSIGN_KEY", "INDEX_ASSIGN",
     "MEMBER_ASSIGN_TARGET", "SET_MEMBER",
     "DELETE_TARGET", "DELETE_KEY", "DELETE_FILE",
@@ -4309,6 +4332,7 @@ class CodeObject:
         self.slot_names = frame.slot_names
         self.nslots = 0
         self.params = []                # slots of the parameters, in order
+        self.param_names = []
         self.cell_params = []           # the subset of those that are cells
         self.freevars = [var.name for var in frame.freevars]
         self.closure = []               # how MAKE_FUNCTION builds it (in the parent)
@@ -4364,6 +4388,7 @@ class Compiler:
         saved = self.save()
         self.start(code, frame, root)
         code.params = [root.vars[name].slot for name in node.params]
+        code.param_names = list(node.params)
         code.cell_params = [root.vars[name].slot for name in node.params
                             if root.vars[name].captured]
         self.new_cells(root, skip=set(node.params))
@@ -4427,8 +4452,9 @@ class Compiler:
     def load(self, candidates, position):
         if len(candidates) == 1:
             kind, where = self.location(candidates[0])
-            op = {"fast": "LOAD_FAST", "cell": "LOAD_CELL", "free": "LOAD_FREE",
-                  "global": "LOAD_GLOBAL"}[kind]
+            # A closure's read is always a chain (it ends in the globals),
+            # so a single candidate is never "free".
+            op = {"fast": "LOAD_FAST", "cell": "LOAD_CELL", "global": "LOAD_GLOBAL"}[kind]
             self.emit(op, where, position)
             return
         chain = tuple(self.location(var) for var in candidates)
@@ -4777,7 +4803,7 @@ class Compiler:
         if node.names is not None:
             for name in node.names:
                 self.emit("DUP", None, None)
-                self.emit("IMPORT_NAME", self.code.const(name), node.position)
+                self.emit("IMPORT_NAME", self.code.const((name, node.path)), node.position)
                 self.store(node, name, node.position)
             self.emit("POP", None, None)
         elif getattr(node, "_name_error", None) is not None:
@@ -4869,11 +4895,14 @@ class Compiler:
         self.emit("INDEX", None, node.position)
 
     def e_SliceNode(self, node):
+        # The target is checked before the bounds are evaluated, and each
+        # bound is made a whole number as soon as it is.
         self.expression(node.target)
-        if node.start is not None:
-            self.expression(node.start)
-        if node.end is not None:
-            self.expression(node.end)
+        self.emit("SLICE_TARGET", None, node.position)
+        for bound in (node.start, node.end):
+            if bound is not None:
+                self.expression(bound)
+                self.emit("SLICE_BOUND", None, node.position)
         self.emit("SLICE", (node.start is not None, node.end is not None), node.position)
 
     def e_MemberNode(self, node):
@@ -4910,14 +4939,15 @@ def compile_source(source):
 # functions of the argument).
 STACK_EFFECT = {
     "LOAD_CONST": 1, "POP": -1, "DUP": 1,
-    "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1, "LOAD_FREE": 1,
+    "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1,
     "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0,
     "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
     "NEG": 0, "POS": 0, "NOT": 0,
     "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
     "CHECK_BOOL": 0, "JUMP_IF_FALSE_KEEP": -1, "JUMP_IF_TRUE_KEEP": -1,
     "BUILD_LIST": lambda n: 1 - n, "BUILD_DICT": None, "BUILD_STRING": lambda n: 1 - n,
-    "INDEX": -1, "SLICE": lambda flags: -sum(flags), "GET_MEMBER": 0,
+    "INDEX": -1, "SLICE_TARGET": 0, "SLICE_BOUND": 0, "SLICE": lambda flags: -sum(flags),
+    "GET_MEMBER": 0,
     "INDEX_ASSIGN_TARGET": 0, "INDEX_ASSIGN_KEY": 0, "INDEX_ASSIGN": -2,
     "MEMBER_ASSIGN_TARGET": 0, "SET_MEMBER": -1,
     "DELETE_TARGET": 0, "DELETE_KEY": -1, "DELETE_FILE": 0,
@@ -4987,9 +5017,6 @@ def verify(code):
         if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE") and not (
                 0 <= arg < code.nslots):
             raise BytecodeError("{}: instruction {} uses slot {}".format(code.name, index, arg))
-        if name == "LOAD_FREE" and not 0 <= arg < len(code.freevars):
-            raise BytecodeError("{}: instruction {} uses free variable {}".format(
-                code.name, index, arg))
     depth = {0: 0}
     work = [0]
     for start, end, handler, kind in code.exception_table:
@@ -5102,8 +5129,6 @@ def describe_arg(code, name, arg):
         return "{} ({})".format(arg, show_constant(value))
     if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE"):
         return "{} ({})".format(arg, code.slot_names[arg])
-    if name == "LOAD_FREE":
-        return "{} ({})".format(arg, code.freevars[arg])
     if name in ("LOAD_GLOBAL", "STORE_GLOBAL"):
         return arg
     if name == "JUMP_IF_NOT_TRUE":
@@ -5133,6 +5158,446 @@ class LineLookup:
         return bisect.bisect_right(self.starts, position)
 
 
+# ---------------------------------------------------------------------------
+# 6. Virtual machine  (bytecode -> a value)  - M4
+# ---------------------------------------------------------------------------
+#
+# Runs what the Compiler makes. One execute() call runs a frame and every
+# NovaLang function it calls - calls push a Frame and stay in the same
+# loop, so NovaLang recursion does not use Python's stack. Python recurses
+# only where Python calls back into NovaLang (map/filter/reduce, the
+# embedding API), through Interpreter.call_value, exactly as before.
+#
+# What each operation means is the shared functions above; this loop only
+# moves values between the stack, slots and cells. Errors follow the
+# Interpreter: the exception table finds a handler (a catch takes a
+# NovaError and starts with its text; a finally takes anything and starts
+# with the exception, which RERAISE raises again); an error leaving a
+# function gets its stack trace there if it has none yet; a stray
+# break/continue leaving a function becomes, in the caller, the same error
+# Interpreter.call_value raised; MAX_CALL_DEPTH is checked on every call.
+
+class Unset:
+    """A slot or cell with nothing in it yet."""
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return "<unset>"
+
+
+UNSET = Unset()
+
+
+class Cell:
+    """A binding a closure shares with the frame that made it."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value=UNSET):
+        self.value = value
+
+
+class Frame:
+    __slots__ = ("code", "slots", "stack", "ip", "cells", "globals", "function")
+
+    def __init__(self, code, slots, cells, globals_, function):
+        self.code = code
+        self.slots = slots
+        self.stack = []
+        self.ip = 0
+        self.cells = cells              # the closure: Cells from enclosing frames
+        self.globals = globals_         # the defining module's global dictionary
+        self.function = function        # the NovaFunction, or None for a module
+
+
+class VMError(Exception):
+    """The VM broke one of its own invariants - a bug in NovaLang itself,
+    never in the program being run, so it is not a NovaError."""
+
+
+class StraySignal(Exception):
+    """A `break` or `continue` outside a loop, or `return` at the top level,
+    when it runs. `catch` cannot intercept it; `finally` still runs, as with
+    the Interpreter's Break/Continue/ReturnSignal."""
+
+    def __init__(self, kind, position):
+        super().__init__(kind)
+        self.kind = kind
+        self.position = position
+
+
+def module_frame(code, globals_):
+    return Frame(code, [UNSET] * code.nslots, (), globals_, None)
+
+
+def function_frame(function, args):
+    code = function.code
+    slots = [UNSET] * code.nslots
+    for slot, value in zip(code.params, args):
+        slots[slot] = value
+    for slot in code.cell_params:
+        slots[slot] = Cell(slots[slot])
+    return Frame(code, slots, function.cells, function.globals, function)
+
+
+def stray_error(signal, function_name):
+    """What a stray signal leaving a function becomes (Interpreter.call_value)."""
+    return NovaError("'{}' is not inside a loop in {}()".format(signal.kind, function_name),
+                     signal.position)
+
+
+def top_level_error(signal):
+    """What a stray signal reaching the top level becomes (run())."""
+    if signal.kind == "return":
+        return NovaError("'return' only makes sense inside a function")
+    return NovaError("'{}' is not inside a loop".format(signal.kind), signal.position)
+
+
+def find_handler(code, index, problem):
+    """(handler, what to push) for the error raised by instruction `index`."""
+    for start, end, handler, kind in code.exception_table:
+        if start <= index < end:
+            if kind == "catch":
+                if isinstance(problem, NovaError):
+                    return handler, error_text(problem)
+                continue
+            return handler, problem
+    return None, None
+
+
+def vm_function(code, cells, globals_):
+    function = NovaFunction(code.name, code.param_names, None, None)
+    function.code = code
+    function.cells = cells
+    function.globals = globals_
+    return function
+
+
+def execute(interpreter, entry):
+    """Run `entry` (a Frame) to its RETURN; the value it returns."""
+    frames = []                         # the callers of the current frame
+    frame = entry
+    call_stack = interpreter.call_stack
+
+    # Each opcode number as a local variable (looked up by name, so the
+    # order of OPCODES never matters here); locals are fastest in the loop.
+    LOAD_CONST_ = OP["LOAD_CONST"]; POP_ = OP["POP"]; DUP_ = OP["DUP"]
+    LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
+    STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
+    LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
+    ADD_ = OP["ADD"]; SUB_ = OP["SUB"]; MUL_ = OP["MUL"]
+    DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]; MOD_ = OP["MOD"]
+    NEG_ = OP["NEG"]; POS_ = OP["POS"]; NOT_ = OP["NOT"]
+    EQ_ = OP["EQ"]; NE_ = OP["NE"]; LT_ = OP["LT"]
+    GT_ = OP["GT"]; LE_ = OP["LE"]; GE_ = OP["GE"]
+    IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]; JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]
+    JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]; BUILD_DICT_ = OP["BUILD_DICT"]
+    BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]; SLICE_TARGET_ = OP["SLICE_TARGET"]
+    SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]; GET_MEMBER_ = OP["GET_MEMBER"]
+    INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]; INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]
+    MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]; DELETE_TARGET_ = OP["DELETE_TARGET"]
+    DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]; JUMP_ = OP["JUMP"]
+    JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]; RANGE_PREP_ = OP["RANGE_PREP"]
+    RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]; ITER_NEXT_ = OP["ITER_NEXT"]
+    MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]; RETURN_ = OP["RETURN"]
+    THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]; STRAY_ = OP["STRAY"]
+    FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]; IMPORT_NAME_ = OP["IMPORT_NAME"]
+    EXPORT_ = OP["EXPORT"]
+    binary = {ADD_: "+", SUB_: "-", MUL_: "*", DIV_: "/", FLOOR_DIV_: "//", MOD_: "%"}
+    compare = {EQ_: "==", NE_: "!=", LT_: "<", GT_: ">", LE_: "<=", GE_: ">=", IN_: "in"}
+
+    code = frame.code
+    ops, args, consts, positions = code.ops, code.args, code.constants, code.positions
+    slots, stack, cells, glob = frame.slots, frame.stack, frame.cells, frame.globals
+    ip = frame.ip
+
+    while True:
+        try:
+            while True:
+                op = ops[ip]
+                arg = args[ip]
+                ip += 1
+
+                if op == LOAD_FAST_:
+                    stack.append(slots[arg])
+                elif op == LOAD_CONST_:
+                    stack.append(consts[arg])
+                elif op == STORE_FAST_:
+                    slots[arg] = stack.pop()
+                elif op == LOAD_GLOBAL_:
+                    value = glob.get(arg, UNSET)
+                    if value is UNSET:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
+                elif op == STORE_GLOBAL_:
+                    glob[arg] = stack.pop()
+                elif op == LOAD_CELL_:
+                    stack.append(slots[arg].value)
+                elif op == STORE_CELL_:
+                    slots[arg].value = stack.pop()
+                elif op == LOAD_CHAIN_:
+                    for kind, where in consts[arg]:
+                        if kind == "fast":
+                            value = slots[where]
+                        elif kind == "cell":
+                            value = slots[where].value
+                        elif kind == "free":
+                            value = cells[where].value
+                        else:
+                            value = glob.get(where, UNSET)
+                            name = where
+                        if value is not UNSET:
+                            stack.append(value)
+                            break
+                    else:
+                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
+                elif op == STORE_CHAIN_:
+                    value = stack.pop()
+                    chain = consts[arg]
+                    last = len(chain) - 1
+                    for index, (kind, where) in enumerate(chain):
+                        if kind == "fast":
+                            if index == last or slots[where] is not UNSET:
+                                slots[where] = value
+                                break
+                        elif kind == "cell":
+                            if index == last or slots[where].value is not UNSET:
+                                slots[where].value = value
+                                break
+                        elif kind == "free":
+                            if index == last or cells[where].value is not UNSET:
+                                cells[where].value = value
+                                break
+                        elif index == last or where in glob:
+                            glob[where] = value
+                            break
+                elif op == NEW_CELLS_:
+                    for slot in consts[arg]:
+                        slots[slot] = Cell()
+                elif op == POP_:
+                    stack.pop()
+                elif op == DUP_:
+                    stack.append(stack[-1])
+                elif op in binary:
+                    right = stack.pop()
+                    stack[-1] = binary_operation(binary[op], stack[-1], right, positions[ip - 1])
+                elif op in compare:
+                    right = stack.pop()
+                    stack[-1] = compare_operation(compare[op], stack[-1], right, positions[ip - 1])
+                elif op == JUMP_:
+                    ip = arg
+                elif op == JUMP_IF_NOT_TRUE_:
+                    value = stack.pop()
+                    if value is not True:
+                        if value is not False:
+                            condition_check(value, consts[arg[0]], positions[ip - 1])
+                        ip = arg[1]
+                elif op == CALL_:
+                    if arg:
+                        call_args = stack[-arg:]
+                        del stack[-arg:]
+                    else:
+                        call_args = []
+                    callee = stack.pop()
+                    if type(callee) is NovaFunction and callee.code is not None:
+                        if len(call_args) != len(callee.params):
+                            raise NovaError("{}() expects {} argument(s) but got {}".format(
+                                callee.name, len(callee.params), len(call_args)),
+                                positions[ip - 1])
+                        if len(call_stack) >= MAX_CALL_DEPTH:
+                            raise NovaError(
+                                "call depth of {} exceeded - is the recursion missing a base "
+                                "case?".format(MAX_CALL_DEPTH), positions[ip - 1])
+                        frame.ip = ip
+                        frames.append(frame)
+                        call_stack.append(callee.name)
+                        frame = function_frame(callee, call_args)
+                        code = frame.code
+                        ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                        code.positions)
+                        slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                                     frame.globals)
+                        ip = 0
+                    else:
+                        stack.append(interpreter.call_value(callee, call_args, positions[ip - 1]))
+                elif op == RETURN_:
+                    value = stack.pop()
+                    if stack:
+                        # verify() proves RETURN runs with exactly one value
+                        # on the stack; anything left means the VM itself
+                        # went wrong. Stop the line rather than carry on.
+                        raise VMError("{} returned with {} stray value(s) on its stack".format(
+                            code.name, len(stack)))
+                    if frame.function is not None:
+                        call_stack.pop()
+                    if frame is entry:
+                        return value
+                    frame = frames.pop()
+                    code = frame.code
+                    ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                    code.positions)
+                    slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                                 frame.globals)
+                    ip = frame.ip
+                    stack.append(value)
+                elif op == RANGE_NEXT_:
+                    state = slots[arg[0]]
+                    index = state[3]
+                    if index >= state[2]:
+                        ip = arg[1]
+                    else:
+                        state[3] = index + 1
+                        stack.append(range_value(state[0], state[1], index, state[4]))
+                elif op == ITER_NEXT_:
+                    state = slots[arg[0]]
+                    index = state[1]
+                    if index >= len(state[0]):
+                        ip = arg[1]
+                    else:
+                        state[1] = index + 1
+                        item = state[0][index]
+                        if state[2]:
+                            stack.append(item[0])
+                            stack.append(item[1])
+                        else:
+                            stack.append(item)
+                elif op == CHECK_BOOL_:
+                    side, name = consts[arg]
+                    logical_side(stack[-1], side, name, positions[ip - 1])
+                elif op == JUMP_IF_FALSE_KEEP_:
+                    if stack[-1]:
+                        stack.pop()
+                    else:
+                        ip = arg
+                elif op == JUMP_IF_TRUE_KEEP_:
+                    if stack[-1]:
+                        ip = arg
+                    else:
+                        stack.pop()
+                elif op == NEG_ or op == POS_:
+                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
+                                                positions[ip - 1])
+                elif op == NOT_:
+                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
+                elif op == INDEX_:
+                    index = stack.pop()
+                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                elif op == GET_MEMBER_:
+                    stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
+                elif op == BUILD_LIST_:
+                    if arg:
+                        items = stack[-arg:]
+                        del stack[-arg:]
+                    else:
+                        items = []
+                    stack.append(items)
+                elif op == BUILD_DICT_:
+                    keys = consts[arg]
+                    if keys:
+                        values = stack[-len(keys):]
+                        del stack[-len(keys):]
+                    else:
+                        values = []
+                    stack.append(dict(zip(keys, values)))
+                elif op == BUILD_STRING_:
+                    parts = stack[-arg:] if arg else []
+                    if arg:
+                        del stack[-arg:]
+                    stack.append(interpolate(parts))
+                elif op == SLICE_TARGET_:
+                    slice_target(stack[-1], positions[ip - 1])
+                elif op == SLICE_BOUND_:
+                    stack[-1] = slice_bound(stack[-1], positions[ip - 1])
+                elif op == SLICE_:
+                    end = stack.pop() if arg[1] else None
+                    start = stack.pop() if arg[0] else None
+                    stack[-1] = stack[-1][start:end]
+                elif op == INDEX_ASSIGN_TARGET_:
+                    index_assign_target(stack[-1], positions[ip - 1])
+                elif op == INDEX_ASSIGN_KEY_:
+                    stack[-1] = index_assign_key(stack[-2], stack[-1], positions[ip - 1])
+                elif op == INDEX_ASSIGN_:
+                    value = stack.pop()
+                    index = stack.pop()
+                    stack[-1] = index_assign(stack[-1], index, value, positions[ip - 1])
+                elif op == MEMBER_ASSIGN_TARGET_:
+                    member_assign_target(stack[-1], positions[ip - 1])
+                elif op == SET_MEMBER_:
+                    value = stack.pop()
+                    stack[-1][consts[arg]] = value          # a new key is fine
+                    stack[-1] = value
+                elif op == DELETE_TARGET_:
+                    delete_target(stack[-1], positions[ip - 1])
+                elif op == DELETE_KEY_:
+                    key = stack.pop()
+                    stack[-1] = delete_key(stack[-1], key, positions[ip - 1])
+                elif op == DELETE_FILE_:
+                    stack[-1] = delete_file(stack[-1], positions[ip - 1])
+                elif op == LOOP_NUMBER_:
+                    loop_number(stack[-1], consts[arg], positions[ip - 1])
+                elif op == RANGE_PREP_:
+                    slot, descending, has_step = arg
+                    step = stack.pop() if has_step else 1
+                    end = stack.pop()
+                    start = stack.pop()
+                    iterations = range_iterations(start, end, step, descending, positions[ip - 1])
+                    slots[slot] = [start, step, iterations, 0, descending]
+                elif op == ITER_PREP_:
+                    slot, names = arg
+                    items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
+                    slots[slot] = [items, 0, names == 2]
+                elif op == MAKE_FUNCTION_:
+                    child = consts[arg]
+                    closure = tuple(slots[where] if kind == "cell" else cells[where]
+                                    for kind, where in child.closure)
+                    stack.append(vm_function(child, closure, glob))
+                elif op == THROW_:
+                    raise throw_error(stack.pop(), positions[ip - 1])
+                elif op == RERAISE_:
+                    raise slots[arg]
+                elif op == STRAY_:
+                    raise StraySignal(consts[arg], positions[ip - 1])
+                elif op == FAIL_:
+                    message, label = consts[arg]
+                    raise NovaError(message, positions[ip - 1], label=label)
+                elif op == IMPORT_:
+                    stack.append(interpreter.import_module(consts[arg], positions[ip - 1]))
+                elif op == IMPORT_NAME_:
+                    name, raw_path = consts[arg]
+                    stack[-1] = imported_name(stack[-1], raw_path, name, positions[ip - 1])
+                elif op == EXPORT_:
+                    interpreter.current_exports[consts[arg]] = stack[-1]
+                else:
+                    raise NovaError("internal error: unknown opcode {}".format(op))
+        except VMError:
+            raise
+        except BaseException as problem:  # noqa: BLE001 - unwound exactly like Python's
+            # Unwind: this frame's handler, else leave it and try its caller's.
+            while True:
+                handler, payload = find_handler(code, ip - 1, problem)
+                if handler is not None:
+                    del stack[:]
+                    stack.append(payload)
+                    ip = handler
+                    break
+                if frame.function is not None:
+                    if isinstance(problem, NovaError) and problem.stack is None:
+                        problem.stack = ["{}()".format(name) for name in reversed(call_stack)]
+                    call_stack.pop()
+                    if isinstance(problem, StraySignal):
+                        problem = stray_error(problem, frame.function.name)
+                if frame is entry:
+                    raise problem
+                frame = frames.pop()
+                code = frame.code
+                ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                code.positions)
+                slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                             frame.globals)
+                ip = frame.ip
+
+
 def type_gate(ast, source, base_dir=None):
     """Refuse to run a program that fails its type check (M1, gradual
     typing). A program with no annotations and no imports cannot break a
@@ -5160,15 +5625,28 @@ def run(source, interpreter):
     tokens = Lexer(source).tokenize()
     ast = Parser(tokens).parse()
     type_gate(ast, source, interpreter.file_stack[-1] if interpreter.file_stack else None)
+    return ast, run_program(ast, interpreter)
+
+
+def run_program(ast, interpreter):
+    """Run a parsed program on the interpreter's engine; its value. A stray
+    `return`, `break` or `continue` at the top level is an error here."""
+    if interpreter.engine == "vm":
+        code = getattr(ast, "_code", None)
+        if code is None:
+            code = ast._code = compile_ast(ast)     # compiled once per parse
+        try:
+            return execute(interpreter, module_frame(code, interpreter.globals.values))
+        except StraySignal as signal:
+            raise top_level_error(signal) from None
     try:
-        value = interpreter.evaluate(ast)
+        return interpreter.evaluate(ast)
     except ReturnSignal:
         raise NovaError("'return' only makes sense inside a function")
     except BreakSignal as signal:
         raise NovaError("'break' is not inside a loop", signal.position)
     except ContinueSignal as signal:
         raise NovaError("'continue' is not inside a loop", signal.position)
-    return ast, value
 
 
 # ---------------------------------------------------------------------------
@@ -5356,8 +5834,11 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Finish the block with '}' (or press Ctrl-C to throw the draft away).
   Ctrl-C also stops a runaway loop.
 
-  Bytecode: `novalang.py --dis file.nova` prints the bytecode a program
-  compiles to (M4), without running it.
+  Bytecode: programs are compiled to bytecode and run on a virtual
+  machine (M4). `novalang.py --dis file.nova` prints the bytecode without
+  running it, and `novalang.py --tree-walk ...` runs anything - a file,
+  --bootstrap, the REPL - on the original tree-walking interpreter
+  instead, for comparison.
 
   Toolchain: `novalang.py --check file.nova` lints a program without
   running it (undefined names, unused variables, unreachable code),
@@ -5557,13 +6038,7 @@ class CompiledScript:
         own that caller would have to import novalang to catch."""
         interpreter = engine.interpreter
         try:
-            value = interpreter.evaluate(self.ast)
-        except ReturnSignal:
-            raise NovaLangError(NovaError("'return' only makes sense inside a function")) from None
-        except BreakSignal as signal:
-            raise NovaLangError(NovaError("'break' is not inside a loop", signal.position)) from None
-        except ContinueSignal as signal:
-            raise NovaLangError(NovaError("'continue' is not inside a loop", signal.position)) from None
+            value = run_program(self.ast, interpreter)
         except NovaError as error:
             raise NovaLangError(error) from None
         return to_python_value(value, interpreter)
@@ -5585,8 +6060,9 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self):
-        self.interpreter = Interpreter()
+    def __init__(self, engine=None):
+        """`engine` is "vm" (the default) or "tree" (the tree-walker)."""
+        self.interpreter = Interpreter(engine)
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
@@ -5741,6 +6217,15 @@ def main(argv):
 
     if not args:
         return repl()
+
+    # `--tree-walk ...` runs anything below on the original tree-walking
+    # interpreter instead of the bytecode VM, for comparing the two.
+    if args[0] == "--tree-walk":
+        global DEFAULT_ENGINE
+        DEFAULT_ENGINE = "tree"
+        args = args[1:]
+        if not args:
+            return repl()
 
     if args[0] == "--bootstrap":
         return run_bootstrap(args[1:])

@@ -1,10 +1,10 @@
 code <module>
      2       0 IMPORT               0 ('./helpers.nova')
              1 DUP
-             2 IMPORT_NAME          1 ('tool')
+             2 IMPORT_NAME          1 (('tool', './helpers.nova'))
              3 STORE_GLOBAL         tool
              4 DUP
-             5 IMPORT_NAME          2 ('other')
+             5 IMPORT_NAME          2 (('other', './helpers.nova'))
              6 STORE_GLOBAL         other
              7 POP
      3       8 IMPORT               0 ('./helpers.nova')

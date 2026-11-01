@@ -34,46 +34,53 @@ code <module>
      7      32 STORE_GLOBAL         s
      8      33 LOAD_CONST           10 (<built-in print>)
             34 LOAD_GLOBAL          s
-            35 LOAD_CONST           5 (1)
-            36 LOAD_CONST           11 (3)
-            37 SLICE                [start:end]
-            38 LOAD_GLOBAL          s
-            39 LOAD_CONST           12 (2)
-            40 SLICE                [:end]
+            35 SLICE_TARGET
+            36 LOAD_CONST           5 (1)
+            37 SLICE_BOUND
+            38 LOAD_CONST           11 (3)
+            39 SLICE_BOUND
+            40 SLICE                [start:end]
             41 LOAD_GLOBAL          s
-            42 LOAD_CONST           12 (2)
-            43 SLICE                [start:]
-            44 LOAD_GLOBAL          s
-            45 LOAD_CONST           13 (' has ')
-            46 LOAD_CONST           14 (<built-in len>)
-            47 LOAD_GLOBAL          s
-            48 CALL                 1
-            49 LOAD_CONST           15 (' letters')
-            50 BUILD_STRING         4
-            51 LOAD_CONST           14 (<built-in len>)
-            52 LOAD_GLOBAL          s
-            53 CALL                 1
-            54 NEG
-            55 LOAD_CONST           16 (True)
-            56 NOT
-            57 CALL                 6
-            58 POP
-     9      59 LOAD_CONST           14 (<built-in len>)
-            60 LOAD_GLOBAL          s
-            61 CALL                 1
-            62 LOAD_CONST           12 (2)
-            63 GT
-            64 CHECK_BOOL           left side of 'and'
-            65 JUMP_IF_FALSE_KEEP   to 70
-            66 LOAD_GLOBAL          s
-            67 LOAD_CONST           18 ('')
-            68 NE
-            69 CHECK_BOOL           right side of 'and'
-       >>   70 CHECK_BOOL           left side of 'or'
-            71 JUMP_IF_TRUE_KEEP    to 74
-            72 LOAD_CONST           21 (False)
-            73 CHECK_BOOL           right side of 'or'
-       >>   74 DUP
-            75 STORE_GLOBAL         ok
-            76 RETURN
+            42 SLICE_TARGET
+            43 LOAD_CONST           12 (2)
+            44 SLICE_BOUND
+            45 SLICE                [:end]
+            46 LOAD_GLOBAL          s
+            47 SLICE_TARGET
+            48 LOAD_CONST           12 (2)
+            49 SLICE_BOUND
+            50 SLICE                [start:]
+            51 LOAD_GLOBAL          s
+            52 LOAD_CONST           13 (' has ')
+            53 LOAD_CONST           14 (<built-in len>)
+            54 LOAD_GLOBAL          s
+            55 CALL                 1
+            56 LOAD_CONST           15 (' letters')
+            57 BUILD_STRING         4
+            58 LOAD_CONST           14 (<built-in len>)
+            59 LOAD_GLOBAL          s
+            60 CALL                 1
+            61 NEG
+            62 LOAD_CONST           16 (True)
+            63 NOT
+            64 CALL                 6
+            65 POP
+     9      66 LOAD_CONST           14 (<built-in len>)
+            67 LOAD_GLOBAL          s
+            68 CALL                 1
+            69 LOAD_CONST           12 (2)
+            70 GT
+            71 CHECK_BOOL           left side of 'and'
+            72 JUMP_IF_FALSE_KEEP   to 77
+            73 LOAD_GLOBAL          s
+            74 LOAD_CONST           18 ('')
+            75 NE
+            76 CHECK_BOOL           right side of 'and'
+       >>   77 CHECK_BOOL           left side of 'or'
+            78 JUMP_IF_TRUE_KEEP    to 81
+            79 LOAD_CONST           21 (False)
+            80 CHECK_BOOL           right side of 'or'
+       >>   81 DUP
+            82 STORE_GLOBAL         ok
+            83 RETURN
 

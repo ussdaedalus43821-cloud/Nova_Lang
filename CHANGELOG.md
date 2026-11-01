@@ -38,11 +38,28 @@ AST          ->  Interpreter ->  a value
   `tools/nova_scope.py` about the scope of every name read in the
   repository.
 
-### Changing in phase 2
-- Very deep recursion under `--bootstrap` will report NovaLang's own
-  "call depth of 1200 exceeded" instead of Python's RecursionError ("ran
-  out of stack"), because NovaLang calls will no longer use Python's
-  stack.
+### Added (phase 2: the virtual machine)
+- The bytecode VM is now the default engine. It is a single loop: a call
+  from one NovaLang function to another pushes a frame (slots, a value
+  stack, closure cells) instead of recursing in Python. `MAX_CALL_DEPTH`
+  is enforced on every call. Errors use the compiler's exception table.
+  Stray `break`/`continue` and top-level `return` behave exactly as
+  before.
+- `novalang.py --tree-walk ...` and `Nova(engine="tree")` run on the
+  original tree-walker, which stays as the reference.
+- The operations themselves (operators, indexing, conditions, ranges and
+  so on) are now shared functions that both engines call, so the engines
+  cannot disagree about what an operation does.
+- `tests/run_all.py` station 11, the differential tester. It requires the
+  same stdout, stderr and exit status, byte for byte, from both engines
+  on every `.nova` file, on every example under `--bootstrap`, on 300
+  seeded random programs (`tests/vm/generator.py`), and on the embedding
+  API.
+
+### Changed
+- Very deep recursion under `--bootstrap` reports NovaLang's own "call
+  depth of 1200 exceeded" instead of Python's RecursionError ("ran out of
+  stack"), because NovaLang calls no longer use Python's stack.
 
 ---
 
