@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""
+test_differential.py - the bytecode VM against the tree-walker, everywhere.
+
+    python3 tests/vm/test_differential.py        (also run_all.py station 11)
+    NOVA_DIFF_SEEDS=5000 python3 tests/vm/test_differential.py   (a longer soak)
+
+The tree-walker is the reference: it is what NovaLang has always been.
+Every check here runs the same program on both engines and requires the
+same stdout, the same stderr (error text, carets, stack traces) and the
+same exit status, byte for byte. Timestamps that log() writes are the
+only thing masked.
+
+  1. Every .nova file in the repository, through the real CLI:
+     `novalang.py FILE` against `novalang.py --tree-walk FILE`.
+  2. Every example under --bootstrap on both engines - novalang.nova's
+     own interpreter running on top of each.
+  3. Seeded random programs from generator.py, in-process (300 by
+     default), aimed at scopes, closures, try/finally and errors. A
+     mismatch reports its seed and the program.
+  4. The embedding API (Nova.exec/eval/call/compile/load_file) on both.
+  5. Coverage: between them, the generated programs and the repository
+     compile to every opcode there is, so no instruction goes untested.
+"""
+
+import concurrent.futures
+import glob
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+sys.path.insert(0, ROOT)
+
+import differential  # noqa: E402
+import generator  # noqa: E402
+import novalang as nl  # noqa: E402
+
+NOVALANG = os.path.join(ROOT, "novalang.py")
+TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
+# Programs whose output differs between two runs of the same engine.
+NONDETERMINISTIC = {"examples/reactor_sim.nova": "uses random()"}
+SEEDS = int(os.environ.get("NOVA_DIFF_SEEDS", "300"))
+
+
+def rel(path):
+    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
+def nova_files():
+    for path in sorted(glob.glob(os.path.join(ROOT, "**", "*.nova"), recursive=True)):
+        if "/.nova_modules/" not in path:
+            yield path
+
+
+def cli(args):
+    try:
+        done = subprocess.run([sys.executable, NOVALANG] + args, cwd=ROOT,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=300)
+    except subprocess.TimeoutExpired:
+        return ("timeout", "", "")
+    return (done.returncode, TIMESTAMP.sub("[time]", done.stdout),
+            TIMESTAMP.sub("[time]", done.stderr))
+
+
+def show(tree, vm):
+    import difflib
+    parts = []
+    for label, a, b in (("stdout", tree[1], vm[1]), ("stderr", tree[2], vm[2])):
+        if a != b:
+            parts.append(label + ":\n" + "".join(difflib.unified_diff(
+                a.splitlines(True), b.splitlines(True), "tree-walker", "vm"))[:1500])
+    if tree[0] != vm[0]:
+        parts.append("exit: tree-walker {}, vm {}".format(tree[0], vm[0]))
+    return "\n".join(parts)
+
+
+def both(args):
+    """One file's runs, one after the other (some programs write files)."""
+    return cli(["--tree-walk"] + args), cli(args)
+
+
+def test_files(check):
+    paths = list(nova_files())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = dict(zip(paths, pool.map(lambda p: both([rel(p)]), paths)))
+        examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
+        booted = dict(zip(examples, pool.map(lambda p: both(["--bootstrap", rel(p)]), examples)))
+    for path, (tree, vm) in results.items():
+        name = rel(path)
+        same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
+        check(same, "{}: the VM matches the tree-walker".format(name), show(tree, vm))
+    for path, (tree, vm) in booted.items():
+        name = rel(path)
+        same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
+        check(same, "{} under --bootstrap: the VM matches the tree-walker".format(name),
+              show(tree, vm))
+    check(len(results) > 70, "every .nova file was compared ({})".format(len(results)))
+
+
+def test_generated(check):
+    mismatches = []
+    unfinished = []
+    for seed in range(SEEDS):
+        source = generator.generate(seed)
+        same, tree, vm = differential.compare(source)
+        if tree[2] == -1 or vm[2] == -1:
+            unfinished.append(seed)
+        elif not same:
+            mismatches.append((seed, source, tree, vm))
+    check(not unfinished, "every generated program finishes on both engines",
+          "seeds {}".format(unfinished[:10]))
+    detail = ""
+    if mismatches:
+        seed, source, tree, vm = mismatches[0]
+        detail = "first mismatch, seed {}:\n{}\n-- tree-walker: {!r}\n-- vm: {!r}".format(
+            seed, source, tree, vm)
+    check(not mismatches, "{} generated programs run the same on both engines ({} differ)".format(
+        SEEDS, len(mismatches)), detail)
+
+
+EMBEDDING = '''
+def add(a, b) {
+    return a + b
+}
+let history = []
+def remember(x) {
+    append(history, x)
+    return len(history)
+}
+'''
+
+
+def test_embedding(check):
+    def session(engine):
+        nova = nl.Nova(engine=engine)
+        seen = []
+        nova.exec(EMBEDDING)
+        seen.append(nova.call("add", 2, 3))
+        seen.append(nova.eval("if add(1, 1) == 2 { remember(7) } else { 0 }"))
+        script = nova.compile("remember(add(1, 2))")
+        seen.append([script.run(nova) for _ in range(3)])
+        nova.expose_global("outside", 40)
+        seen.append(nova.eval("outside + 2"))
+        # A global made by an earlier input, assigned in a block: the
+        # compiler cannot know it exists, so this is decided when it runs.
+        nova.exec("count = 1")
+        nova.exec("if true { count = count + 1 }")
+        nova.exec("for i = 1 to 3 { count = count + i }")
+        seen.append(nova.eval("count"))
+        for bad in ("nowhere + 1", "add(1)", "try { break } finally { remember(0) }", "return 3"):
+            try:
+                nova.exec(bad)
+                seen.append("no error")
+            except nl.NovaLangError as error:
+                seen.append(str(error))
+        path = os.path.join(tempfile.mkdtemp(prefix="nova-embed-"), "script.nova")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("let made = 6 * 7\nmade\n")
+        seen.append(nova.load_file(path))
+        seen.append(nova.eval("history"))
+        return seen
+    tree, vm = session("tree"), session("vm")
+    check(tree == vm, "the embedding API gives the same results and errors on both engines",
+          "tree-walker: {}\nvm: {}".format(tree, vm))
+
+
+def test_coverage(check):
+    used = set()
+
+    def walk(code):
+        used.update(nl.OPCODES[op] for op in code.ops)
+        for constant in code.constants:
+            if isinstance(constant, nl.CodeObject):
+                walk(constant)
+    for seed in range(SEEDS):
+        walk(nl.compile_source(generator.generate(seed)))
+    for path in nova_files():
+        try:
+            walk(nl.compile_source(open(path, encoding="utf-8").read()))
+        except nl.NovaError:
+            pass
+    missing = sorted(set(nl.OPCODES) - used)
+    check(not missing, "the compared programs use every opcode", missing)
+
+
+def run(check):
+    for test in (test_files, test_generated, test_embedding, test_coverage):
+        try:
+            test(check)
+        except Exception as problem:  # noqa: BLE001
+            check(False, "{} raised {}: {}".format(test.__name__, type(problem).__name__, problem))
+
+
+def main():
+    failures = []
+
+    def check(ok, label, detail=None):
+        print("[{}] {}".format("ok" if ok else "FAILED", label))
+        if not ok:
+            failures.append(label)
+            if detail:
+                print("        " + str(detail)[:4000].replace("\n", "\n        "))
+    run(check)
+    print()
+    print("All differential tests passed." if not failures else
+          "{} differential test(s) failed.".format(len(failures)))
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
