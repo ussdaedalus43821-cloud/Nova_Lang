@@ -1,0 +1,8 @@
+{
+  "name": "typed",
+  "version": "1.0.0",
+  "registry": "../../registry",
+  "dependencies": {
+    "typed-geo": "^1.0.0"
+  }
+}

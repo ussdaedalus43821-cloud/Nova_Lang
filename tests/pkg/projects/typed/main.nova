@@ -1,0 +1,4 @@
+print("this line must never run")
+# No annotations here - but typed-geo's contract still binds this call.
+import "typed-geo"
+print(typed_geo.area("wide", 2))

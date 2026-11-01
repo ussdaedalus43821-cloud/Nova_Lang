@@ -1,0 +1,7 @@
+{
+  "name": "math-utils",
+  "version": "2.0.0",
+  "dependencies": {
+    "str-tools": "^0.1.0"
+  }
+}
