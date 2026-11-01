@@ -1,0 +1,63 @@
+code <module>
+  slots: 0=i@loop, 1=<loop state>, 2=key@loop, 3=value@loop, 4=<loop state>
+             0 LOAD_CONST           0 (3)
+     2       1 STORE_GLOBAL         n
+     3       2 LOAD_GLOBAL          n
+             3 LOAD_CONST           1 (5)
+             4 GT
+             5 JUMP_IF_NOT_TRUE     to 9 (if condition)
+             6 LOAD_CONST           3 ('big')
+             7 POP
+             8 JUMP                 to 18
+     5 >>    9 LOAD_GLOBAL          n
+            10 LOAD_CONST           4 (1)
+            11 GT
+            12 JUMP_IF_NOT_TRUE     to 16 (if condition)
+            13 LOAD_CONST           5 ('medium')
+            14 POP
+            15 JUMP                 to 18
+       >>   16 LOAD_CONST           6 ('small')
+            17 POP
+    10 >>   18 LOAD_GLOBAL          n
+            19 LOAD_CONST           7 (0)
+            20 GT
+            21 JUMP_IF_NOT_TRUE     to 27 (while condition)
+    11      22 LOAD_GLOBAL          n
+            23 LOAD_CONST           4 (1)
+            24 SUB
+            25 STORE_GLOBAL         n
+            26 JUMP                 to 18
+    13 >>   27 LOAD_CONST           9 (<built-in print>)
+            28 LOAD_CONST           10 ('finished without break')
+            29 CALL                 1
+            30 POP
+            31 LOAD_CONST           11 (10)
+    15      32 LOOP_NUMBER          12 ("the start of a 'for' range")
+            33 LOAD_CONST           7 (0)
+            34 LOOP_NUMBER          13 ("the end of a 'for' range")
+            35 LOAD_CONST           1 (5)
+            36 LOOP_NUMBER          14 ("a 'for' step")
+            37 RANGE_PREP           1 (<loop state>) downto +step
+       >>   38 RANGE_NEXT           1 (<loop state>), done: to 45
+            39 STORE_FAST           0 (i@loop)
+    16      40 LOAD_CONST           9 (<built-in print>)
+            41 LOAD_FAST            0 (i@loop)
+            42 CALL                 1
+            43 POP
+            44 JUMP                 to 38
+       >>   45 LOAD_CONST           4 (1)
+            46 LOAD_CONST           15 (2)
+    18      47 BUILD_DICT           16 (('a', 'b'))
+            48 ITER_PREP            4 (<loop state>), 2 names
+       >>   49 ITER_NEXT            4 (<loop state>), done: to 58
+            50 STORE_FAST           3 (value@loop)
+            51 STORE_FAST           2 (key@loop)
+    19      52 LOAD_CONST           9 (<built-in print>)
+            53 LOAD_FAST            2 (key@loop)
+            54 LOAD_FAST            3 (value@loop)
+            55 CALL                 2
+            56 POP
+            57 JUMP                 to 49
+       >>   58 LOAD_CONST           17 (nothing)
+            59 RETURN
+

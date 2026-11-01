@@ -64,6 +64,12 @@ Stations, in order:
                   against the language's own words (the drift guard), and
                   extension.js under Node.
 
+ 10. compiler     tests/compiler/test_compiler.py: golden --dis output for
+                  closures and try/catch/finally among others; every .nova
+                  file compiles and passes verify(); every AST node has a
+                  handler; verify() refuses broken bytecode; and the
+                  resolver agrees with nova_scope on every name read.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -692,6 +698,14 @@ def station_editor(line):
         ok, "lsp: " + label, "" if detail is None else repr(detail)[:1500]))
 
 
+def station_compiler(line):
+    print("10. compiler (AST -> bytecode)")
+    sys.path.insert(0, os.path.join(HERE, "compiler"))
+    import test_compiler
+    test_compiler.run(lambda ok, label, detail=None: line.check(
+        ok, "compiler: " + label, "" if detail is None else str(detail)[:3000]))
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -705,6 +719,7 @@ def main(argv):
     station_types(line)
     station_packages(line)
     station_editor(line)
+    station_compiler(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(

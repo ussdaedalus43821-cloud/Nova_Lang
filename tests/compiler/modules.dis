@@ -1,0 +1,33 @@
+code <module>
+     2       0 IMPORT               0 ('./helpers.nova')
+             1 DUP
+             2 IMPORT_NAME          1 ('tool')
+             3 STORE_GLOBAL         tool
+             4 DUP
+             5 IMPORT_NAME          2 ('other')
+             6 STORE_GLOBAL         other
+             7 POP
+     3       8 IMPORT               0 ('./helpers.nova')
+             9 STORE_GLOBAL         helpers
+     4      10 IMPORT               3 ('./not-a-name.nova')
+            11 FAIL                 4 (('"./not-a-name.nova" does not make a valid module name - import it with \'as\' and choose one', 'NovaError'))
+            12 LOAD_CONST           5 ('1.0')
+            13 DUP
+     5      14 STORE_GLOBAL         version
+            15 EXPORT               6 ('version')
+            16 POP
+     6      17 MAKE_FUNCTION        7 (<code greet>)
+            18 DUP
+            19 STORE_GLOBAL         greet
+            20 EXPORT               8 ('greet')
+            21 RETURN
+
+code greet(name)
+  slots: 0=name
+             0 LOAD_CONST           0 ('hi ')
+     7       1 LOAD_FAST            0 (name)
+             2 ADD
+             3 RETURN
+             4 LOAD_CONST           1 (nothing)
+             5 RETURN
+
