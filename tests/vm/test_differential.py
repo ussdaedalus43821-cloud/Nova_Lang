@@ -46,6 +46,11 @@ NOVALANG = os.path.join(ROOT, "novalang.py")
 TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
 # Programs whose output differs between two runs of the same engine.
 NONDETERMINISTIC = {"examples/reactor_sim.nova": "uses random()"}
+# Programs that create files in the current directory (the repository
+# root), and one that counts its entries: run alone, after everything
+# else, so no other program changes the directory while one of them looks.
+ALONE = {"examples/file_demo.nova", "examples/stdlib_demo.nova",
+         "examples/stdlib_full_test.nova"}
 SEEDS = int(os.environ.get("NOVA_DIFF_SEEDS", "300"))
 
 
@@ -87,12 +92,22 @@ def both(args):
     return cli(["--tree-walk"] + args), cli(args)
 
 
+def run_all_of(paths, prefix):
+    """{path: (tree-walker, vm)}, in parallel except for the ALONE ones."""
+    shared = [p for p in paths if rel(p) not in ALONE]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = dict(zip(shared, pool.map(lambda p: both(prefix + [rel(p)]), shared)))
+    for path in paths:
+        if rel(path) in ALONE:
+            results[path] = both(prefix + [rel(path)])
+    return results
+
+
 def test_files(check):
     paths = list(nova_files())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        results = dict(zip(paths, pool.map(lambda p: both([rel(p)]), paths)))
-        examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
-        booted = dict(zip(examples, pool.map(lambda p: both(["--bootstrap", rel(p)]), examples)))
+    results = run_all_of(paths, [])
+    examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
+    booted = run_all_of(examples, ["--bootstrap"])
     for path, (tree, vm) in results.items():
         name = rel(path)
         same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm

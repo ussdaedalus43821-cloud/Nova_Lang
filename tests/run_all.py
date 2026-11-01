@@ -142,6 +142,11 @@ PYTHON_EXEMPT = {
     "examples/particle_engine.py": "library, tested by particle_engine_selftest.py",
 }
 
+# Examples that create files in the current directory, and one that counts
+# its entries: each runs alone (see station_parity).
+ALONE = {"examples/file_demo.nova", "examples/stdlib_demo.nova",
+         "examples/stdlib_full_test.nova"}
+
 TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
 
 
@@ -401,8 +406,18 @@ def station_parity(line):
                     "fmt host": host(example, scratch),
                     "fmt boot": bootstrap(example, scratch, formatted_engine),
                 }
+            # Programs that change the current directory run alone, after
+            # the rest, so none changes it while another (file_demo) counts
+            # its entries.
             for example in examples(ROOT):
-                jobs[example] = pool.submit(four_runs, example)
+                if example not in ALONE:
+                    jobs[example] = pool.submit(four_runs, example)
+            for example, future in list(jobs.items()):
+                future.result()
+            for example in examples(ROOT):
+                if example in ALONE:
+                    jobs[example] = pool.submit(four_runs, example)
+                    jobs[example].result()
             for example, future in jobs.items():
                 results = future.result()
                 reference = results["host"]
