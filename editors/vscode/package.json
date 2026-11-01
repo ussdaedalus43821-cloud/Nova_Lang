@@ -1,0 +1,57 @@
+{
+  "name": "novalang",
+  "displayName": "NovaLang",
+  "description": "NovaLang support: highlighting, plus diagnostics, formatting, go-to-definition and hover from the NovaLang language server (tools/nova-lsp.py).",
+  "version": "0.3.0",
+  "publisher": "novalang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "novalang",
+        "aliases": [
+          "NovaLang",
+          "nova"
+        ],
+        "extensions": [
+          ".nova"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "novalang",
+        "scopeName": "source.novalang",
+        "path": "./syntaxes/novalang.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "NovaLang",
+      "properties": {
+        "novalang.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "The Python 3 that runs the language server."
+        },
+        "novalang.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to tools/nova-lsp.py. When empty, it is looked for in each workspace folder and the folders above it, then in the NovaLang checkout this extension lives in."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

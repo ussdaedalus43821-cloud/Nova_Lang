@@ -13,6 +13,13 @@ Stations, in order:
   3. fmt poka-yoke  every .nova file in the repo formats with all of the
                     formatter's own checks passing (same AST, same
                     comments, idempotent).
+  3b. line breaks  "\n", "\r\n" and a lone "\r" all end a line, as in
+                  editors and the Language Server Protocol: the same
+                  program written with each lexes to the same tokens (in
+                  both lexers, handed the raw text as an editor would), runs
+                  the same on both engines, ends comments and refuses
+                  open strings at the break, and reports errors on the
+                  same line.
   4. parity         every example gives the same stdout and exit status
                     run directly and through --bootstrap (CONTRIBUTING.md).
   5. formatted      the whole repo is formatted into a scratch copy, and
@@ -49,6 +56,14 @@ Stations, in order:
                   locking, a typed package's contract, and the
                   interpreter refusing a stale install.
 
+  9. editor       tests/lsp/test_lsp.py drives tools/nova-lsp.py over real
+                  JSON-RPC: the protocol and its error handling,
+                  diagnostics with exact ranges (UTF-16 and UTF-32, "\r\n"
+                  and lone "\r"), formatting, definition and hover; and
+                  checks the VS Code extension - its manifest, its grammar
+                  against the language's own words (the drift guard), and
+                  extension.js under Node.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -83,6 +98,7 @@ def load(filename):
 
 fmt = load("nova-fmt.py")
 lint = load("nova-lint.py")
+typecheck = load("nova-typecheck.py")
 
 # Examples whose stdout legitimately differs between two runs of the *same*
 # engine, so only their exit status is compared.
@@ -172,11 +188,40 @@ def station_lint_golden(line):
     for source_path in sorted(glob.glob(os.path.join(HERE, "lint", "*.nova"))):
         expected = read(source_path[:-len(".nova")] + ".expected")
         findings, parsed = lint.lint_source(read(source_path))
+        check_spans(line, source_path, read(source_path), findings)
         actual = "".join(
             lint.format_finding(rel(source_path), parsed, finding) + "\n" for finding in findings
         )
         line.check(actual == expected, rel(source_path) + " gives its .expected findings",
                    diff(expected, actual))
+
+
+# Exact underlines an editor will show for a few findings (code, text).
+EXPECTED_SPANS = {
+    "tests/lint/undefined.nova": [("E001", "missing")],
+    "tests/lint/unused.nova": [("W001", "let never_read")],
+    "tests/lint/unreachable.nova": [("W002", 'print("after return")')],
+    "tests/typecheck/fail/operators.nova": [("T007", "s - n"), ("T007", "n in s")],
+    "tests/typecheck/fail/returns.nova": [("T004", "return"), ("T005", "def sometimes")],
+    "tests/typecheck/fail/arguments.nova": [("T002", '"two"'), ("T003", "add")],
+    "tests/typecheck/fail/unknown_types.nova": [("T001", "integer")],
+}
+
+
+def check_spans(line, path, source, findings):
+    """Every finding knows where it ends, after it starts and on its line
+    - an editor underlines exactly that - and the spot checks match."""
+    for finding in findings:
+        text = source[finding.position:finding.end] if finding.end is not None else None
+        line.check(
+            text is not None and finding.end > finding.position and "\n" not in text,
+            "{}: {} at {} has a one-line end".format(rel(path), finding.code, finding.position),
+            repr(text),
+        )
+    shown = [(f.code, source[f.position:f.end]) for f in findings if f.end is not None]
+    for wanted in EXPECTED_SPANS.get(rel(path), []):
+        line.check(wanted in shown, "{}: {} underlines {!r}".format(rel(path), *wanted),
+                   repr(shown))
 
 
 def station_fmt_repo(line):
@@ -187,6 +232,84 @@ def station_fmt_repo(line):
             line.check(True, rel(path))
         except Exception as problem:  # noqa: BLE001
             line.check(False, rel(path) + " formats safely", str(problem))
+
+
+LINE_BREAK_PROGRAM = [
+    'let greeting = "hi"  # a comment that must end at the break',
+    "print(greeting)",
+    "",
+    "def twice(x) {",
+    "    return x * 2",
+    "}",
+    "print(twice(21))",
+]
+
+
+def station_line_breaks(line):
+    print("3b. line breaks")
+    sys.path.insert(0, ROOT)
+    import novalang
+    variants = {name: brk.join(LINE_BREAK_PROGRAM) + brk
+                for name, brk in (("\\n", "\n"), ("\\r\\n", "\r\n"), ("lone \\r", "\r"))}
+
+    def tokens(source):
+        return [(t.type, t.value) for t in novalang.Lexer(source).tokenize()]
+
+    # Files reach both lexers through Python's text mode, which already
+    # turns "\r\n" and a lone "\r" into "\n" - so running files cannot
+    # tell whether a lexer handles "\r". Editor buffers (over LSP), exec()
+    # strings and the REPL never pass through a file, so each lexer is
+    # also handed the raw text directly: the host's, and novalang.nova's own.
+    self_hosted = novalang.Interpreter()
+    novalang.run(read(os.path.join(ROOT, "novalang.nova")), self_hosted)
+    self_hosted_tokenize = self_hosted.globals.get("tokenize")
+
+    def self_hosted_tokens(source):
+        found = self_hosted.call_value(self_hosted_tokenize, [source], 0)
+        return [(token["kind"], token["value"]) for token in found]
+
+    reference = tokens(variants["\\n"])
+    scratch = tempfile.mkdtemp(prefix="nova-breaks-")
+    try:
+        outputs = {}
+        for name, source in variants.items():
+            line.check(tokens(source) == reference, "{} lexes like \\n".format(name))
+            line.check(self_hosted_tokens(source) == self_hosted_tokens(variants["\\n"]),
+                       "{} lexes like \\n in novalang.nova too".format(name))
+            path = os.path.join(scratch, "program.nova")
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(source)
+            for engine in ([], ["--bootstrap"]):
+                done = subprocess.run([sys.executable, os.path.join(ROOT, "novalang.py")]
+                                      + engine + [path], capture_output=True, text=True,
+                                      timeout=600)
+                outputs[(name, tuple(engine))] = (done.returncode, done.stdout)
+            line.check(fmt.format_source(source) == variants["\\n"],
+                       "{} formats to the \\n layout".format(name))
+            for brk_name, brk in (("string", '"open'), ("f-string", 'f"open'),
+                                  ("f-string hole", 'f"{open')):
+                if name == "\\n":
+                    continue
+                broken = "let s = " + brk + ("\r" if "lone" in name else "\r\n") + '"\n'
+                try:
+                    novalang.Lexer(broken).tokenize()
+                    refused = False
+                except novalang.NovaError:
+                    refused = True
+                line.check(refused, "a {} cannot run across a {}".format(brk_name, name))
+            error = None
+            try:
+                novalang.run(source.replace("twice(21)", "twice(missing)"), novalang.Interpreter())
+            except novalang.NovaError as problem:
+                error = problem.render(source.replace("twice(21)", "twice(missing)"))
+            line.check(error is not None and "  7 | print(twice(missing))" in error,
+                       "{}: errors point at the right line".format(name), error or "")
+        expected = (0, "hi\n42\n")
+        for key, result in sorted(outputs.items()):
+            line.check(result == expected, "{} runs{}".format(
+                key[0], " under --bootstrap" if key[1] else ""), str(result))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def diff(expected, actual):
@@ -367,6 +490,8 @@ def station_types(line):
     try:
         for path in sorted(glob.glob(os.path.join(HERE, "typecheck", "fail", "*.nova"))):
             name = rel(path)
+            _, module = typecheck.check_source(read(path), path)
+            check_spans(line, path, read(path), module.findings)
             expected = read(path[:-len(".nova")] + ".expected")
             status, out, err = cli("--typecheck", name)
             line.check(status == 1 and out == expected, name + " gives its .expected findings",
@@ -559,17 +684,27 @@ def station_packages(line):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def station_editor(line):
+    print("9. editor (language server and VS Code extension)")
+    sys.path.insert(0, os.path.join(HERE, "lsp"))
+    import test_lsp
+    test_lsp.run(lambda ok, label, detail=None: line.check(
+        ok, "lsp: " + label, "" if detail is None else repr(detail)[:1500]))
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
     station_fmt_golden(line)
     station_lint_golden(line)
     station_fmt_repo(line)
+    station_line_breaks(line)
     if not quick:
         station_parity(line)
     station_python(line)
     station_types(line)
     station_packages(line)
+    station_editor(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(

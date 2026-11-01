@@ -1,0 +1,17 @@
+# The workspace tests/lsp/test_lsp.py opens: every kind of definition and
+# hover target the language server must resolve.
+import "./shapes.nova" with area
+import "./shapes.nova" as shapes
+import "hello"
+
+def scale(factor: float, value) -> float {
+    return factor * value
+}
+
+let size: int = 3
+let result: float = scale(2.5, size)
+let label = shapes.name(size)
+print(area(size, 2), result, label, upper("done"), hello.greet(), PI)
+for turn = 1 to size {
+    print(turn)
+}
