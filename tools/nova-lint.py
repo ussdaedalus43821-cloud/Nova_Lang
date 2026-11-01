@@ -13,18 +13,11 @@ Reads the program with the real Lexer and Parser but never executes it.
 Exit status: 0 clean (warnings allowed), 1 if any error was found, 2 if a
 file could not be read or parsed. `--strict` makes warnings fail too.
 
-The scope model is the interpreter's own (see Environment in novalang.py):
-  - function calls and the global scope are barriers; blocks are not;
-  - reading a name walks every enclosing scope;
-  - `x = ...` updates an existing `x` out to the nearest barrier, otherwise
-    it creates `x` in the current block - so a name first assigned inside
-    an `if` is gone after it;
-  - `let` always binds in the current scope.
-Function bodies run when called, not when defined, so a body is checked
-only after the whole file, when every enclosing scope holds all the names
-it will ever get. That makes the checker lenient (it will not notice a
-function called before a global it needs exists) but never wrong about a
-name that is defined somewhere it can see.
+The scope model is the interpreter's own, and lives in nova_scope.py so the
+type checker shares it. Function bodies are checked after the whole file,
+when every enclosing scope holds all the names it will ever get. That makes
+the checker lenient (it will not notice a function called before a global
+it needs exists) but never wrong about a name defined somewhere it can see.
 
 A program run inside an embedding host may use names the host defines.
 Declare them with a comment anywhere in the file:
@@ -39,16 +32,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import nova_ast  # noqa: E402
-from nova_ast import NovaError, Visitor, nl  # noqa: E402
+from nova_ast import NovaError, nl  # noqa: E402
+from nova_scope import TERMINATORS, ScopeWalker  # noqa: E402
 
 # Names every program can see without defining them: the reserved
 # built-ins plus the globals Interpreter.__init__ predefines.
 PREDEFINED = frozenset(nl.BUILTINS) | frozenset(nl.Interpreter().globals.values)
 
 DIRECTIVE = re.compile(r"#\s*nova-lint:\s*globals?\s+(.*)$")
-
-TERMINATORS = (nl.ReturnNode, nl.BreakNode, nl.ContinueNode, nl.ThrowNode)
-
 
 class Finding:
     def __init__(self, position, code, message):
@@ -61,61 +52,13 @@ class Finding:
         return self.code.startswith("E")
 
 
-class Binding:
-    __slots__ = ("name", "position", "kind", "used", "exported")
+class Linter(ScopeWalker):
+    """The scope rules come from ScopeWalker; this adds what to report."""
 
-    def __init__(self, name, position, kind):
-        self.name = name
-        self.position = position
-        self.kind = kind            # var, function, param, loop, catch, import
-        self.used = False
-        self.exported = False
-
-
-class Scope:
-    __slots__ = ("names", "parent", "barrier")
-
-    def __init__(self, parent=None, barrier=False):
-        self.names = {}
-        self.parent = parent
-        self.barrier = barrier
-
-    def lookup(self, name):
-        scope = self
-        while scope is not None:
-            if name in scope.names:
-                return scope.names[name]
-            scope = scope.parent
-        return None
-
-
-def terminates(node):
-    """Does control never fall through to the statement after `node`?"""
-    if isinstance(node, TERMINATORS):
-        return True
-    if isinstance(node, nl.BlockNode):
-        return any(terminates(statement) for statement in node.statements)
-    if isinstance(node, nl.IfNode):
-        return (
-            node.else_block is not None
-            and terminates(node.then_block)
-            and terminates(node.else_block)
-        )
-    if isinstance(node, nl.TryNode):
-        if node.finally_block is not None and terminates(node.finally_block):
-            return True
-        if node.catch_block is None:
-            return terminates(node.body)
-        return terminates(node.body) and terminates(node.catch_block)
-    return False
-
-
-class Linter(Visitor):
     def __init__(self, parsed):
+        super().__init__()
         self.parsed = parsed
         self.findings = []
-        self.bindings = []
-        self.deferred = []          # (FunctionDefNode, defining scope)
         self.predefined = set(PREDEFINED)
         for comment in parsed.comments:
             match = DIRECTIVE.search(comment.text)
@@ -123,15 +66,9 @@ class Linter(Visitor):
                 self.predefined.update(
                     name.strip() for name in match.group(1).split(",") if name.strip()
                 )
-        self.scope = Scope(barrier=True)
-
-    # -- driver -------------------------------------------------------------
 
     def run(self):
-        self.statements(self.parsed.tree.statements)
-        while self.deferred:
-            function, scope = self.deferred.pop(0)
-            self.function_body(function, scope)
+        self.walk(self.parsed.tree)
         for binding in self.bindings:
             if (
                 binding.kind == "var"
@@ -149,237 +86,18 @@ class Linter(Visitor):
     def report(self, position, code, message):
         self.findings.append(Finding(position, code, message))
 
-    # -- scopes -------------------------------------------------------------
-
-    def bind(self, name, position, kind, scope=None):
-        binding = Binding(name, position, kind)
-        (scope or self.scope).names[name] = binding
-        self.bindings.append(binding)
-        return binding
-
-    def assign(self, name, position):
-        scope = self.scope
-        while scope is not None:
-            if name in scope.names:
-                return scope.names[name]
-            if scope.barrier:
-                break
-            scope = scope.parent
-        return self.bind(name, position, "var")
-
-    def read(self, name, position):
-        binding = self.scope.lookup(name)
-        if binding is not None:
-            binding.used = True
-        elif name not in self.predefined:
+    def on_read(self, name, position, binding):
+        if binding is None and name not in self.predefined:
             self.report(position, "E001", "undefined name {!r}".format(name))
 
-    def nested(self, block, parent=None, names=()):
-        """Check `block` in a fresh transparent scope, binding `names` first."""
-        saved = self.scope
-        self.scope = Scope(parent or saved)
-        try:
-            for name, position, kind in names:
-                self.bind(name, position, kind)
-            self.statements(block.statements)
-        finally:
-            self.scope = saved
+    def on_unreachable(self, statement, following):
+        self.report(
+            statement_position(following), "W002",
+            "this code can never run - " + describe_exit(statement),
+        )
 
-    def function_body(self, node, scope):
-        saved = self.scope
-        self.scope = Scope(scope, barrier=True)
-        try:
-            for param in node.params:
-                self.bind(param, node.position, "param")
-            self.statements(node.body.statements)
-        finally:
-            self.scope = saved
-
-    # -- statements ---------------------------------------------------------
-
-    def statements(self, statements):
-        reported = False
-        for index, statement in enumerate(statements):
-            self.visit(statement)
-            if (
-                not reported
-                and index + 1 < len(statements)
-                and terminates(statement)
-            ):
-                following = statements[index + 1]
-                self.report(
-                    statement_position(following), "W002",
-                    "this code can never run - " + describe_exit(statement),
-                )
-                reported = True
-
-    def visit_ProgramNode(self, node):
-        self.statements(node.statements)
-
-    def visit_BlockNode(self, node):
-        self.nested(node)
-
-    def visit_LetNode(self, node):
-        self.visit(node.value)
-        self.bind(node.name, node.position, "var")
-
-    def visit_AssignNode(self, node):
-        self.visit(node.value)
-        self.assign(node.name, node.position)
-
-    def visit_IndexAssignNode(self, node):
-        self.visit(node.target)
-        self.visit(node.index)
-        self.visit(node.value)
-
-    def visit_MemberAssignNode(self, node):
-        self.visit(node.target)
-        self.visit(node.value)
-
-    def visit_FunctionDefNode(self, node):
-        binding = self.bind(node.name, node.position, "function")
-        self.deferred.append((node, self.scope))
-        return binding
-
-    def visit_ExportNode(self, node):
-        self.visit(node.inner)
-        binding = self.scope.names.get(node.inner.name)
-        if binding is not None:
-            binding.exported = True
-
-    def visit_ReturnNode(self, node):
-        if node.value is not None:
-            self.visit(node.value)
-
-    def visit_ThrowNode(self, node):
-        self.visit(node.value)
-
-    def visit_BreakNode(self, node):
-        pass
-
-    def visit_ContinueNode(self, node):
-        pass
-
-    def visit_IfNode(self, node):
-        self.visit(node.condition)
-        self.nested(node.then_block)
-        if isinstance(node.else_block, nl.IfNode):
-            self.visit(node.else_block)
-        elif node.else_block is not None:
-            self.nested(node.else_block)
-
-    def visit_WhileNode(self, node):
-        self.visit(node.condition)
-        self.nested(node.body)
-        if node.else_block is not None:
-            self.nested(node.else_block)
-
-    def visit_ForNode(self, node):
-        self.visit(node.start)
-        self.visit(node.end)
-        if node.step is not None:
-            self.visit(node.step)
-        self.loop(node, [node.name])
-
-    def visit_ForInNode(self, node):
-        self.visit(node.iterable)
-        names = [node.name] if node.second_name is None else [node.name, node.second_name]
-        self.loop(node, names)
-
-    def loop(self, node, names):
-        loop_scope = Scope(self.scope)
-        for name in names:
-            self.bind(name, node.position, "loop", loop_scope)
-        self.nested(node.body, parent=loop_scope)
-        if node.else_block is not None:
-            self.nested(node.else_block)
-
-    def visit_TryNode(self, node):
-        self.nested(node.body)
-        if node.catch_block is not None:
-            names = []
-            if node.catch_name is not None:
-                names.append((node.catch_name, node.position, "catch"))
-            self.nested(node.catch_block, names=names)
-        if node.finally_block is not None:
-            self.nested(node.finally_block)
-
-    def visit_ImportNode(self, node):
-        if node.names is not None:
-            for name in node.names:
-                self.bind(name, node.position, "import")
-            return
-        try:
-            name = node.alias or nl.default_module_name(node.path, node.position)
-        except NovaError as error:
-            self.report(node.position, "E002", error.message)
-            return
-        self.bind(name, node.position, "import")
-
-    def visit_DeleteNode(self, node):
-        self.visit(node.target)
-        self.visit(node.key)
-
-    def visit_DeleteFileNode(self, node):
-        self.visit(node.path)
-
-    # -- expressions --------------------------------------------------------
-
-    def visit_VarNode(self, node):
-        self.read(node.name, node.position)
-
-    def visit_NumberNode(self, node):
-        pass
-
-    def visit_StringNode(self, node):
-        pass
-
-    def visit_BooleanNode(self, node):
-        pass
-
-    def visit_UnaryOpNode(self, node):
-        self.visit(node.operand)
-
-    def visit_NotNode(self, node):
-        self.visit(node.operand)
-
-    def visit_BinOpNode(self, node):
-        self.visit(node.left)
-        self.visit(node.right)
-
-    visit_CompareNode = visit_BinOpNode
-    visit_LogicalOpNode = visit_BinOpNode
-
-    def visit_ListNode(self, node):
-        for item in node.items:
-            self.visit(item)
-
-    def visit_DictNode(self, node):
-        for entry in node.entries:
-            self.visit(entry.value)
-
-    def visit_IndexNode(self, node):
-        self.visit(node.target)
-        self.visit(node.index)
-
-    def visit_SliceNode(self, node):
-        self.visit(node.target)
-        if node.start is not None:
-            self.visit(node.start)
-        if node.end is not None:
-            self.visit(node.end)
-
-    def visit_MemberNode(self, node):
-        self.visit(node.target)
-
-    def visit_InterpolationNode(self, node):
-        for part in node.parts:
-            self.visit(part)
-
-    def visit_CallNode(self, node):
-        self.visit(node.callee)
-        for arg in node.args:
-            self.visit(arg)
+    def on_import_error(self, node, error):
+        self.report(node.position, "E002", error.message)
 
 
 def statement_position(node):
