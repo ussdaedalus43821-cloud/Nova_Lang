@@ -759,13 +759,47 @@ def line_of(module, finding):
     return str(module.parsed.lines.line(finding.position))
 
 
-def gate_refusal(source, base_dir=None):
+class GateCache:
+    """The type gate's results for one interpreter's lifetime, one per
+    absolute module path, so an import graph is checked once per load
+    instead of once per importer (OmniCalc: 159 checks for 37 loads).
+
+    A result is reused only for the exact source it was checked from. Any
+    other source for a cached path, or a failed module load (the one time
+    the interpreter reads a file again), discards everything: a module
+    checked against an import's old version must be checked again too."""
+
+    def __init__(self):
+        self.program = Program()
+
+    def clear(self):
+        self.program = Program()
+
+    def module(self, source, path, base_dir):
+        if path is not None:
+            cached = self.program.modules.get(path)
+            if cached is not None:
+                if cached.source == source:
+                    return cached
+                self.clear()
+        module = self.program.check(source, path, base_dir)
+        if path is not None:
+            self.program.modules[path] = module
+        return module
+
+
+def gate_refusal(source, base_dir=None, cache=None, path=None):
     """For novalang.py: (message, position) saying why `source` must not
     run, or None. Plain data rather than a NovaError, because novalang.py
     may be running as __main__, whose NovaError is a different class from
     the one this module imported. Only the source's own findings count
-    here - each imported module answers for itself when it is loaded."""
-    _, module = check_source(source, None, base_dir)
+    here - each imported module answers for itself when it is loaded.
+    `cache` (a GateCache) and `path` (the module's absolute path, None for
+    a program that is not a module) let a load reuse earlier checks."""
+    if cache is None:
+        _, module = check_source(source, path, base_dir)
+    else:
+        module = cache.module(source, path, base_dir)
     if not module.findings:
         return None
     first = module.findings[0]

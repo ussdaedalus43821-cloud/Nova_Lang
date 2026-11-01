@@ -3246,6 +3246,7 @@ class Interpreter:
         self.file_stack = []
         self.import_stack = []          # resolved paths currently loading
         self.modules = {}               # resolved path -> its exports dict
+        self.type_cache = None          # the type gate's results (a GateCache)
         self.current_exports = {}       # name -> value, for the module now loading
 
     # -- dispatch -----------------------------------------------------------
@@ -3453,9 +3454,10 @@ class Interpreter:
         self.import_stack.append(resolved_path)
         self.file_stack.append(os.path.dirname(resolved_path))
 
+        loaded = False
         try:
             try:
-                run(source, self)
+                run(source, self, resolved_path)
             except NovaError as error:
                 raise NovaError(
                     'while loading module "{}":\n{}'.format(
@@ -3465,7 +3467,12 @@ class Interpreter:
                 ) from None
             else:
                 exports = self.current_exports
+                loaded = True
         finally:
+            if not loaded and self.type_cache is not None:
+                # The one time this file (and so anything checked against
+                # it) is read again is a retry after this failure.
+                self.type_cache.clear()
             self.file_stack.pop()
             self.import_stack.pop()
             self.globals, self.env, self.call_stack, self.current_exports = saved
@@ -5723,15 +5730,22 @@ def execute(interpreter, entry):
                 ip = frame.ip
 
 
-def type_gate(ast, source, base_dir=None):
+def type_gate(ast, source, interpreter, path=None):
     """Refuse to run a program that fails its type check (M1, gradual
     typing). A program with no annotations and no imports cannot break a
     type contract, so it costs one flag read here and the checker is never
     loaded - it runs exactly as it always has. Anything else is checked by
-    tools/nova-typecheck.py before a single statement executes."""
+    tools/nova-typecheck.py before a single statement executes. `path` is
+    the module being loaded (None for a script or an input): the
+    interpreter keeps every result, so a module imported by many others is
+    checked once, not once per importer."""
     if not (ast.annotated or ast.imports):
         return
-    refusal = typecheck_tool().gate_refusal(source, base_dir)
+    tool = typecheck_tool()
+    if interpreter.type_cache is None:
+        interpreter.type_cache = tool.GateCache()
+    base_dir = interpreter.file_stack[-1] if interpreter.file_stack else None
+    refusal = tool.gate_refusal(source, base_dir, interpreter.type_cache, path)
     if refusal is not None:
         message, position = refusal
         raise NovaError(message, position, label="TypeCheckError")
@@ -5746,10 +5760,12 @@ def typecheck_tool():
     return _TYPECHECK[0]
 
 
-def run(source, interpreter):
+def run(source, interpreter, path=None):
+    """Lex, parse, type-gate and run `source`; (ast, value). `path` is the
+    module's absolute path when this is a module load."""
     tokens = Lexer(source).tokenize()
     ast = Parser(tokens).parse()
-    type_gate(ast, source, interpreter.file_stack[-1] if interpreter.file_stack else None)
+    type_gate(ast, source, interpreter, path)
     return ast, run_program(ast, interpreter)
 
 
@@ -6232,8 +6248,7 @@ class Nova:
         try:
             tokens = Lexer(code).tokenize()
             ast = Parser(tokens).parse()
-            interpreter = self.interpreter
-            type_gate(ast, code, interpreter.file_stack[-1] if interpreter.file_stack else None)
+            type_gate(ast, code, self.interpreter)
         except NovaError as error:
             raise NovaLangError(error) from None
         return CompiledScript(code, ast)
