@@ -1,0 +1,1 @@
+tests/lint/embedded.nova:5:7: E001 undefined name 'not_declared'

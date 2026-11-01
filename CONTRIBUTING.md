@@ -103,8 +103,13 @@ escape across that boundary.
 
 ## Testing a change
 
-There's no separate test framework — NovaLang tests itself with `.nova`
-scripts and shell-level diffing. Before sending a change:
+NovaLang tests itself with `.nova` scripts. `python3 tests/run_all.py`
+runs the whole line: the formatter and linter golden files under
+`tests/`, the formatter's self-checks on every `.nova` file, and the
+direct-vs-`--bootstrap` comparison below for every example, both on the
+repo as it is and on a fully formatted copy of it (`--quick` skips the
+slow bootstrap runs). Run `python3 novalang.py --check` on any `.nova`
+file you touch. Before sending a change:
 
 - Run every file under `examples/` both directly and with `--bootstrap`;
   outputs must match byte-for-byte (`examples/self_host_test.nova` is

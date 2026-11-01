@@ -18,6 +18,24 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [Unreleased] — M0: Toolchain
+
+### Added
+- `tools/nova-fmt.py` and `novalang.py --format`: the NovaLang formatter.
+  It keeps every comment and literal spelling, and checks its own output
+  (same AST, same comments, idempotent) before writing anything.
+- `tools/nova-lint.py` and `novalang.py --check`: static checks for
+  undefined names, unused variables and unreachable code, using the
+  interpreter's own scope rules, without running the program.
+- `tools/nova_ast.py`: the shared front end. Comment-preserving
+  `TriviaLexer` and span-stamping `SpanParser` subclasses of the real Lexer
+  and Parser, plus a dispatch-table `Visitor`. The interpreter's Lexer and
+  Parser are unchanged.
+- `tests/run_all.py`: one command for the whole regression suite,
+  including host-vs-bootstrap parity on a fully formatted copy of the repo.
+
+---
+
 ## [1.1.0] - 2026-09-02 — ECS & Particle Engine
 
 Stage 14. An Entity-Component-System library, a spatial hash, and a

@@ -1,0 +1,23 @@
+#!/usr/bin/env nova
+# header comment
+
+# second header paragraph
+def f(x) {  # trailing on the brace line
+    # leading comment
+    let y = x  # trailing
+
+    # after a blank line
+    return y
+    # dangling before the closing brace
+}
+let pairs = [  # trailing on the opening bracket
+    # leading in a list
+    1,  # one
+    2,
+
+    3  # three, after a blank line
+    # dangling in a list
+]
+if f(1) == 1 { print("yes") }  # trailing after a one-liner
+print(f(2))
+print(3)  # semicolons split, comment stays with the last
