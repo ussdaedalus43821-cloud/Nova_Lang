@@ -2236,7 +2236,74 @@ def current_exports() {
     return EXPORT_STACK[len(EXPORT_STACK) - 1]
 }
 
+# Packages (M2): `import "math-utils"` names a package installed by
+# tools/nova-pkg.py. Same rules as the host's is_package_import and
+# resolve_package - a lowercase name with no '/' that does not end in
+# .nova - and any other path is a file, resolved exactly as before.
+let PACKAGE_FIRST = "abcdefghijklmnopqrstuvwxyz0123456789"
+let PACKAGE_REST = PACKAGE_FIRST + "._-"
+
+def is_package_import(raw_path) {
+    if len(raw_path) == 0 or not (raw_path[0:1] in PACKAGE_FIRST) {
+        return false
+    }
+    if len(raw_path) >= 5 and raw_path[len(raw_path) - 5:] == ".nova" {
+        return false
+    }
+    for ch in raw_path {
+        if not (ch in PACKAGE_REST) {
+            return false
+        }
+    }
+    return true
+}
+
+# Walk up from the importing file's directory to the first
+# .nova_modules/<name>/nova.json, as the host does.
+def resolve_package(name, pos) {
+    let directory = current_dir()
+    if directory == "" {
+        directory = abspath(".")
+    }
+    let searched = []
+    while true {
+        let base = directory
+        if base[len(base) - 1:] != "/" {
+            base = base + "/"
+        }
+        let package = base + ".nova_modules/" + name
+        if exists(package + "/nova.json") {
+            let manifest = json.loads(read(package + "/nova.json"))
+            let main = "main.nova"
+            if type(manifest) == "dict" and "main" in manifest {
+                main = manifest["main"]
+            }
+            if type(main) != "string" or len(main) < 5 or main[len(main) - 5:] != ".nova" {
+                raise_error("package \"" + name + "\": \"main\" in its nova.json must name a .nova file", pos)
+            }
+            let entry = abspath(package + "/" + main)
+            if not exists(entry) {
+                raise_error("package \"" + name + "\" has no entry file " + main, pos)
+            }
+            return entry
+        }
+        append(searched, base + ".nova_modules")
+        let parent = dirname(directory)
+        if parent == directory {
+            let shown = join(searched[:6], "\n  ")
+            if len(searched) > 6 {
+                shown = shown + "\n  ..."
+            }
+            raise_error("cannot find package \"" + name + "\" - looked in:\n  " + shown + "\nIs it in nova.json, and has `python3 tools/nova-pkg.py install` been run?", pos)
+        }
+        directory = parent
+    }
+}
+
 def resolve_import(raw_path, pos) {
+    if is_package_import(raw_path) {
+        return resolve_package(raw_path, pos)
+    }
     let candidates = []
     if current_dir() != "" {
         append(candidates, current_dir() + "/" + raw_path)
@@ -2252,6 +2319,21 @@ def resolve_import(raw_path, pos) {
 }
 
 def default_module_name(raw_path, pos) {
+    if is_package_import(raw_path) {
+        # "math-utils" binds math_utils, like the host.
+        let bound = ""
+        for ch in raw_path {
+            if ch == "-" or ch == "." {
+                bound = bound + "_"
+            } else {
+                bound = bound + ch
+            }
+        }
+        if not is_alpha(bound[0:1]) {
+            raise_error("\"" + raw_path + "\" does not make a valid module name - import it with 'as' and choose one", pos)
+        }
+        return bound
+    }
     let name = raw_path
     let slash = -1
     let i = len(name) - 1
