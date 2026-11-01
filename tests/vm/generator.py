@@ -85,9 +85,20 @@ class Generator:
             return "({} {} {})".format(left, self.pick(["//", "%", "/"]), self.random.randint(1, 4))
         if roll < 0.8:
             return "{}{}".format(self.pick(["-", "+"]), left)
-        if roll < 0.9 and self.functions:
+        if roll < 0.86 and self.functions:
             return self.call()
+        if roll < 0.95:
+            return self.indexing()
         return "len({})".format(self.pick(['"abc"', "[1, 2]", '""', "{k: 1}"]))
+
+    # Every kind of index, on every kind of target: in range, negative, too
+    # big, whole and fractional floats, booleans, and string keys present
+    # and missing - the cases a fast path for indexing could get wrong.
+    INDEXES = ["0", "1", "2", "-1", "-3", "3", "5", "1.0", "1.5", "true", '"k"', '"n"', '"missing"']
+
+    def indexing(self):
+        target = self.pick(["[10, 20, 30]", '"abc"', "{k: 1, n: 2}", "[]", "{}"])
+        return "({})[{}]".format(target, self.pick(self.INDEXES))
 
     def value(self, depth=0):
         """Any kind of value."""
