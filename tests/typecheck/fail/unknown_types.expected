@@ -1,0 +1,5 @@
+tests/typecheck/fail/unknown_types.nova:3:8: T001 unknown type 'integer' - did you mean 'int'?
+tests/typecheck/fail/unknown_types.nova:4:8: T001 unknown type 'str' - did you mean 'string'?
+tests/typecheck/fail/unknown_types.nova:5:13: T001 unknown type 'boolean' - did you mean 'bool'?
+tests/typecheck/fail/unknown_types.nova:5:25: T001 unknown type 'nubmer' - did you mean 'float'?
+tests/typecheck/fail/unknown_types.nova:8:8: T001 unknown type 'Widget' - the types are int, float, string, bool, list, dict, any

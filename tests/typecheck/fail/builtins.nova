@@ -1,0 +1,12 @@
+print("this line must never run")
+# Built-ins with known signatures are checked like any typed function.
+let n: int = 5
+print(upper(n))       # T002
+print(sqrt("nine"))   # T002
+print(len())          # T003
+print(pad("x", 2.5))  # T002
+let count: int = len("abc")
+let root: int = sqrt(16)  # T006: sqrt gives a float
+let whole: int = floor(2.7)
+let back: int = abs(-3)  # abs keeps an int an int
+print(count, whole, back, split("a b"), split("a,b", ","))

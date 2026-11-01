@@ -1,0 +1,23 @@
+print("this line must never run")
+# A declared variable keeps its type for life.
+let x: int = 5
+x = "hello"  # T006
+let ratio: float = 2
+ratio = 7.5            # fine: a float stays a float
+let whole: int = 2.5   # T006: a float may not be whole
+let label: string = 3  # T006
+def bump(count: int) {
+    count = "oops"  # T006: parameters keep their declared type
+}
+def shadow() {
+    x = "a new local"  # fine: this creates a local `x`, as at run time
+}
+let dynamic: any = 1
+dynamic = "fine"
+dynamic = [1, 2]
+let untyped = 1
+untyped = "also fine"  # unannotated variables are `any`
+def helper(n: int) -> int {
+    return n
+}
+helper = 5  # T006: a function stays a function

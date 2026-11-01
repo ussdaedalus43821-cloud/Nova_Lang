@@ -18,6 +18,39 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [Unreleased] — M1: Gradual typing
+
+### Added
+- Optional type annotations: `def f(a: int) -> string { }` and
+  `let x: float = 1`. The types are `int`, `float`, `string`, `bool`,
+  `list`, `dict` and `any`. Both interpreters parse them and ignore them
+  at run time.
+- `tools/nova-typecheck.py` and `novalang.py --typecheck`: checks
+  arguments, arity, returns, missing returns, reassignments, operators,
+  conditions, indexing and typed built-ins. Unannotated code is `any`.
+  Calls from untyped files into typed modules are checked.
+- A type gate: annotated programs, and programs that import modules, are
+  checked before they run. This applies to the CLI, the REPL, imports,
+  `--bootstrap` / `bootstrap.py` and `Nova.compile()` / `load_file()`. A
+  program with no annotations and no imports skips the checker entirely.
+- `tools/nova_scope.py`: the scope rules shared by the linter and the type
+  checker.
+- `tests/run_all.py` station 7. It cross-checks the checker's operator and
+  built-in rules against the real interpreter on sample values. It runs
+  the `tests/typecheck/` fixtures, and checks that every failing fixture
+  is refused through every entry point without running. It also checks
+  that every annotated `.nova` file in the repo type-checks clean.
+- Station 6 now runs every Python program under `examples/`.
+
+### Fixed
+- `examples/particle_engine.py` silently dropped collisions for particles
+  beyond `max_per_cell` in a crowded grid cell. Dense cells are now
+  handled exactly.
+- The daedalus template's contact test could never fail (`hit or True`).
+  It now asserts exact damage and score.
+
+---
+
 ## [Unreleased] — M0: Toolchain
 
 ### Added

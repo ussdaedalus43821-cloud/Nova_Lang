@@ -1,0 +1,5 @@
+tests/typecheck/fail/builtins.nova:4:13: T002 argument 1 of upper() must be a string, but this is an int
+tests/typecheck/fail/builtins.nova:5:12: T002 argument 1 of sqrt() must be a float, but this is a string
+tests/typecheck/fail/builtins.nova:6:7: T003 len() takes 1 argument but is given 0
+tests/typecheck/fail/builtins.nova:7:16: T002 argument 2 of pad() must be an int, but this is a float
+tests/typecheck/fail/builtins.nova:9:17: T006 'root' is declared int, but its value is a float

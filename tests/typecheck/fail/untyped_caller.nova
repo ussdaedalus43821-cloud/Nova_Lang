@@ -1,0 +1,12 @@
+print("this line must never run")
+# No annotations in this file, so it is not type-checked - except for its
+# calls into the typed module, which must honour that module's contract.
+import "../modules/geometry.nova" as geometry
+import "../modules/geometry.nova" with tiles
+
+let w = 3
+w = "dynamic code stays unchecked"
+print(geometry.area("wide", 2))  # T002: area() takes floats
+print(tiles(10))                 # T003
+print(geometry.describe(1, 2))   # fine: describe is untyped
+print("a" - 1)                   # not reported: this file has no annotations

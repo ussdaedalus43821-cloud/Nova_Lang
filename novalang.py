@@ -882,9 +882,10 @@ class ReturnNode(Node):
 
 
 class ProgramNode(Node):
-    def __init__(self, statements, annotated=False):
+    def __init__(self, statements, annotated=False, imports=False):
         self.statements = statements
         self.annotated = annotated     # True if any type annotation appears
+        self.imports = imports         # True if any `import` appears
 
 
 # Statements that end in '}' and therefore need no separator after them.
@@ -950,6 +951,7 @@ class Parser:
         self.tokens = tokens
         self.index = 0
         self.annotated = False          # set by the first type annotation
+        self.imports = False            # set by the first import
 
     # -- token helpers ------------------------------------------------------
 
@@ -1023,7 +1025,7 @@ class Parser:
             statements.append(statement)
             self.end_statement(statement, (TT_EOF,))
             self.skip_newlines()
-        return ProgramNode(statements, self.annotated)
+        return ProgramNode(statements, self.annotated, self.imports)
 
     def block(self):
         # The '{' may sit on the line after the header, so allow a break here.
@@ -1248,6 +1250,7 @@ class Parser:
 
     def import_statement(self):
         keyword = self.advance()                        # 'import'
+        self.imports = True
         path_token = self.expect(TT_STRING, "a quoted module path after 'import'")
 
         alias = None
@@ -3673,9 +3676,33 @@ def nova_equals(left, right):
 # The pipeline, in one place
 # ---------------------------------------------------------------------------
 
+def type_gate(ast, source, base_dir=None):
+    """Refuse to run a program that fails its type check (M1, gradual
+    typing). A program with no annotations and no imports cannot break a
+    type contract, so it costs one flag read here and the checker is never
+    loaded - it runs exactly as it always has. Anything else is checked by
+    tools/nova-typecheck.py before a single statement executes."""
+    if not (ast.annotated or ast.imports):
+        return
+    refusal = typecheck_tool().gate_refusal(source, base_dir)
+    if refusal is not None:
+        message, position = refusal
+        raise NovaError(message, position, label="TypeCheckError")
+
+
+_TYPECHECK = []
+
+
+def typecheck_tool():
+    if not _TYPECHECK:
+        _TYPECHECK.append(load_tool("nova-typecheck.py"))
+    return _TYPECHECK[0]
+
+
 def run(source, interpreter):
     tokens = Lexer(source).tokenize()
     ast = Parser(tokens).parse()
+    type_gate(ast, source, interpreter.file_stack[-1] if interpreter.file_stack else None)
     try:
         value = interpreter.evaluate(ast)
     except ReturnSignal:
@@ -3871,8 +3898,10 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Ctrl-C also stops a runaway loop.
 
   Toolchain: `novalang.py --check file.nova` lints a program without
-  running it (undefined names, unused variables, unreachable code), and
-  `novalang.py --format file.nova` rewrites it in the standard layout.
+  running it (undefined names, unused variables, unreachable code),
+  `novalang.py --typecheck file.nova` checks its type annotations (a
+  program with annotations is also checked automatically before it runs),
+  and `novalang.py --format file.nova` rewrites it in the standard layout.
 
   Self-hosting: `novalang.py --bootstrap file.nova` runs file.nova through
   novalang.nova - a second Lexer, Parser and Interpreter for this same
@@ -4140,6 +4169,8 @@ class Nova:
         try:
             tokens = Lexer(code).tokenize()
             ast = Parser(tokens).parse()
+            interpreter = self.interpreter
+            type_gate(ast, code, interpreter.file_stack[-1] if interpreter.file_stack else None)
         except NovaError as error:
             raise NovaLangError(error) from None
         return CompiledScript(code, ast)
@@ -4228,6 +4259,8 @@ def main(argv):
     # tools/nova-fmt.py, which can also be run directly.
     if args[0] == "--check":
         return load_tool("nova-lint.py").main(["novalang.py --check"] + args[1:])
+    if args[0] == "--typecheck":
+        return typecheck_tool().main(["novalang.py --typecheck"] + args[1:])
     if args[0] == "--format":
         if len(args) < 2:
             print("usage: novalang.py --format file.nova [more.nova ...]", file=sys.stderr)

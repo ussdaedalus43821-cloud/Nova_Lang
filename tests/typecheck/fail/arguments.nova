@@ -1,0 +1,16 @@
+print("this line must never run")
+# Arguments must match the signature: type (T002) and count (T003).
+def add(a: int, b: int) -> int {
+    return a + b
+}
+def scale(factor: float, label) {
+    return label
+}
+add(1, "two")  # T002: a string is not an int
+add(1.5, 2)    # T002: a float may not be whole
+add(1)         # T003: too few
+add(1, 2, 3)   # T003: too many
+scale(2, "an int fits a float, and label is any")
+scale("big", 1)  # T002
+let n: any = "text"
+add(n, n)  # `any` is the escape hatch: no error
