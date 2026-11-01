@@ -1,0 +1,7 @@
+# No annotations here: this file stays fully dynamic. Only its calls into
+# the typed module are checked, and these are all correct.
+import "../modules/geometry.nova" with area, tiles, describe
+
+let width = 3
+width = "now a string"  # unannotated variables are `any`
+print(width, area(2, 2), tiles(9, 2), describe("circle"))

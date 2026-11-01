@@ -1,0 +1,85 @@
+# A valid, fully typed program: it must type-check clean and run the same
+# directly and under --bootstrap.
+import "../modules/geometry.nova" as geometry
+import "../modules/geometry.nova" with area, tiles
+
+def add(a: int, b: int) -> int {
+    return a + b
+}
+
+def mean(numbers: list) -> float {
+    let total: float = 0
+    for value in numbers {
+        total = total + value
+    }
+    return total / len(numbers)
+}
+
+def classify(n: int) -> string {
+    if n < 0 {
+        return "negative"
+    } else if n == 0 {
+        return "zero"
+    }
+    return "positive"
+}
+
+def factorial(n: int) -> int {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+def first_word(text: string) -> string {
+    let words: list = split(text, " ")
+    return words[0]
+}
+
+def safe_divide(a: float, b: float) -> float {
+    try {
+        if b == 0 {
+            throw("division by zero")
+        }
+        return a / b
+    } catch problem {
+        print("caught:", problem)
+        return 0
+    }
+}
+
+def make_counter() {
+    let count: int = 0
+    def next() -> int {
+        count = count + 1
+        return count
+    }
+    return next
+}
+
+# `any` is the escape hatch: it takes, and goes, anywhere.
+def echo(value: any) -> any {
+    return value
+}
+
+let small: int = add(2, 3)
+let ratio: float = small  # an int fits where a float is expected
+let average: float = mean([1, 2, 3, 4])
+let name: string = upper("nova")
+let ready: bool = small > 3 and not (name == "")
+let config: dict = {name: name, size: small}
+config.size = config.size + 1
+let items: list = [small, ratio, name]
+items[0] = "anything"  # list items are untyped
+let flexible: any = 5
+flexible = "now a string"
+let counter = make_counter()
+counter()
+
+print(small, ratio, average, name, ready, config.size, items[0], flexible)
+print(classify(-4), classify(0), classify(9), factorial(10), first_word("hello typed world"))
+print(safe_divide(9, 3), safe_divide(1, 0), counter(), echo(echo("round trip")))
+print(geometry.area(2, 3.5), area(4, 4), tiles(10, 3), geometry.unit, geometry.describe("square"))
+for i = 1 to 3 step 1 {
+    print(f"{i} squared is {pow(i, 2)}")
+}

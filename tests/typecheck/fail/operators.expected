@@ -1,0 +1,19 @@
+tests/typecheck/fail/operators.nova:10:7: T007 cannot use '-' on a string and an int
+tests/typecheck/fail/operators.nova:11:7: T007 cannot use '+' on a bool and an int
+tests/typecheck/fail/operators.nova:12:7: T007 cannot use '*' on a string and a float
+tests/typecheck/fail/operators.nova:13:7: T007 cannot use '<' on a list and a list
+tests/typecheck/fail/operators.nova:14:11: T007 'not' needs a bool, but this is an int
+tests/typecheck/fail/operators.nova:15:16: T007 the right side of 'and' must be a bool, but this is a string
+tests/typecheck/fail/operators.nova:16:8: T007 cannot apply unary '-' to a string
+tests/typecheck/fail/operators.nova:17:7: T007 cannot use 'in' on an int and a string
+tests/typecheck/fail/operators.nova:18:4: T008 an 'if' condition must be a bool, but this is an int
+tests/typecheck/fail/operators.nova:19:7: T008 a 'while' condition must be a bool, but this is a string
+tests/typecheck/fail/operators.nova:20:10: T008 a list index must be an int, but this is a string
+tests/typecheck/fail/operators.nova:21:10: T008 a list index must be an int, but this is a float
+tests/typecheck/fail/operators.nova:22:9: T008 a dictionary key must be a string, but this is an int
+tests/typecheck/fail/operators.nova:23:7: T008 an int has no fields, so '.field' means nothing here
+tests/typecheck/fail/operators.nova:24:7: T008 an int is not a function, so it cannot be called
+tests/typecheck/fail/operators.nova:25:1: T008 strings cannot be changed in place - build a new one instead
+tests/typecheck/fail/operators.nova:26:6: T008 throw needs a string, but this is an int
+tests/typecheck/fail/operators.nova:27:9: T008 the start of a 'for' range must be a number, but this is a string
+tests/typecheck/fail/operators.nova:28:13: T008 'for ... in' needs a list, a string or a dictionary, but this is an int

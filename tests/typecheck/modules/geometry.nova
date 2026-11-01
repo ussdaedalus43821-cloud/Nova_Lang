@@ -1,0 +1,15 @@
+# geometry.nova - a typed module, imported by fixtures in pass/ and fail/.
+
+export let unit: string = "m"
+
+export def area(width: float, height: float) -> float {
+    return width * height
+}
+
+export def tiles(length: int, tile: int) -> int {
+    return length // tile
+}
+
+export def describe(shape) {
+    return "a " + shape
+}

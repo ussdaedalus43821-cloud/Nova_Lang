@@ -1,0 +1,8 @@
+print("this line must never run")
+# T001: only int, float, string, bool, list, dict and any are types.
+let a: integer = 1
+let b: str = "x"
+def c(flag: boolean) -> nubmer {
+    return 1
+}
+let d: Widget = 0
