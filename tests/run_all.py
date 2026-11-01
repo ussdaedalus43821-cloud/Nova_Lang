@@ -56,6 +56,14 @@ Stations, in order:
                   locking, a typed package's contract, and the
                   interpreter refusing a stale install.
 
+  9. editor       tests/lsp/test_lsp.py drives tools/nova-lsp.py over real
+                  JSON-RPC: the protocol and its error handling,
+                  diagnostics with exact ranges (UTF-16 and UTF-32, "\r\n"
+                  and lone "\r"), formatting, definition and hover; and
+                  checks the VS Code extension - its manifest, its grammar
+                  against the language's own words (the drift guard), and
+                  extension.js under Node.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -676,6 +684,14 @@ def station_packages(line):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def station_editor(line):
+    print("9. editor (language server and VS Code extension)")
+    sys.path.insert(0, os.path.join(HERE, "lsp"))
+    import test_lsp
+    test_lsp.run(lambda ok, label, detail=None: line.check(
+        ok, "lsp: " + label, "" if detail is None else repr(detail)[:1500]))
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -688,6 +704,7 @@ def main(argv):
     station_python(line)
     station_types(line)
     station_packages(line)
+    station_editor(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(

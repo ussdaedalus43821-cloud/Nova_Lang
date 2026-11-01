@@ -1,0 +1,7 @@
+export def area(width: float, height: float) -> float {
+    return width * height
+}
+
+export def name(sides: int) -> string {
+    return str(sides) + "-gon"
+}
