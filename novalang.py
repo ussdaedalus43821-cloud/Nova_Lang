@@ -121,14 +121,15 @@ class NovaError(Exception):
         lines = []
 
         if self.position is not None:
-            source_lines = source.split("\n")
-            offset = max(0, min(self.position, len(source)))
+            spans = line_spans(source)
+            position = max(0, min(self.position, len(source)))
             line_number = 0
-            while line_number < len(source_lines) - 1 and offset > len(source_lines[line_number]):
-                offset -= len(source_lines[line_number]) + 1
+            while line_number < len(spans) - 1 and position >= spans[line_number + 1][0]:
                 line_number += 1
-            text = source_lines[line_number]
-            gutter = "  {} | ".format(line_number + 1) if len(source_lines) > 1 else "  "
+            start, end = spans[line_number]
+            text = source[start:end]
+            offset = position - start
+            gutter = "  {} | ".format(line_number + 1) if len(spans) > 1 else "  "
             lines.append(gutter + text)
             lines.append(" " * len(gutter) + " " * min(offset, len(text)) + "^")
 
@@ -146,6 +147,21 @@ class NovaError(Exception):
             lines.extend("  in " + frame for frame in frames)
 
         return "\n".join(lines)
+
+
+LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def line_spans(source):
+    """(start, end) of every line, the break excluded. A line ends at
+    "\n", "\r\n" or a lone "\r", exactly as the Lexer counts them."""
+    spans = []
+    start = 0
+    for match in LINE_BREAK.finditer(source):
+        spans.append((start, match.start()))
+        start = match.end()
+    spans.append((start, len(source)))
+    return spans
 
 
 class ReturnSignal(Exception):
@@ -331,8 +347,12 @@ class Lexer:
                 self.advance()
                 continue
 
+            # A line ends at "\n", "\r\n" or a lone "\r", as in editors and
+            # the Language Server Protocol. For "\r\n" the "\n" is the newline.
             if char == "\r":
                 self.advance()
+                if self.peek() != "\n":
+                    tokens.append(Token(TT_NEWLINE, "\n", start))
                 continue
 
             if char == "\n" or char == ";":
@@ -342,7 +362,7 @@ class Lexer:
 
             # Comments run to the end of the line.
             if char == "#":
-                while self.peek() is not None and self.peek() != "\n":
+                while self.peek() is not None and self.peek() not in "\r\n":
                     self.advance()
                 continue
 
@@ -458,7 +478,7 @@ class Lexer:
 
         while True:
             char = self.peek()
-            if char is None or char == "\n":
+            if char is None or char in "\r\n":
                 raise NovaError("this f-string is never closed", start)
 
             if char == quote:
@@ -508,7 +528,7 @@ class Lexer:
 
         while True:
             char = self.peek()
-            if char is None or char == "\n":
+            if char is None or char in "\r\n":
                 raise NovaError("this f-string placeholder needs a closing '}'", begin)
 
             if inside is not None:
@@ -547,7 +567,7 @@ class Lexer:
 
         while True:
             char = self.peek()
-            if char is None or char == "\n":
+            if char is None or char in "\r\n":
                 raise NovaError("this string is never closed", start)
             self.advance()
             if char == quote:

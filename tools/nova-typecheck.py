@@ -101,9 +101,10 @@ class FunctionType(Type):
     is how many of them must be given. `typed` marks a signature written
     in a NovaLang annotation, as opposed to a built-in's."""
 
-    def __init__(self, name, params, ret, required=None, typed=False):
+    def __init__(self, name, params, ret, required=None, typed=False, names=None):
         super().__init__("function")
         self.function_name = name
+        self.names = names          # parameter names, for a NovaLang function
         self.params = params
         self.ret = ret
         self.required = len(params) if required is None and params is not None else required
@@ -251,16 +252,32 @@ def builtin_type(name):
 # ---------------------------------------------------------------------------
 
 class Finding:
-    def __init__(self, position, code, message, contract=False):
+    """`end` is where the problem stops (exclusive), or None when only its
+    start is known; the command line shows only the start."""
+
+    def __init__(self, position, code, message, contract=False, end=None):
         self.position = position
         self.code = code
         self.message = message
         self.contract = contract    # a typed function's signature was broken
+        self.end = end
 
 
 def position_of(node):
     start = getattr(node, "_start", None)
     return start if start is not None else getattr(node, "position", None)
+
+
+def end_of(node):
+    """Where a node's source text stops, when that is known."""
+    end = getattr(node, "_end", None)
+    if end is not None:
+        return end
+    if isinstance(node, (nl.VarNode, nl.TypeNode)):
+        return node.position + len(node.name)
+    if isinstance(node, nl.MemberNode):
+        return node.position + 1 + len(node.name)       # the '.' and the field
+    return None
 
 
 def callee_name(node):
@@ -299,13 +316,15 @@ class Checker(ScopeWalker):
         self.findings.sort(key=lambda finding: (finding.position or 0, finding.code))
         return exports
 
-    def report(self, node_or_position, code, message, contract=False):
+    def report(self, node_or_position, code, message, contract=False, end=None):
         if self.contracts_only and not contract:
             return
         position = node_or_position
         if not isinstance(position, int) and position is not None:
             position = position_of(node_or_position)
-        self.findings.append(Finding(position, code, message, contract))
+            if end is None:
+                end = end_of(node_or_position)
+        self.findings.append(Finding(position, code, message, contract, end))
 
     def resolve(self, type_node):
         """The Type an annotation names; ANY (after a T001) if none."""
@@ -322,7 +341,7 @@ class Checker(ScopeWalker):
         hint = " - did you mean '{}'?".format(guess) if guess else (
             " - the types are " + ", ".join(ANNOTATIONS)
         )
-        self.report(type_node.position, "T001",
+        self.report(type_node, "T001",
                     "unknown type '{}'{}".format(type_node.name, hint))
         return ANY
 
@@ -388,7 +407,7 @@ class Checker(ScopeWalker):
         params = [self.resolve(kind) or ANY for kind in node.param_types]
         ret = self.resolve(node.return_type) or ANY
         typed = node.return_type is not None or any(k is not None for k in node.param_types)
-        return FunctionType(node.name, params, ret, typed=typed)
+        return FunctionType(node.name, params, ret, typed=typed, names=list(node.params))
 
     def visit_FunctionDefNode(self, node):
         binding = super().visit_FunctionDefNode(node)
@@ -406,9 +425,11 @@ class Checker(ScopeWalker):
         signature = self.returns
         self.returns = None
         if signature.ret is not ANY and not terminates(node.body):
+            span = self.parsed.name_after(node.position, node.name)
             self.report(node.position, "T005",
                         "{}() is declared to return {}, but can reach its end without "
-                        "returning anything".format(node.name, signature.ret.describe()))
+                        "returning anything".format(node.name, signature.ret.describe()),
+                        end=span[1] if span else None)
 
     def visit_ReturnNode(self, node):
         kind = NOTHING if node.value is None else self.visit(node.value)
@@ -416,10 +437,13 @@ class Checker(ScopeWalker):
         if signature is None or signature.ret is ANY:
             return
         if not fits(kind, signature.ret):
-            self.report(node.value if node.value is not None else node.position, "T004",
-                        "{}() must return {}, but this returns {}".format(
-                            signature.function_name, signature.ret.describe(),
-                            "nothing" if kind is NOTHING else kind.describe()))
+            message = "{}() must return {}, but this returns {}".format(
+                signature.function_name, signature.ret.describe(),
+                "nothing" if kind is NOTHING else kind.describe())
+            if node.value is not None:
+                self.report(node.value, "T004", message)
+            else:
+                self.report(node.position, "T004", message, end=node.position + len("return"))
 
     def visit_ThrowNode(self, node):
         kind = self.visit(node.value)
@@ -536,7 +560,8 @@ class Checker(ScopeWalker):
         result = binary_result(node.op, left, right)
         if result is None:
             self.report(node.left, "T007", "cannot use '{}' on {} and {}".format(
-                node.op, left.describe(), right.describe()))
+                node.op, left.describe(), right.describe()),
+                end=end_of(node) or end_of(node.right))
             return ANY
         return result
 
@@ -545,7 +570,8 @@ class Checker(ScopeWalker):
         right = self.visit(node.right)
         if compare_result(node.op, left, right) is None:
             self.report(node.left, "T007", "cannot use '{}' on {} and {}".format(
-                node.op, left.describe(), right.describe()))
+                node.op, left.describe(), right.describe()),
+                end=end_of(node) or end_of(node.right))
         return BOOL
 
     def index_check(self, kind, node, role):
@@ -682,15 +708,21 @@ class Program:
                 return None
         return self.modules[resolved]
 
-    def check(self, source, path, base_dir=None):
+    def check(self, source, path, base_dir=None, checker_class=None, parsed=None):
         """Check one file. `path` is None for source that is not a file
-        (a one-liner, the REPL); imports then resolve against base_dir."""
-        parsed = nova_ast.parse(source)
+        (a one-liner, the REPL); imports then resolve against base_dir.
+        `checker_class` (a Checker subclass) is used for this file only -
+        the editor support uses one that records every name it resolves -
+        and `parsed` saves parsing `source` again when the caller has."""
+        parsed = parsed or nova_ast.parse(source)
         contracts_only = not parsed.tree.annotated
-        checker = Checker(parsed, self, path, base_dir or os.getcwd(), contracts_only)
+        checker = (checker_class or Checker)(parsed, self, path, base_dir or os.getcwd(),
+                                             contracts_only)
         exports = checker.run()
         module = Module(path, exports, checker.findings, source)
         module.parsed = parsed
+        module.scope = checker.scope        # its top-level bindings, for editors
+        module.checker = checker
         return module
 
 

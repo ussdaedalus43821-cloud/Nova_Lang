@@ -18,6 +18,33 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [Unreleased] — M3: Editor tooling
+
+### Added
+- `tools/nova-lsp.py`: a Language Server Protocol server over stdio,
+  standard library only. It provides diagnostics (lint, type check and
+  parse errors), formatting, go-to-definition (in this file, in imported
+  files and in packages) and hover with types. Positions are UTF-16 by
+  default, or UTF-32 when the client offers it. Re-analysing a file
+  takes 73 ms for the largest one (novalang.nova) and under 10 ms for a
+  typical one.
+- `editors/vscode/`: a VS Code extension (plain JavaScript client,
+  language configuration, TextMate grammar).
+- Lint and type-check findings carry an optional `end`, so editors
+  underline the whole problem. Command-line output is unchanged.
+- `tests/run_all.py` station 9, which runs `tests/lsp/test_lsp.py`. It
+  drives the real server over JSON-RPC, checks the grammar against the
+  language's own keywords, built-ins and types (the drift guard), and
+  runs `extension.js` under Node.
+
+### Fixed
+- A lone `\r` is a line break, as in editors, LSP and Python. It used to
+  be skipped as whitespace, which could fold the next line into a
+  comment. Files on disk were never affected, because text mode already
+  translated it; editor buffers, `exec()` strings and the REPL were.
+
+---
+
 ## [Unreleased] — M2: Packages
 
 ### Added

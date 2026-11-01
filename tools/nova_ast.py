@@ -220,6 +220,19 @@ class Parsed:
         self.tokens = tokens
         self.comments = comments
         self.lines = LineIndex(source)
+        self.starts = [token.position for token in tokens]
+
+    def name_after(self, position, name):
+        """(start, end) of the first `name` token at or after `position`.
+        A binding records where its statement starts - the `let`, the
+        `def`, the `for` - and this finds the name itself from there.
+        None if there is no such token (a package binding such as
+        math_utils is never written out)."""
+        index = bisect.bisect_left(self.starts, position or 0)
+        for token in self.tokens[index:]:
+            if token.type == nl.TT_IDENT and token.value == name:
+                return token.position, token.end
+        return None
 
 
 def parse(source):
@@ -234,10 +247,8 @@ class LineIndex:
     """Offset -> 1-based (line, column), by bisecting the newline offsets."""
 
     def __init__(self, source):
-        self.starts = [0]
-        for index, char in enumerate(source):
-            if char == "\n":
-                self.starts.append(index + 1)
+        # Lines break where the Lexer breaks them: "\n", "\r\n", lone "\r".
+        self.starts = [start for start, _ in nl.line_spans(source)]
 
     def line(self, offset):
         return bisect.bisect_right(self.starts, offset)

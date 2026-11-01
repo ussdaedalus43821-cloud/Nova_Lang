@@ -116,7 +116,10 @@ station: if you change an operator, a built-in or a scope rule in
 `novalang.py`, `tests/typecheck/crosscheck.py` will tell you whether
 `tools/nova-typecheck.py` still agrees with it. Package resolution lives
 in `novalang.py` (`resolve_package`) and `novalang.nova`, which must keep
-matching; station 8 runs every package scenario on both engines. Run
+matching; station 8 runs every package scenario on both engines. If you
+add a keyword or a built-in, add it to
+`editors/vscode/syntaxes/novalang.tmLanguage.json` too: station 9's drift
+guard fails until the grammar knows every word the language does. Run
 `python3 novalang.py --check` (and `--typecheck`, if it has annotations)
 on any `.nova` file you touch. Before sending a change:
 

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "NovaLang",
+  "scopeName": "source.novalang",
+  "fileTypes": [
+    "nova"
+  ],
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#fstring"
+    },
+    {
+      "include": "#string-double"
+    },
+    {
+      "include": "#string-single"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#function-definition"
+    },
+    {
+      "include": "#type-annotation"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#predefined"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.novalang",
+      "match": "#.*$"
+    },
+    "string-double": {
+      "name": "string.quoted.double.novalang",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.novalang",
+          "match": "\\\\[ntr\\\\\"'0]"
+        }
+      ]
+    },
+    "string-single": {
+      "name": "string.quoted.single.novalang",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.novalang",
+          "match": "\\\\[ntr\\\\\"'0]"
+        }
+      ]
+    },
+    "fstring": {
+      "patterns": [
+        {
+          "name": "string.interpolated.novalang",
+          "begin": "f\"",
+          "end": "\"|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.novalang",
+              "match": "\\\\[ntr\\\\\"'0]"
+            },
+            {
+              "include": "#fstring-hole"
+            }
+          ]
+        },
+        {
+          "name": "string.interpolated.novalang",
+          "begin": "f'",
+          "end": "'|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.novalang",
+              "match": "\\\\[ntr\\\\\"'0]"
+            },
+            {
+              "include": "#fstring-hole"
+            }
+          ]
+        }
+      ]
+    },
+    "fstring-hole": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.novalang",
+          "match": "\\{\\{|\\}\\}"
+        },
+        {
+          "name": "meta.interpolation.novalang",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.novalang"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.novalang"
+            }
+          },
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.novalang",
+      "match": "\\b\\d+(\\.\\d+)?\\b|(?<![\\w.])\\.\\d+\\b"
+    },
+    "function-definition": {
+      "match": "\\b(def)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.novalang"
+        },
+        "2": {
+          "name": "entity.name.function.novalang"
+        }
+      }
+    },
+    "type-annotation": {
+      "match": "(:|->)\\s*(int|float|string|bool|list|dict|any)\\b",
+      "captures": {
+        "1": {
+          "name": "punctuation.separator.annotation.novalang"
+        },
+        "2": {
+          "name": "support.type.novalang"
+        }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.novalang",
+          "match": "\\b(if|else|while|for|to|downto|step|break|continue|return|try|catch|finally|throw)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.novalang",
+          "match": "\\b(and|or|not|in)\\b"
+        },
+        {
+          "name": "keyword.control.import.novalang",
+          "match": "\\b(import|export|as|with)\\b"
+        },
+        {
+          "name": "storage.type.novalang",
+          "match": "\\b(def|let)\\b"
+        },
+        {
+          "name": "keyword.other.novalang",
+          "match": "\\b(delete)\\b"
+        },
+        {
+          "name": "constant.language.boolean.novalang",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "name": "support.function.builtin.novalang",
+      "match": "\\b(abs|abspath|append|args|assert|ceil|choice|copy|cos|cwd|dirname|env|exists|exit|filter|floor|format_time|input|join|keys|len|listdir|ln|log|log10|lower|map|max|min|mkdir|now|num|pad|pad_left|platform|pop|pow|print|randint|random|range|read|reduce|regex|remove|rename|replace_all|reverse|round|shuffle|sin|sleep|sorted|split|split_lines|sqrt|str|sum|tan|time|trim|type|upper|values|write)\\b(?=\\s*\\()"
+    },
+    "predefined": {
+      "name": "support.constant.novalang",
+      "match": "\\b(E|PI|json|python)\\b"
+    },
+    "operators": {
+      "name": "keyword.operator.novalang",
+      "match": "->|==|!=|<=|>=|//|[-+*/%<>=]"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.novalang",
+          "match": "[,;:.]"
+        },
+        {
+          "name": "punctuation.bracket.novalang",
+          "match": "[{}\\[\\]()]"
+        }
+      ]
+    }
+  }
+}
