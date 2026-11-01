@@ -2870,6 +2870,9 @@ class Environment:
 # ---------------------------------------------------------------------------
 # Shared operations (M4). What each operation *means* lives here, once, and
 # both engines call it: the tree-walking Interpreter and the bytecode VM.
+# The VM's only shortcuts are inline fast paths for the commonest cases -
+# two operands of the same exact type(), where the function here would do
+# exactly the same Python operation - and station 11 holds them to it.
 # The engines differ only in how they get the operands - and in what order
 # they evaluate them, which each preserves exactly - never in what an
 # operation does with them, so they cannot drift apart.
@@ -3977,7 +3980,7 @@ OPCODES = [
     "LOAD_CONST", "POP", "DUP",
     # names
     "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL",
-    "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS",
+    "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS", "RESET_SLOTS",
     # arithmetic, comparison, logic
     "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
     "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
@@ -4007,13 +4010,14 @@ COMPARE_OPS = {"==": "EQ", "!=": "NE", "<": "LT", ">": "GT", "<=": "LE", ">=": "
 class Var:
     """One binding that lives in a frame slot: a name in one scope."""
 
-    __slots__ = ("name", "scope", "slot", "captured")
+    __slots__ = ("name", "scope", "slot", "captured", "maybe")
 
     def __init__(self, name, scope, slot):
         self.name = name
         self.scope = scope
         self.slot = slot
         self.captured = False           # read by an inner function: a cell
+        self.maybe = False              # tested "is it set?" at run time
 
 
 class GlobalVar:
@@ -4142,6 +4146,7 @@ class Resolver:
             return
         if candidates:
             self.scope.status[name] = "maybe"   # it might have gone to one of those
+            here.maybe = True
         self.result.stores[(node_key, name)] = ("assign", candidates + [here])
 
     def read(self, node):
@@ -4350,9 +4355,10 @@ class TryContext:
     """A try being compiled: where its protected ranges are, and its
     finally body (to inline on break/continue/return)."""
 
-    def __init__(self, node):
+    def __init__(self, node, loops_depth):
         self.node = node
         self.finally_block = node.finally_block
+        self.loops_depth = loops_depth  # loops around the try, not inside it
         self.catch_ranges = []          # closed [start, end) of the try body
         self.finally_ranges = []        # closed ranges of try body + catch body
         self.open_catch = None
@@ -4471,11 +4477,17 @@ class Compiler:
         self.emit("STORE_CHAIN", self.code.const(chain), position)
 
     def new_cells(self, scope, skip=()):
-        cells = tuple(var.slot for name, var in sorted(scope.vars.items(),
-                                                       key=lambda item: item[1].slot)
-                      if var.captured and name not in skip)
+        """On entering a scope: fresh cells for its captured names, and its
+        maybe-slots emptied. A scope is new each time it is entered (each
+        loop iteration), and a slot whose "is it set?" is tested at run
+        time must not still hold the last time's value."""
+        ordered = sorted(scope.vars.items(), key=lambda item: item[1].slot)
+        cells = tuple(var.slot for name, var in ordered if var.captured and name not in skip)
         if cells:
             self.emit("NEW_CELLS", self.code.const(cells), None)
+        resets = tuple(var.slot for name, var in ordered if var.maybe and not var.captured)
+        if resets:
+            self.emit("RESET_SLOTS", self.code.const(resets), None)
 
     # -- statement lists and blocks -----------------------------------------------
 
@@ -4632,10 +4644,14 @@ class Compiler:
                 continue
             for inner in self.tries[index:]:
                 self.suspend(inner)
-            saved_tries = self.tries
+            # Compile the copy where the finally block really is: outside
+            # this try and every loop inside it, so a `break` in it leaves
+            # the loops around the try (or is stray), as when it runs normally.
+            saved_tries, saved_loops = self.tries, self.loops
             self.tries = self.tries[:index]
+            self.loops = self.loops[:context.loops_depth]
             self.block(context.finally_block, False)
-            self.tries = saved_tries
+            self.tries, self.loops = saved_tries, saved_loops
             for inner in self.tries[index:]:
                 self.resume(inner)
 
@@ -4751,7 +4767,7 @@ class Compiler:
         self.loop_end(node, loop, want)
 
     def s_TryNode(self, node, want):
-        context = TryContext(node)
+        context = TryContext(node, len(self.loops))
         self.tries.append(context)
         context.open_catch = self.here() if node.catch_block is not None else None
         context.open_finally = self.here() if node.finally_block is not None else None
@@ -4940,7 +4956,7 @@ def compile_source(source):
 STACK_EFFECT = {
     "LOAD_CONST": 1, "POP": -1, "DUP": 1,
     "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1,
-    "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0,
+    "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0, "RESET_SLOTS": 0,
     "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
     "NEG": 0, "POS": 0, "NOT": 0,
     "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
@@ -5120,9 +5136,9 @@ def describe_arg(code, name, arg):
         return ""
     if name in ("LOAD_CONST", "LOAD_CHAIN", "STORE_CHAIN", "BUILD_DICT", "GET_MEMBER",
                 "SET_MEMBER", "EXPORT", "IMPORT", "IMPORT_NAME", "STRAY", "FAIL", "LOOP_NUMBER",
-                "CHECK_BOOL", "NEW_CELLS", "MAKE_FUNCTION"):
+                "CHECK_BOOL", "NEW_CELLS", "RESET_SLOTS", "MAKE_FUNCTION"):
         value = code.constants[arg]
-        if name == "NEW_CELLS":
+        if name in ("NEW_CELLS", "RESET_SLOTS"):
             return " ".join("{}({})".format(s, code.slot_names[s]) for s in value)
         if name == "CHECK_BOOL":
             return "{} side of '{}'".format(*value)
@@ -5286,26 +5302,24 @@ def execute(interpreter, entry):
     LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
     STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
     LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
-    ADD_ = OP["ADD"]; SUB_ = OP["SUB"]; MUL_ = OP["MUL"]
-    DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]; MOD_ = OP["MOD"]
-    NEG_ = OP["NEG"]; POS_ = OP["POS"]; NOT_ = OP["NOT"]
-    EQ_ = OP["EQ"]; NE_ = OP["NE"]; LT_ = OP["LT"]
-    GT_ = OP["GT"]; LE_ = OP["LE"]; GE_ = OP["GE"]
-    IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]; JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]
-    JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]; BUILD_DICT_ = OP["BUILD_DICT"]
-    BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]; SLICE_TARGET_ = OP["SLICE_TARGET"]
-    SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]; GET_MEMBER_ = OP["GET_MEMBER"]
-    INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]; INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]
-    MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]; DELETE_TARGET_ = OP["DELETE_TARGET"]
-    DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]; JUMP_ = OP["JUMP"]
-    JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]; RANGE_PREP_ = OP["RANGE_PREP"]
-    RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]; ITER_NEXT_ = OP["ITER_NEXT"]
-    MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]; RETURN_ = OP["RETURN"]
-    THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]; STRAY_ = OP["STRAY"]
-    FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]; IMPORT_NAME_ = OP["IMPORT_NAME"]
-    EXPORT_ = OP["EXPORT"]
-    binary = {ADD_: "+", SUB_: "-", MUL_: "*", DIV_: "/", FLOOR_DIV_: "//", MOD_: "%"}
-    compare = {EQ_: "==", NE_: "!=", LT_: "<", GT_: ">", LE_: "<=", GE_: ">=", IN_: "in"}
+    RESET_SLOTS_ = OP["RESET_SLOTS"]; ADD_ = OP["ADD"]; SUB_ = OP["SUB"]
+    MUL_ = OP["MUL"]; DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]
+    MOD_ = OP["MOD"]; NEG_ = OP["NEG"]; POS_ = OP["POS"]
+    NOT_ = OP["NOT"]; EQ_ = OP["EQ"]; NE_ = OP["NE"]
+    LT_ = OP["LT"]; GT_ = OP["GT"]; LE_ = OP["LE"]
+    GE_ = OP["GE"]; IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]
+    JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]; JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]
+    BUILD_DICT_ = OP["BUILD_DICT"]; BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]
+    SLICE_TARGET_ = OP["SLICE_TARGET"]; SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]
+    GET_MEMBER_ = OP["GET_MEMBER"]; INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]
+    INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]; MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]
+    DELETE_TARGET_ = OP["DELETE_TARGET"]; DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]
+    JUMP_ = OP["JUMP"]; JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]
+    RANGE_PREP_ = OP["RANGE_PREP"]; RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]
+    ITER_NEXT_ = OP["ITER_NEXT"]; MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]
+    RETURN_ = OP["RETURN"]; THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]
+    STRAY_ = OP["STRAY"]; FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]
+    IMPORT_NAME_ = OP["IMPORT_NAME"]; EXPORT_ = OP["EXPORT"]
 
     code = frame.code
     ops, args, consts, positions = code.ops, code.args, code.constants, code.positions
@@ -5323,70 +5337,6 @@ def execute(interpreter, entry):
                     stack.append(slots[arg])
                 elif op == LOAD_CONST_:
                     stack.append(consts[arg])
-                elif op == STORE_FAST_:
-                    slots[arg] = stack.pop()
-                elif op == LOAD_GLOBAL_:
-                    value = glob.get(arg, UNSET)
-                    if value is UNSET:
-                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
-                    stack.append(value)
-                elif op == STORE_GLOBAL_:
-                    glob[arg] = stack.pop()
-                elif op == LOAD_CELL_:
-                    stack.append(slots[arg].value)
-                elif op == STORE_CELL_:
-                    slots[arg].value = stack.pop()
-                elif op == LOAD_CHAIN_:
-                    for kind, where in consts[arg]:
-                        if kind == "fast":
-                            value = slots[where]
-                        elif kind == "cell":
-                            value = slots[where].value
-                        elif kind == "free":
-                            value = cells[where].value
-                        else:
-                            value = glob.get(where, UNSET)
-                            name = where
-                        if value is not UNSET:
-                            stack.append(value)
-                            break
-                    else:
-                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
-                elif op == STORE_CHAIN_:
-                    value = stack.pop()
-                    chain = consts[arg]
-                    last = len(chain) - 1
-                    for index, (kind, where) in enumerate(chain):
-                        if kind == "fast":
-                            if index == last or slots[where] is not UNSET:
-                                slots[where] = value
-                                break
-                        elif kind == "cell":
-                            if index == last or slots[where].value is not UNSET:
-                                slots[where].value = value
-                                break
-                        elif kind == "free":
-                            if index == last or cells[where].value is not UNSET:
-                                cells[where].value = value
-                                break
-                        elif index == last or where in glob:
-                            glob[where] = value
-                            break
-                elif op == NEW_CELLS_:
-                    for slot in consts[arg]:
-                        slots[slot] = Cell()
-                elif op == POP_:
-                    stack.pop()
-                elif op == DUP_:
-                    stack.append(stack[-1])
-                elif op in binary:
-                    right = stack.pop()
-                    stack[-1] = binary_operation(binary[op], stack[-1], right, positions[ip - 1])
-                elif op in compare:
-                    right = stack.pop()
-                    stack[-1] = compare_operation(compare[op], stack[-1], right, positions[ip - 1])
-                elif op == JUMP_:
-                    ip = arg
                 elif op == JUMP_IF_NOT_TRUE_:
                     value = stack.pop()
                     if value is not True:
@@ -5412,8 +5362,15 @@ def execute(interpreter, entry):
                         frame.ip = ip
                         frames.append(frame)
                         call_stack.append(callee.name)
-                        frame = function_frame(callee, call_args)
-                        code = frame.code
+                        # function_frame(), inline: the hottest path in a call.
+                        code = callee.code
+                        new_slots = [UNSET] * code.nslots
+                        for slot, value in zip(code.params, call_args):
+                            new_slots[slot] = value
+                        if code.cell_params:
+                            for slot in code.cell_params:
+                                new_slots[slot] = Cell(new_slots[slot])
+                        frame = Frame(code, new_slots, callee.cells, callee.globals, callee)
                         ops, args, consts, positions = (code.ops, code.args, code.constants,
                                                         code.positions)
                         slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
@@ -5441,6 +5398,89 @@ def execute(interpreter, entry):
                                                  frame.globals)
                     ip = frame.ip
                     stack.append(value)
+                elif op == LOAD_GLOBAL_:
+                    value = glob.get(arg, UNSET)
+                    if value is UNSET:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
+                elif op == INDEX_:
+                    index = stack.pop()
+                    target = stack[-1]
+                    kind = type(target)
+                    # Fast: a present string key, or an in-range non-negative
+                    # whole index. Anything else - negative indexes, misses
+                    # and every error - goes through index_operation.
+                    if kind is dict:
+                        if type(index) is str and index in target:
+                            stack[-1] = target[index]
+                            continue
+                    elif kind is list or kind is str:
+                        if type(index) is int and 0 <= index < len(target):
+                            stack[-1] = target[index]
+                            continue
+                    stack[-1] = index_operation(target, index, positions[ip - 1])
+                elif op == EQ_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                        stack[-1] = left == right
+                    else:
+                        stack[-1] = compare_operation("==", left, right, positions[ip - 1])
+                elif op == STORE_FAST_:
+                    slots[arg] = stack.pop()
+                elif op == LOAD_CHAIN_:
+                    for kind, where in consts[arg]:
+                        if kind == "fast":
+                            value = slots[where]
+                        elif kind == "cell":
+                            value = slots[where].value
+                        elif kind == "free":
+                            value = cells[where].value
+                        else:
+                            value = glob.get(where, UNSET)
+                            name = where
+                        if value is not UNSET:
+                            stack.append(value)
+                            break
+                    else:
+                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
+                elif op == ADD_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left + right
+                    else:
+                        stack[-1] = binary_operation("+", left, right, positions[ip - 1])
+                elif op == SUB_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float):
+                        stack[-1] = left - right
+                    else:
+                        stack[-1] = binary_operation("-", left, right, positions[ip - 1])
+                elif op == LT_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left < right
+                    else:
+                        stack[-1] = compare_operation("<", left, right, positions[ip - 1])
+                elif op == MOD_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float) and right != 0:
+                        stack[-1] = left % right
+                    else:
+                        stack[-1] = binary_operation("%", left, right, positions[ip - 1])
+                elif op == STORE_GLOBAL_:
+                    glob[arg] = stack.pop()
+                elif op == JUMP_:
+                    ip = arg
                 elif op == RANGE_NEXT_:
                     state = slots[arg[0]]
                     index = state[3]
@@ -5462,6 +5502,8 @@ def execute(interpreter, entry):
                             stack.append(item[1])
                         else:
                             stack.append(item)
+                elif op == POP_:
+                    stack.pop()
                 elif op == CHECK_BOOL_:
                     side, name = consts[arg]
                     logical_side(stack[-1], side, name, positions[ip - 1])
@@ -5475,14 +5517,64 @@ def execute(interpreter, entry):
                         ip = arg
                     else:
                         stack.pop()
-                elif op == NEG_ or op == POS_:
-                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
-                                                positions[ip - 1])
-                elif op == NOT_:
-                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
-                elif op == INDEX_:
-                    index = stack.pop()
-                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                elif op == IN_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
+                elif op == NE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                        stack[-1] = left != right
+                    else:
+                        stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
+                elif op == GT_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left > right
+                    else:
+                        stack[-1] = compare_operation(">", left, right, positions[ip - 1])
+                elif op == LE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left <= right
+                    else:
+                        stack[-1] = compare_operation("<=", left, right, positions[ip - 1])
+                elif op == GE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left >= right
+                    else:
+                        stack[-1] = compare_operation(">=", left, right, positions[ip - 1])
+                elif op == MUL_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float):
+                        stack[-1] = left * right
+                    else:
+                        stack[-1] = binary_operation("*", left, right, positions[ip - 1])
+                elif op == FLOOR_DIV_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float) and right != 0:
+                        stack[-1] = left // right
+                    else:
+                        stack[-1] = binary_operation("//", left, right, positions[ip - 1])
+                elif op == DIV_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("/", stack[-1], right, positions[ip - 1])
+                elif op == LOAD_CELL_:
+                    stack.append(slots[arg].value)
+                elif op == STORE_CELL_:
+                    slots[arg].value = stack.pop()
                 elif op == GET_MEMBER_:
                     stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
                 elif op == BUILD_LIST_:
@@ -5492,6 +5584,10 @@ def execute(interpreter, entry):
                     else:
                         items = []
                     stack.append(items)
+                elif op == DUP_:
+                    stack.append(stack[-1])
+                elif op == NOT_:
+                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
                 elif op == BUILD_DICT_:
                     keys = consts[arg]
                     if keys:
@@ -5505,6 +5601,40 @@ def execute(interpreter, entry):
                     if arg:
                         del stack[-arg:]
                     stack.append(interpolate(parts))
+                elif op == STORE_CHAIN_:
+                    value = stack.pop()
+                    chain = consts[arg]
+                    last = len(chain) - 1
+                    for index, (kind, where) in enumerate(chain):
+                        if kind == "fast":
+                            if index == last or slots[where] is not UNSET:
+                                slots[where] = value
+                                break
+                        elif kind == "cell":
+                            if index == last or slots[where].value is not UNSET:
+                                slots[where].value = value
+                                break
+                        elif kind == "free":
+                            if index == last or cells[where].value is not UNSET:
+                                cells[where].value = value
+                                break
+                        elif index == last or where in glob:
+                            glob[where] = value
+                            break
+                elif op == NEW_CELLS_:
+                    for slot in consts[arg]:
+                        slots[slot] = Cell()
+                elif op == RESET_SLOTS_:
+                    for slot in consts[arg]:
+                        slots[slot] = UNSET
+                elif op == MAKE_FUNCTION_:
+                    child = consts[arg]
+                    closure = tuple(slots[where] if kind == "cell" else cells[where]
+                                    for kind, where in child.closure)
+                    stack.append(vm_function(child, closure, glob))
+                elif op == NEG_ or op == POS_:
+                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
+                                                positions[ip - 1])
                 elif op == SLICE_TARGET_:
                     slice_target(stack[-1], positions[ip - 1])
                 elif op == SLICE_BOUND_:
@@ -5547,11 +5677,6 @@ def execute(interpreter, entry):
                     slot, names = arg
                     items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
                     slots[slot] = [items, 0, names == 2]
-                elif op == MAKE_FUNCTION_:
-                    child = consts[arg]
-                    closure = tuple(slots[where] if kind == "cell" else cells[where]
-                                    for kind, where in child.closure)
-                    stack.append(vm_function(child, closure, glob))
                 elif op == THROW_:
                     raise throw_error(stack.pop(), positions[ip - 1])
                 elif op == RERAISE_:
@@ -6169,7 +6294,7 @@ def run_bootstrap(args):
         print("usage: novalang.py --bootstrap <target.nova> [script args...]", file=sys.stderr)
         return 2
     import bootstrap
-    return bootstrap.run_bootstrap(args[0], script_args=args[1:])
+    return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE)
 
 
 def dis_main(paths):

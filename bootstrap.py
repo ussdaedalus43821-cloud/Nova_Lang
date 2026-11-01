@@ -58,7 +58,7 @@ def type_check_graph(target_path):
     return ["TypeCheckError: " + line for line in lines]
 
 
-def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None):
+def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, engine=None):
     """Run `target_path` through the self-hosted interpreter defined in
     `engine_path`. `script_args` become what the target's own args() call
     sees - the Stage 11 standard-library built-in, read from novalang.py's
@@ -84,7 +84,10 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None):
 
     program = engine_source + "\nrun_file({})\n".format(nova_string_literal(target_path))
 
-    interpreter = Interpreter()
+    # `engine` ("vm" or "tree") is passed in, never read from novalang's
+    # DEFAULT_ENGINE: when novalang.py runs as a script it is __main__, and
+    # `import novalang` here is a second copy that never saw --tree-walk.
+    interpreter = Interpreter(engine)
     # novalang.nova tracks "the directory of whichever file is currently
     # executing" itself, in its own FILE_STACK - run_file() pushes the
     # target's directory before running it, so the target's own relative
