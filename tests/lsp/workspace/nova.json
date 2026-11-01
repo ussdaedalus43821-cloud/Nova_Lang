@@ -1,0 +1,7 @@
+{
+  "name": "lsp-workspace",
+  "version": "0.1.0",
+  "dependencies": {
+    "hello": {"path": "./vendor/hello"}
+  }
+}

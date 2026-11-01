@@ -31,6 +31,7 @@ full history across all 14 build stages.
 - [Toolchain: formatter & linter](#toolchain-formatter--linter)
 - [Type annotations](#type-annotations)
 - [Packages](#packages)
+- [Editor support](#editor-support)
 - [Embedding NovaLang in Python](#embedding-novalang-in-python)
 - [ECS & particle engine](#ecs--particle-engine)
 - [Examples](#examples)
@@ -313,6 +314,22 @@ resolves exactly as it always has.
 - **A package** is a directory with its own `nova.json`, whose `"main"`
   names its entry file (default `main.nova`). Its own relative imports
   work as usual.
+
+## Editor support
+
+`tools/nova-lsp.py` is a Language Server Protocol server, using only the
+Python standard library. Any LSP-capable editor gets, for `.nova` files:
+
+- **diagnostics** from `nova-lint` and `nova-typecheck`, as you type,
+  underlining the whole problem;
+- **formatting** with `nova-fmt`;
+- **go-to-definition** for locals, parameters, functions, imported names,
+  module members and packages;
+- **hover** showing types, e.g. `def add(a: int, b: int) -> int`.
+
+`editors/vscode/` is a ready-made VS Code extension: a thin client for that
+server, plus a syntax-highlighting grammar. See its
+[README](editors/vscode/README.md) for installing it.
 
 ## Embedding NovaLang in Python
 
