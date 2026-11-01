@@ -1,0 +1,79 @@
+code <module>
+             0 LOAD_CONST           0 ('nova')
+             1 LOAD_CONST           1 ('a')
+             2 LOAD_CONST           2 ('b')
+     2       3 BUILD_LIST           2
+             4 BUILD_DICT           3 (('name', 'tags'))
+             5 STORE_GLOBAL         d
+     3       6 LOAD_GLOBAL          d
+             7 INDEX_ASSIGN_TARGET
+             8 LOAD_CONST           4 ('version')
+             9 INDEX_ASSIGN_KEY
+            10 LOAD_CONST           5 (1)
+            11 INDEX_ASSIGN
+            12 POP
+     4      13 LOAD_GLOBAL          d
+            14 MEMBER_ASSIGN_TARGET
+            15 LOAD_CONST           6 (<built-in upper>)
+            16 LOAD_GLOBAL          d
+            17 GET_MEMBER           7 ('name')
+            18 CALL                 1
+            19 SET_MEMBER           7 ('name')
+            20 POP
+     5      21 LOAD_GLOBAL          d
+            22 DELETE_TARGET
+            23 LOAD_CONST           4 ('version')
+            24 DELETE_KEY
+            25 POP
+     6      26 LOAD_GLOBAL          d
+            27 DELETE_TARGET
+            28 LOAD_CONST           8 ('tags')
+            29 DELETE_KEY
+            30 POP
+            31 LOAD_CONST           9 ('hello')
+     7      32 STORE_GLOBAL         s
+     8      33 LOAD_CONST           10 (<built-in print>)
+            34 LOAD_GLOBAL          s
+            35 LOAD_CONST           5 (1)
+            36 LOAD_CONST           11 (3)
+            37 SLICE                [start:end]
+            38 LOAD_GLOBAL          s
+            39 LOAD_CONST           12 (2)
+            40 SLICE                [:end]
+            41 LOAD_GLOBAL          s
+            42 LOAD_CONST           12 (2)
+            43 SLICE                [start:]
+            44 LOAD_GLOBAL          s
+            45 LOAD_CONST           13 (' has ')
+            46 LOAD_CONST           14 (<built-in len>)
+            47 LOAD_GLOBAL          s
+            48 CALL                 1
+            49 LOAD_CONST           15 (' letters')
+            50 BUILD_STRING         4
+            51 LOAD_CONST           14 (<built-in len>)
+            52 LOAD_GLOBAL          s
+            53 CALL                 1
+            54 NEG
+            55 LOAD_CONST           16 (True)
+            56 NOT
+            57 CALL                 6
+            58 POP
+     9      59 LOAD_CONST           14 (<built-in len>)
+            60 LOAD_GLOBAL          s
+            61 CALL                 1
+            62 LOAD_CONST           12 (2)
+            63 GT
+            64 CHECK_BOOL           left side of 'and'
+            65 JUMP_IF_FALSE_KEEP   to 70
+            66 LOAD_GLOBAL          s
+            67 LOAD_CONST           18 ('')
+            68 NE
+            69 CHECK_BOOL           right side of 'and'
+       >>   70 CHECK_BOOL           left side of 'or'
+            71 JUMP_IF_TRUE_KEEP    to 74
+            72 LOAD_CONST           21 (False)
+            73 CHECK_BOOL           right side of 'or'
+       >>   74 DUP
+            75 STORE_GLOBAL         ok
+            76 RETURN
+

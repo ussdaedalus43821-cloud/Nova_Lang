@@ -1,0 +1,33 @@
+# Closures: three levels, late binding, and a closure per loop iteration.
+def outer(a) {
+    let b = a + 1
+    def middle() {
+        let c = b + 1
+        def inner() {
+            return a + b + c + later
+        }
+        return inner
+    }
+    let later = 100  # bound after middle is made: inner still sees it
+    return middle
+}
+
+let counters = []
+for i = 1 to 3 {
+    let mine = i
+    def recall() {
+        return mine  # each iteration's own `mine`
+    }
+    append(counters, recall)
+}
+
+def shared_loop_variable() {
+    let fns = []
+    for k in [1, 2] {
+        def get() {
+            return k  # one loop scope per loop: both see the last k
+        }
+        append(fns, get)
+    }
+    return fns
+}

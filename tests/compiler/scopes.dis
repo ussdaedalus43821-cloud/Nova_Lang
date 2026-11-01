@@ -1,0 +1,62 @@
+code <module>
+  slots: 0=fresh@block, 1=local@block
+             0 LOAD_CONST           0 (0)
+     2       1 STORE_GLOBAL         seen
+             2 LOAD_CONST           1 (True)
+     3       3 JUMP_IF_NOT_TRUE     to 17 (if condition)
+     4       4 LOAD_GLOBAL          seen
+             5 LOAD_CONST           3 (1)
+             6 ADD
+             7 STORE_GLOBAL         seen
+             8 LOAD_CONST           3 (1)
+     5       9 STORE_CHAIN          4 (global:fresh -> fast:0)
+            10 LOAD_CONST           5 (2)
+     6      11 STORE_FAST           1 (local@block)
+     7      12 LOAD_CONST           6 (<built-in print>)
+            13 LOAD_CHAIN           7 (fast:0 -> global:fresh)
+            14 LOAD_FAST            1 (local@block)
+            15 CALL                 2
+            16 POP
+    10 >>   17 MAKE_FUNCTION        8 (<code counter>)
+            18 STORE_GLOBAL         counter
+    15      19 MAKE_FUNCTION        9 (<code shadow>)
+            20 STORE_GLOBAL         shadow
+    23      21 MAKE_FUNCTION        10 (<code reads_global_late>)
+            22 STORE_GLOBAL         reads_global_late
+            23 LOAD_CONST           3 (1)
+            24 DUP
+    26      25 STORE_GLOBAL         defined_after
+            26 RETURN
+
+code counter
+  slots: 0=seen
+             0 LOAD_CONST           0 (5)
+    11       1 STORE_FAST           0 (seen)
+    12       2 LOAD_FAST            0 (seen)
+             3 RETURN
+             4 LOAD_CONST           1 (nothing)
+             5 RETURN
+
+code shadow(x)
+  slots: 0=x, 1=x@block
+    16       0 LOAD_FAST            0 (x)
+             1 LOAD_CONST           0 (0)
+             2 GT
+             3 JUMP_IF_NOT_TRUE     to 10 (if condition)
+             4 LOAD_CONST           2 ('inner')
+    17       5 STORE_FAST           1 (x@block)
+    18       6 LOAD_CONST           3 (<built-in print>)
+             7 LOAD_FAST            1 (x@block)
+             8 CALL                 1
+             9 POP
+    20 >>   10 LOAD_FAST            0 (x)
+            11 RETURN
+            12 LOAD_CONST           4 (nothing)
+            13 RETURN
+
+code reads_global_late
+    24       0 LOAD_GLOBAL          defined_after
+             1 RETURN
+             2 LOAD_CONST           0 (nothing)
+             3 RETURN
+
