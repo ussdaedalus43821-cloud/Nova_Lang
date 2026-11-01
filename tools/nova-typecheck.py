@@ -101,9 +101,10 @@ class FunctionType(Type):
     is how many of them must be given. `typed` marks a signature written
     in a NovaLang annotation, as opposed to a built-in's."""
 
-    def __init__(self, name, params, ret, required=None, typed=False):
+    def __init__(self, name, params, ret, required=None, typed=False, names=None):
         super().__init__("function")
         self.function_name = name
+        self.names = names          # parameter names, for a NovaLang function
         self.params = params
         self.ret = ret
         self.required = len(params) if required is None and params is not None else required
@@ -406,7 +407,7 @@ class Checker(ScopeWalker):
         params = [self.resolve(kind) or ANY for kind in node.param_types]
         ret = self.resolve(node.return_type) or ANY
         typed = node.return_type is not None or any(k is not None for k in node.param_types)
-        return FunctionType(node.name, params, ret, typed=typed)
+        return FunctionType(node.name, params, ret, typed=typed, names=list(node.params))
 
     def visit_FunctionDefNode(self, node):
         binding = super().visit_FunctionDefNode(node)
@@ -707,15 +708,21 @@ class Program:
                 return None
         return self.modules[resolved]
 
-    def check(self, source, path, base_dir=None):
+    def check(self, source, path, base_dir=None, checker_class=None, parsed=None):
         """Check one file. `path` is None for source that is not a file
-        (a one-liner, the REPL); imports then resolve against base_dir."""
-        parsed = nova_ast.parse(source)
+        (a one-liner, the REPL); imports then resolve against base_dir.
+        `checker_class` (a Checker subclass) is used for this file only -
+        the editor support uses one that records every name it resolves -
+        and `parsed` saves parsing `source` again when the caller has."""
+        parsed = parsed or nova_ast.parse(source)
         contracts_only = not parsed.tree.annotated
-        checker = Checker(parsed, self, path, base_dir or os.getcwd(), contracts_only)
+        checker = (checker_class or Checker)(parsed, self, path, base_dir or os.getcwd(),
+                                             contracts_only)
         exports = checker.run()
         module = Module(path, exports, checker.findings, source)
         module.parsed = parsed
+        module.scope = checker.scope        # its top-level bindings, for editors
+        module.checker = checker
         return module
 
 
