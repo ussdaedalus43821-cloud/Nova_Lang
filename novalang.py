@@ -59,6 +59,7 @@ Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
 No eval(). No exec(). Everything is still built by hand.
 """
 
+import bisect
 import importlib
 import json as json_module
 import math
@@ -3813,6 +3814,1238 @@ def nova_equals(left, right):
 # The pipeline, in one place
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 5. Compiler  (AST -> bytecode)  - M4
+# ---------------------------------------------------------------------------
+#
+# The compiler turns the same AST the tree-walking Interpreter runs into
+# flat bytecode for a stack machine. It changes nothing about the language:
+# every rule below reproduces something the Interpreter does, and the
+# reason is written next to it.
+#
+# Scopes. The Interpreter keeps a chain of name -> value dictionaries:
+# function calls and the global scope are barriers, blocks are not, a name
+# first assigned in a block vanishes after it, reads walk the whole chain
+# and assignments stop at the nearest barrier. Bytecode keeps the global
+# scope as a dictionary (the REPL, imports and the embedding API all reach
+# into it by name), and gives every other binding a numbered slot in its
+# function's frame. That is possible because, inside one function body,
+# whether a name exists at a given point is known at compile time: only a
+# scope's own statements create names in it, and they run in order. So:
+#
+#   - a binding that is definitely there is a plain slot (LOAD_FAST);
+#   - a slot that an inner function reads becomes a cell, shared with the
+#     closure, so the inner function sees its value at the time it runs;
+#   - an inner function's reads of outer names are genuinely dynamic - it
+#     may run before or after those names exist - so they compile to a
+#     chain of candidate cells, innermost first, ending in the globals
+#     (LOAD_CHAIN): the first one that is set wins, exactly as walking the
+#     dictionary chain does;
+#   - at module level, a block cannot know whether a global already exists
+#     (the REPL or the embedding API may have made it), so an assignment
+#     there checks at run time (STORE_CHAIN), as the Interpreter does;
+#   - entering a block makes fresh cells for its captured names, so a
+#     closure made in each loop iteration keeps its own (NEW_CELLS).
+#
+# Values. Every statement has a value (run() and the REPL return the last
+# one; an `if` gives its block's). A statement list leaves exactly the
+# last statement's value on the stack. Loop state lives in hidden slots,
+# so the stack is empty at every statement boundary and break/continue
+# never need to clean it up.
+#
+# Errors. Each instruction records the source position of the node it came
+# from, and checks happen in the Interpreter's order: `d[k] = v` checks k
+# before evaluating v when d is a dictionary, and refuses a string before
+# evaluating k at all. try/catch/finally use an exception table (no setup
+# instruction): a catch entry takes NovaErrors; a finally entry takes any
+# unwinding, so it also runs for the signals a stray `break` or a
+# top-level `return` raise - which, as in the Interpreter, `catch` cannot
+# intercept. `return`, `break` and `continue` that leave a try run its
+# finally body first, inlined on that path.
+
+OPCODES = [
+    # stack
+    "LOAD_CONST", "POP", "DUP",
+    # names
+    "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "LOAD_FREE",
+    "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS",
+    # arithmetic, comparison, logic
+    "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
+    "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
+    "CHECK_BOOL", "JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP",
+    # data
+    "BUILD_LIST", "BUILD_DICT", "BUILD_STRING", "INDEX", "SLICE", "GET_MEMBER",
+    "INDEX_ASSIGN_TARGET", "INDEX_ASSIGN_KEY", "INDEX_ASSIGN",
+    "MEMBER_ASSIGN_TARGET", "SET_MEMBER",
+    "DELETE_TARGET", "DELETE_KEY", "DELETE_FILE",
+    # control
+    "JUMP", "JUMP_IF_NOT_TRUE",
+    "LOOP_NUMBER", "RANGE_PREP", "RANGE_NEXT", "ITER_PREP", "ITER_NEXT",
+    # functions, errors, modules
+    "MAKE_FUNCTION", "CALL", "RETURN", "THROW", "RERAISE", "STRAY", "FAIL",
+    "IMPORT", "IMPORT_NAME", "EXPORT",
+]
+OP = {name: number for number, name in enumerate(OPCODES)}
+JUMPS = frozenset(OP[name] for name in (
+    "JUMP", "JUMP_IF_NOT_TRUE", "JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP",
+    "RANGE_NEXT", "ITER_NEXT"))
+
+BINARY_OPS = {"+": "ADD", "-": "SUB", "*": "MUL", "/": "DIV", "//": "FLOOR_DIV", "%": "MOD"}
+COMPARE_OPS = {"==": "EQ", "!=": "NE", "<": "LT", ">": "GT", "<=": "LE", ">=": "GE", "in": "IN"}
+
+
+class Var:
+    """One binding that lives in a frame slot: a name in one scope."""
+
+    __slots__ = ("name", "scope", "slot", "captured")
+
+    def __init__(self, name, scope, slot):
+        self.name = name
+        self.scope = scope
+        self.slot = slot
+        self.captured = False           # read by an inner function: a cell
+
+
+class GlobalVar:
+    """A name in a module's global dictionary."""
+
+    __slots__ = ("name",)
+
+    def __init__(self, name):
+        self.name = name
+
+
+class CScope:
+    """A compile-time scope: the module's globals, a function's frame, or
+    a block, loop or catch scope inside one."""
+
+    def __init__(self, kind, parent, frame):
+        self.kind = kind                # module | function | block | loop | catch
+        self.parent = parent
+        self.frame = frame
+        self.vars = {}                  # name -> Var (every name ever bound here)
+        self.status = {}                # name -> "definite" | "maybe", at this point
+
+    @property
+    def is_globals(self):
+        return self.kind == "module"
+
+
+class CFrame:
+    """A compile-time frame: the module's top level, or one function."""
+
+    def __init__(self, name, parent, def_scope, node):
+        self.name = name
+        self.parent = parent            # the enclosing CFrame, or None
+        self.def_scope = def_scope      # the scope its `def` ran in
+        self.node = node
+        self.slot_names = []            # for the disassembler
+        self.freevars = []              # Vars of enclosing frames, in closure order
+        self.root = None
+
+    def new_slot(self, label):
+        self.slot_names.append(label)
+        return len(self.slot_names) - 1
+
+    def free_index(self, var):
+        if var not in self.freevars:
+            self.freevars.append(var)
+        return self.freevars.index(var)
+
+
+class Resolution:
+    """What the resolver decided about every name in a program, keyed by the
+    AST node that reads or writes it."""
+
+    def __init__(self):
+        self.reads = {}                 # id(VarNode) -> [Var | GlobalVar] candidates
+        self.stores = {}                # id(node), name -> ("define" | "assign", [...])
+        self.scopes = {}                # (kind, id(node)) -> CScope
+        self.frames = {}                # id(FunctionDefNode | ProgramNode) -> CFrame
+
+
+class Resolver:
+    """Pass 1: walk each function body in order - the way it runs - and
+    decide where every name lives. Function bodies are resolved after the
+    frame that defines them, when every enclosing scope holds every name it
+    will ever bind (the function may be called at any point after that)."""
+
+    def __init__(self):
+        self.result = Resolution()
+        self.pending = []
+
+    def resolve(self, program):
+        frame = CFrame("<module>", None, None, program)
+        root = CScope("module", None, frame)
+        frame.root = root
+        self.result.frames[id(program)] = frame
+        self.result.scopes[("root", id(program))] = root
+        self.scope = root
+        self.statements(program.statements)
+        while self.pending:
+            function, def_scope = self.pending.pop(0)
+            self.function(function, def_scope)
+        return self.result
+
+    # -- binding --------------------------------------------------------------
+
+    def bind(self, scope, name):
+        """`name` now definitely exists in `scope` (a define)."""
+        if not scope.is_globals and name not in scope.vars:
+            label = name if scope.kind in ("function", "module") else "{}@{}".format(
+                name, scope.kind)
+            scope.vars[name] = Var(name, scope, scope.frame.new_slot(label))
+        scope.status[name] = "definite"
+        return GlobalVar(name) if scope.is_globals else scope.vars[name]
+
+    def define(self, node_key, name):
+        self.result.stores[(node_key, name)] = ("define", [self.bind(self.scope, name)])
+
+    def assign(self, node_key, name):
+        """`name = ...`: update the innermost binding out to the nearest
+        barrier, else create it here (Environment.assign)."""
+        candidates = []
+        scope = self.scope
+        while True:
+            if scope.is_globals:
+                if scope.status.get(name) == "definite":
+                    candidates.append(GlobalVar(name))
+                    self.result.stores[(node_key, name)] = ("assign", candidates)
+                    return
+                # A global may or may not exist (the REPL or the embedding API
+                # can create one), so this is decided when it runs.
+                candidates.append(GlobalVar(name))
+                break
+            status = scope.status.get(name)
+            if status == "definite":
+                candidates.append(scope.vars[name])
+                self.result.stores[(node_key, name)] = ("assign", candidates)
+                return
+            if status == "maybe":
+                candidates.append(scope.vars[name])
+            if scope.kind == "function":
+                break                           # the barrier
+            scope = scope.parent
+        here = self.bind(self.scope, name)
+        if self.scope.is_globals:
+            self.result.stores[(node_key, name)] = ("assign", [here])
+            return
+        if candidates:
+            self.scope.status[name] = "maybe"   # it might have gone to one of those
+        self.result.stores[(node_key, name)] = ("assign", candidates + [here])
+
+    def read(self, node):
+        if node.name in BUILTINS:
+            return
+        self.result.reads[id(node)] = self.lookup(node.name)
+
+    def lookup(self, name):
+        candidates = []
+        scope = self.scope
+        frame = scope.frame
+        # This frame's own scopes: their contents at this point are known.
+        while True:
+            if scope.is_globals:
+                candidates.append(GlobalVar(name))
+                return candidates
+            status = scope.status.get(name)
+            if status == "definite":
+                candidates.append(scope.vars[name])
+                return candidates
+            if status == "maybe":
+                candidates.append(scope.vars[name])
+            if scope.kind == "function":
+                break
+            scope = scope.parent
+        # Enclosing frames: this function runs later, so any binding those
+        # scopes ever make may be there - or not yet. Each is a candidate.
+        while True:
+            scope = frame.def_scope
+            frame = scope.frame
+            while True:
+                if scope.is_globals:
+                    candidates.append(GlobalVar(name))
+                    return candidates
+                var = scope.vars.get(name)
+                if var is not None:
+                    var.captured = True
+                    candidates.append(var)
+                if scope.kind == "function":
+                    break
+                scope = scope.parent
+
+    # -- scopes -----------------------------------------------------------------
+
+    def enter(self, kind, key_node, key="block"):
+        scope = CScope(kind, self.scope, self.scope.frame)
+        self.result.scopes[(key, id(key_node))] = scope
+        self.scope = scope
+        return scope
+
+    def leave(self, scope):
+        self.scope = scope.parent
+
+    def block(self, block, names=(), kind="block", parent=None):
+        saved = self.scope
+        if parent is not None:
+            self.scope = parent
+        scope = self.enter(kind, block)
+        for name in names:
+            self.bind(scope, name)
+        self.statements(block.statements)
+        self.scope = saved
+
+    def function(self, node, def_scope):
+        frame = CFrame(node.name, def_scope.frame, def_scope, node)
+        self.result.frames[id(node)] = frame
+        root = CScope("function", def_scope, frame)
+        frame.root = root
+        self.result.scopes[("root", id(node))] = root
+        saved = self.scope
+        self.scope = root
+        for param in node.params:
+            self.bind(root, param)
+        self.statements(node.body.statements)
+        self.scope = saved
+
+    # -- statements -------------------------------------------------------------
+
+    def statements(self, statements):
+        for statement in statements:
+            self.visit(statement)
+
+    def visit(self, node):
+        method = getattr(self, "r_" + type(node).__name__, None)
+        if method is None:
+            for child in children(node):
+                self.visit(child)
+            return
+        method(node)
+
+    def r_VarNode(self, node):
+        self.read(node)
+
+    def r_LetNode(self, node):
+        self.visit(node.value)
+        self.define(id(node), node.name)
+
+    def r_AssignNode(self, node):
+        self.visit(node.value)
+        self.assign(id(node), node.name)
+
+    def r_FunctionDefNode(self, node):
+        self.define(id(node), node.name)
+        self.pending.append((node, self.scope))
+
+    def r_ImportNode(self, node):
+        if node.names is not None:
+            for name in node.names:
+                self.define(id(node), name)
+            return
+        try:
+            name = node.alias or default_module_name(node.path, node.position)
+        except NovaError as error:
+            # Not a valid name: an error when the import runs - after the
+            # module has loaded, as in the Interpreter - not before.
+            node._name_error = error
+            return
+        self.define(id(node), name)
+
+    def r_IfNode(self, node):
+        self.visit(node.condition)
+        self.block(node.then_block)
+        if isinstance(node.else_block, IfNode):
+            self.visit(node.else_block)
+        elif node.else_block is not None:
+            self.block(node.else_block)
+
+    def r_WhileNode(self, node):
+        self.visit(node.condition)
+        self.block(node.body)
+        if node.else_block is not None:
+            self.block(node.else_block)
+
+    def loop(self, node, names):
+        outer = self.scope
+        loop_scope = self.enter("loop", node, key="loop")
+        for name in names:
+            self.bind(loop_scope, name)
+        node._state_slot = outer.frame.new_slot("<loop state>")
+        self.block(node.body)
+        self.scope = outer
+        if node.else_block is not None:
+            self.block(node.else_block)
+
+    def r_ForNode(self, node):
+        for part in (node.start, node.end, node.step):
+            if part is not None:
+                self.visit(part)
+        self.loop(node, [node.name])
+
+    def r_ForInNode(self, node):
+        self.visit(node.iterable)
+        self.loop(node, [node.name] if node.second_name is None else
+                  [node.name, node.second_name])
+
+    def r_TryNode(self, node):
+        frame = self.scope.frame
+        self.block(node.body)
+        if node.catch_block is not None:
+            names = [node.catch_name] if node.catch_name is not None else []
+            self.block(node.catch_block, names, kind="catch")
+        if node.finally_block is not None:
+            node._finally_slot = frame.new_slot("<unwinding>")
+            self.block(node.finally_block)
+
+
+def children(node):
+    """A node's child nodes, in evaluation order."""
+    for value in vars(node).values():
+        if isinstance(value, Node):
+            yield value
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, Node):
+                    yield item
+
+
+class CodeObject:
+    """Compiled bytecode for one module or function."""
+
+    def __init__(self, name, frame):
+        self.name = name
+        self.ops = []                   # opcode numbers
+        self.args = []                  # one argument per instruction (or None)
+        self.positions = []             # source position per instruction (or None)
+        self.constants = []
+        self.exception_table = []       # (start, end, handler, kind), innermost first
+        self.slot_names = frame.slot_names
+        self.nslots = 0
+        self.params = []                # slots of the parameters, in order
+        self.cell_params = []           # the subset of those that are cells
+        self.freevars = [var.name for var in frame.freevars]
+        self.closure = []               # how MAKE_FUNCTION builds it (in the parent)
+
+    def const(self, value):
+        for index, existing in enumerate(self.constants):
+            if existing is value or (type(existing) is type(value) and not isinstance(
+                    value, (CodeObject, list, dict)) and existing == value):
+                return index
+        self.constants.append(value)
+        return len(self.constants) - 1
+
+
+class TryContext:
+    """A try being compiled: where its protected ranges are, and its
+    finally body (to inline on break/continue/return)."""
+
+    def __init__(self, node):
+        self.node = node
+        self.finally_block = node.finally_block
+        self.catch_ranges = []          # closed [start, end) of the try body
+        self.finally_ranges = []        # closed ranges of try body + catch body
+        self.open_catch = None
+        self.open_finally = None
+
+
+class LoopContext:
+    def __init__(self, tries_depth):
+        self.tries_depth = tries_depth  # len(try stack) when the loop began
+        self.breaks = []
+        self.continues = []
+        self.continue_target = None
+
+
+class Compiler:
+    """Pass 2: emit bytecode, using the resolver's decisions."""
+
+    def __init__(self, resolution):
+        self.resolution = resolution
+
+    def compile_program(self, program):
+        frame = self.resolution.frames[id(program)]
+        code = CodeObject("<module>", frame)
+        self.start(code, frame, self.resolution.scopes[("root", id(program))])
+        self.statements(program.statements, True)
+        self.emit("RETURN", None, None)
+        return self.finish()
+
+    def compile_function(self, node):
+        frame = self.resolution.frames[id(node)]
+        code = CodeObject(node.name, frame)
+        root = self.resolution.scopes[("root", id(node))]
+        saved = self.save()
+        self.start(code, frame, root)
+        code.params = [root.vars[name].slot for name in node.params]
+        code.cell_params = [root.vars[name].slot for name in node.params
+                            if root.vars[name].captured]
+        self.new_cells(root, skip=set(node.params))
+        self.statements(node.body.statements, False)
+        self.emit("LOAD_CONST", code.const(NOTHING), None)
+        self.emit("RETURN", None, None)
+        finished = self.finish()
+        self.restore(saved)
+        return finished
+
+    def start(self, code, frame, scope):
+        self.code = code
+        self.frame = frame
+        self.scope = scope
+        self.tries = []
+        self.loops = []
+
+    def save(self):
+        return (self.code, self.frame, self.scope, self.tries, self.loops)
+
+    def restore(self, saved):
+        self.code, self.frame, self.scope, self.tries, self.loops = saved
+
+    def finish(self):
+        self.code.nslots = len(self.frame.slot_names)
+        # Read last: compiling inner functions adds to this frame's free list.
+        self.code.freevars = [var.name for var in self.frame.freevars]
+        return self.code
+
+    # -- emitting ---------------------------------------------------------------
+
+    def emit(self, name, arg, position):
+        self.code.ops.append(OP[name])
+        self.code.args.append(arg)
+        self.code.positions.append(position)
+        return len(self.code.ops) - 1
+
+    def here(self):
+        return len(self.code.ops)
+
+    def patch(self, at, target=None):
+        self.code.args[at] = self.here() if target is None else target
+
+    def jump(self, name, position=None, extra=None):
+        """Emit a forward jump; returns its index for patch()."""
+        return self.emit(name, extra, position)
+
+    # -- locations ----------------------------------------------------------------
+
+    def location(self, var):
+        """('fast'|'cell'|'free'|'global', index or name) for a variable."""
+        if isinstance(var, GlobalVar):
+            return ("global", var.name)
+        if var.scope.frame is self.frame:
+            return ("cell" if var.captured else "fast", var.slot)
+        return ("free", self.frame_free_index(var))
+
+    def frame_free_index(self, var):
+        return self.frame.free_index(var)
+
+    def load(self, candidates, position):
+        if len(candidates) == 1:
+            kind, where = self.location(candidates[0])
+            op = {"fast": "LOAD_FAST", "cell": "LOAD_CELL", "free": "LOAD_FREE",
+                  "global": "LOAD_GLOBAL"}[kind]
+            self.emit(op, where, position)
+            return
+        chain = tuple(self.location(var) for var in candidates)
+        self.emit("LOAD_CHAIN", self.code.const(chain), position)
+
+    def store(self, node, name, position):
+        _, candidates = self.resolution.stores[(id(node), name)]
+        if len(candidates) == 1:
+            kind, where = self.location(candidates[0])
+            op = {"fast": "STORE_FAST", "cell": "STORE_CELL", "global": "STORE_GLOBAL"}[kind]
+            self.emit(op, where, position)
+            return
+        chain = tuple(self.location(var) for var in candidates)
+        self.emit("STORE_CHAIN", self.code.const(chain), position)
+
+    def new_cells(self, scope, skip=()):
+        cells = tuple(var.slot for name, var in sorted(scope.vars.items(),
+                                                       key=lambda item: item[1].slot)
+                      if var.captured and name not in skip)
+        if cells:
+            self.emit("NEW_CELLS", self.code.const(cells), None)
+
+    # -- statement lists and blocks -----------------------------------------------
+
+    def statements(self, statements, want):
+        """Compile a statement list; if `want`, leave the last one's value."""
+        if not statements:
+            if want:
+                self.emit("LOAD_CONST", self.code.const(NOTHING), None)
+            return
+        for index, statement in enumerate(statements):
+            last = index == len(statements) - 1
+            self.statement(statement, want and last)
+
+    def block(self, block, want):
+        scope = self.resolution.scopes[("block", id(block))]
+        saved = self.scope
+        self.scope = scope
+        self.new_cells(scope)
+        self.statements(block.statements, want)
+        self.scope = saved
+
+    def statement(self, node, want):
+        method = getattr(self, "s_" + type(node).__name__, None)
+        if method is not None:
+            method(node, want)
+            return
+        self.expression(node)
+        if not want:
+            self.emit("POP", None, None)
+
+    # -- statements ---------------------------------------------------------------
+
+    def s_LetNode(self, node, want):
+        self.value(node.value)
+        if want:
+            self.emit("DUP", None, None)
+        self.store(node, node.name, node.position)
+
+    def s_AssignNode(self, node, want):
+        self.value(node.value)
+        if want:
+            self.emit("DUP", None, None)
+        self.store(node, node.name, node.position)
+
+    def s_IndexAssignNode(self, node, want):
+        self.index_assign(node)
+        if not want:
+            self.emit("POP", None, None)
+
+    def s_MemberAssignNode(self, node, want):
+        self.member_assign(node)
+        if not want:
+            self.emit("POP", None, None)
+
+    def value(self, node):
+        """The right side of '=' - an expression, or a nested assignment
+        (a = b = 3), which leaves its value."""
+        if isinstance(node, AssignNode):
+            self.value(node.value)
+            self.emit("DUP", None, None)
+            self.store(node, node.name, node.position)
+        elif isinstance(node, IndexAssignNode):
+            self.index_assign(node)
+        elif isinstance(node, MemberAssignNode):
+            self.member_assign(node)
+        else:
+            self.expression(node)
+
+    def index_assign(self, node):
+        self.expression(node.target)
+        self.emit("INDEX_ASSIGN_TARGET", None, node.position)   # a string: refused now
+        self.expression(node.index)
+        self.emit("INDEX_ASSIGN_KEY", None, node.position)      # a dict: key checked now
+        self.value(node.value)
+        self.emit("INDEX_ASSIGN", None, node.position)
+
+    def member_assign(self, node):
+        self.expression(node.target)
+        self.emit("MEMBER_ASSIGN_TARGET", None, node.position)
+        self.value(node.value)
+        self.emit("SET_MEMBER", self.code.const(node.name), node.position)
+
+    def s_FunctionDefNode(self, node, want):
+        self.make_function(node)
+        if want:
+            self.emit("DUP", None, None)
+        self.store(node, node.name, node.position)
+
+    def make_function(self, node):
+        child = self.compile_function(node)
+        frame = self.resolution.frames[id(node)]
+        child.closure = [self.location(var) for var in frame.freevars]
+        self.emit("MAKE_FUNCTION", self.code.const(child), node.position)
+
+    def s_ExportNode(self, node, want):
+        inner = node.inner
+        if isinstance(inner, FunctionDefNode):
+            self.make_function(inner)
+        else:
+            self.value(inner.value)
+        self.emit("DUP", None, None)
+        self.store(inner, inner.name, inner.position)
+        self.emit("EXPORT", self.code.const(inner.name), node.position)
+        if not want:
+            self.emit("POP", None, None)
+
+    def s_ReturnNode(self, node, want):
+        if node.value is not None:
+            self.expression(node.value)
+        else:
+            self.emit("LOAD_CONST", self.code.const(NOTHING), node.position)
+        if self.frame.parent is None:
+            # Top level: the value is worked out, then it is an error - after
+            # any enclosing finally has run, which the signal's unwinding does.
+            self.emit("POP", None, None)
+            self.emit("STRAY", self.code.const("return"), node.position)
+            return
+        if any(t.finally_block is not None for t in self.tries):
+            slot = self.return_slot()
+            self.emit("STORE_FAST", slot, None)
+            self.inline_finally(0)
+            self.emit("LOAD_FAST", slot, None)
+        self.emit("RETURN", None, node.position)
+
+    def return_slot(self):
+        if not hasattr(self.frame, "return_slot"):
+            self.frame.return_slot = self.frame.new_slot("<return value>")
+        return self.frame.return_slot
+
+    def s_BreakNode(self, node, want):
+        self.loop_exit(node, "break")
+
+    def s_ContinueNode(self, node, want):
+        self.loop_exit(node, "continue")
+
+    def loop_exit(self, node, keyword):
+        if not self.loops:
+            # Not in a loop of this frame: an error when it runs, after the
+            # finally blocks it leaves (the caller reports it, as before).
+            self.emit("STRAY", self.code.const(keyword), node.position)
+            return
+        loop = self.loops[-1]
+        self.inline_finally(loop.tries_depth)
+        at = self.jump("JUMP", node.position)
+        (loop.breaks if keyword == "break" else loop.continues).append(at)
+
+    def inline_finally(self, down_to):
+        """Run the finally bodies of the tries being left, innermost first.
+        While a finally body runs here, its own try's protection is off (an
+        error in it must not run it twice), and so is every inner one's."""
+        for index in range(len(self.tries) - 1, down_to - 1, -1):
+            context = self.tries[index]
+            if context.finally_block is None:
+                continue
+            for inner in self.tries[index:]:
+                self.suspend(inner)
+            saved_tries = self.tries
+            self.tries = self.tries[:index]
+            self.block(context.finally_block, False)
+            self.tries = saved_tries
+            for inner in self.tries[index:]:
+                self.resume(inner)
+
+    def suspend(self, context):
+        if context.open_catch is not None:
+            context.catch_ranges.append((context.open_catch, self.here()))
+            context.open_catch = None
+            context.catch_suspended = True
+        if context.open_finally is not None:
+            context.finally_ranges.append((context.open_finally, self.here()))
+            context.open_finally = None
+            context.finally_suspended = True
+
+    def resume(self, context):
+        if getattr(context, "catch_suspended", False):
+            context.open_catch = self.here()
+            context.catch_suspended = False
+        if getattr(context, "finally_suspended", False):
+            context.open_finally = self.here()
+            context.finally_suspended = False
+
+    def s_ThrowNode(self, node, want):
+        self.expression(node.value)
+        self.emit("THROW", None, node.position)
+
+    def s_IfNode(self, node, want):
+        self.expression(node.condition)
+        test = self.jump("JUMP_IF_NOT_TRUE", node.position, extra=None)
+        self.code.args[test] = (self.code.const("if"), None)
+        self.block(node.then_block, want)
+        if node.else_block is None:
+            if want:
+                skip = self.jump("JUMP")
+                self.code.args[test] = (self.code.args[test][0], self.here())
+                self.emit("LOAD_CONST", self.code.const(NOTHING), None)
+                self.patch(skip)
+            else:
+                self.code.args[test] = (self.code.args[test][0], self.here())
+            return
+        skip = self.jump("JUMP")
+        self.code.args[test] = (self.code.args[test][0], self.here())
+        if isinstance(node.else_block, IfNode):
+            self.s_IfNode(node.else_block, want)
+        else:
+            self.block(node.else_block, want)
+        self.patch(skip)
+
+    def s_WhileNode(self, node, want):
+        loop = LoopContext(len(self.tries))
+        top = self.here()
+        loop.continue_target = top
+        self.expression(node.condition)
+        test = self.jump("JUMP_IF_NOT_TRUE", node.position)
+        self.code.args[test] = (self.code.const("while"), None)
+        self.loops.append(loop)
+        self.block(node.body, False)
+        self.loops.pop()
+        self.emit("JUMP", top, None)
+        self.code.args[test] = (self.code.args[test][0], self.here())
+        self.loop_end(node, loop, want)
+
+    def loop_end(self, node, loop, want):
+        """The `else` (only when the loop was not broken out of), then the
+        loop's value."""
+        for at in loop.continues:
+            self.patch(at, loop.continue_target)
+        if node.else_block is not None:
+            self.block(node.else_block, False)
+        for at in loop.breaks:
+            self.patch(at)
+        if want:
+            self.emit("LOAD_CONST", self.code.const(NOTHING), None)
+
+    def s_ForNode(self, node, want):
+        for part, role in ((node.start, "the start of a 'for' range"),
+                           (node.end, "the end of a 'for' range"),
+                           (node.step, "a 'for' step")):
+            if part is None:
+                continue
+            self.expression(part)
+            self.emit("LOOP_NUMBER", self.code.const(role),
+                      getattr(part, "position", None) or node.position)
+        self.emit("RANGE_PREP", (node._state_slot, node.descending, node.step is not None),
+                  node.position)
+        self.loop_body(node, "RANGE_NEXT", [node.name], want)
+
+    def s_ForInNode(self, node, want):
+        self.expression(node.iterable)
+        names = [node.name] if node.second_name is None else [node.name, node.second_name]
+        self.emit("ITER_PREP", (node._state_slot, len(names)), node.position)
+        self.loop_body(node, "ITER_NEXT", names, want)
+
+    def loop_body(self, node, next_op, names, want):
+        outer = self.scope
+        loop_scope = self.resolution.scopes[("loop", id(node))]
+        self.scope = loop_scope
+        self.new_cells(loop_scope)      # once per loop: one binding across iterations
+        loop = LoopContext(len(self.tries))
+        top = self.here()
+        loop.continue_target = top
+        step = self.emit(next_op, (node._state_slot, None), node.position)
+        # Store the loop variables (an ITER_NEXT with two names pushes two).
+        for name in reversed(names):
+            var = loop_scope.vars[name]
+            kind, where = self.location(var)
+            self.emit("STORE_CELL" if kind == "cell" else "STORE_FAST", where, None)
+        self.loops.append(loop)
+        self.block(node.body, False)
+        self.loops.pop()
+        self.emit("JUMP", top, None)
+        self.code.args[step] = (node._state_slot, self.here())
+        self.scope = outer
+        self.loop_end(node, loop, want)
+
+    def s_TryNode(self, node, want):
+        context = TryContext(node)
+        self.tries.append(context)
+        context.open_catch = self.here() if node.catch_block is not None else None
+        context.open_finally = self.here() if node.finally_block is not None else None
+        self.block(node.body, False)
+        if context.open_catch is not None:
+            context.catch_ranges.append((context.open_catch, self.here()))
+            context.open_catch = None
+        to_finally = self.jump("JUMP")
+        catch_handler = None
+        if node.catch_block is not None:
+            catch_handler = self.here()
+            # The handler starts with the error's text on the stack.
+            scope = self.resolution.scopes[("block", id(node.catch_block))]
+            saved = self.scope
+            self.scope = scope
+            self.new_cells(scope)
+            if node.catch_name is not None:
+                kind, where = self.location(scope.vars[node.catch_name])
+                self.emit("STORE_CELL" if kind == "cell" else "STORE_FAST", where, node.position)
+            else:
+                self.emit("POP", None, None)
+            self.statements(node.catch_block.statements, False)
+            self.scope = saved
+        if context.open_finally is not None:
+            context.finally_ranges.append((context.open_finally, self.here()))
+            context.open_finally = None
+        self.tries.pop()
+        self.patch(to_finally)
+        if node.finally_block is not None:
+            self.block(node.finally_block, False)           # the normal way out
+            done = self.jump("JUMP")
+            unwinding = self.here()                          # an error or a signal
+            self.emit("STORE_FAST", node._finally_slot, None)
+            self.block(node.finally_block, False)
+            self.emit("RERAISE", node._finally_slot, None)
+            self.patch(done)
+        for start, end in context.catch_ranges:
+            if end > start:
+                self.code.exception_table.append((start, end, catch_handler, "catch"))
+        if node.finally_block is not None:
+            for start, end in context.finally_ranges:
+                if end > start:
+                    self.code.exception_table.append((start, end, unwinding, "finally"))
+        if want:
+            self.emit("LOAD_CONST", self.code.const(NOTHING), None)
+
+    def s_ImportNode(self, node, want):
+        self.emit("IMPORT", self.code.const(node.path), node.position)
+        if node.names is not None:
+            for name in node.names:
+                self.emit("DUP", None, None)
+                self.emit("IMPORT_NAME", self.code.const(name), node.position)
+                self.store(node, name, node.position)
+            self.emit("POP", None, None)
+        elif getattr(node, "_name_error", None) is not None:
+            error = node._name_error
+            self.emit("FAIL", self.code.const((error.message, error.label)), node.position)
+            return
+        else:
+            self.store(node, node.alias or default_module_name(node.path, node.position),
+                       node.position)
+        if want:
+            self.emit("LOAD_CONST", self.code.const(NOTHING), None)
+
+    def s_DeleteNode(self, node, want):
+        self.expression(node.target)
+        self.emit("DELETE_TARGET", None, node.position)
+        self.expression(node.key)
+        self.emit("DELETE_KEY", None, node.position)
+        if not want:
+            self.emit("POP", None, None)
+
+    def s_DeleteFileNode(self, node, want):
+        self.expression(node.path)
+        self.emit("DELETE_FILE", None, node.position)
+        if not want:
+            self.emit("POP", None, None)
+
+    # -- expressions --------------------------------------------------------------
+
+    def expression(self, node):
+        getattr(self, "e_" + type(node).__name__)(node)
+
+    def e_NumberNode(self, node):
+        self.emit("LOAD_CONST", self.code.const(node.value), None)
+
+    e_StringNode = e_NumberNode
+    e_BooleanNode = e_NumberNode
+
+    def e_VarNode(self, node):
+        if node.name in BUILTINS:
+            self.emit("LOAD_CONST", self.code.const(BUILTINS[node.name]), node.position)
+            return
+        self.load(self.resolution.reads[id(node)], node.position)
+
+    def e_UnaryOpNode(self, node):
+        self.expression(node.operand)
+        self.emit("NEG" if node.op == "-" else "POS", None, node.position)
+
+    def e_NotNode(self, node):
+        self.expression(node.operand)
+        self.emit("NOT", None, node.position)
+
+    def e_BinOpNode(self, node):
+        self.expression(node.left)
+        self.expression(node.right)
+        self.emit(BINARY_OPS[node.op], None, node.position)
+
+    def e_CompareNode(self, node):
+        self.expression(node.left)
+        self.expression(node.right)
+        self.emit(COMPARE_OPS[node.op], None, node.position)
+
+    def e_LogicalOpNode(self, node):
+        self.expression(node.left)
+        self.emit("CHECK_BOOL", self.code.const(("left", node.op)), node.position)
+        jump = self.jump("JUMP_IF_FALSE_KEEP" if node.op == "and" else "JUMP_IF_TRUE_KEEP")
+        self.expression(node.right)
+        self.emit("CHECK_BOOL", self.code.const(("right", node.op)), node.position)
+        self.patch(jump)
+
+    def e_ListNode(self, node):
+        for item in node.items:
+            self.expression(item)
+        self.emit("BUILD_LIST", len(node.items), node.position)
+
+    def e_DictNode(self, node):
+        for entry in node.entries:
+            self.expression(entry.value)
+        keys = tuple(entry.key for entry in node.entries)
+        self.emit("BUILD_DICT", self.code.const(keys), node.position)
+
+    def e_InterpolationNode(self, node):
+        for part in node.parts:
+            self.expression(part)
+        self.emit("BUILD_STRING", len(node.parts), node.position)
+
+    def e_IndexNode(self, node):
+        self.expression(node.target)
+        self.expression(node.index)
+        self.emit("INDEX", None, node.position)
+
+    def e_SliceNode(self, node):
+        self.expression(node.target)
+        if node.start is not None:
+            self.expression(node.start)
+        if node.end is not None:
+            self.expression(node.end)
+        self.emit("SLICE", (node.start is not None, node.end is not None), node.position)
+
+    def e_MemberNode(self, node):
+        self.expression(node.target)
+        self.emit("GET_MEMBER", self.code.const(node.name), node.position)
+
+    def e_CallNode(self, node):
+        self.expression(node.callee)
+        for arg in node.args:
+            self.expression(arg)
+        self.emit("CALL", len(node.args), node.position)
+
+    # An assignment can only appear as a statement or on the right of '='.
+    def e_AssignNode(self, node):
+        self.value(node)
+
+    e_IndexAssignNode = e_AssignNode
+    e_MemberAssignNode = e_AssignNode
+
+
+def compile_ast(program):
+    """Compile a parsed program (a ProgramNode) to a module CodeObject."""
+    resolution = Resolver().resolve(program)
+    return Compiler(resolution).compile_program(program)
+
+
+def compile_source(source):
+    return compile_ast(Parser(Lexer(source).tokenize()).parse())
+
+
+# -- checking and showing bytecode ----------------------------------------------
+
+# How each instruction changes the stack depth (arg-dependent ones are
+# functions of the argument).
+STACK_EFFECT = {
+    "LOAD_CONST": 1, "POP": -1, "DUP": 1,
+    "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1, "LOAD_FREE": 1,
+    "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0,
+    "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
+    "NEG": 0, "POS": 0, "NOT": 0,
+    "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
+    "CHECK_BOOL": 0, "JUMP_IF_FALSE_KEEP": -1, "JUMP_IF_TRUE_KEEP": -1,
+    "BUILD_LIST": lambda n: 1 - n, "BUILD_DICT": None, "BUILD_STRING": lambda n: 1 - n,
+    "INDEX": -1, "SLICE": lambda flags: -sum(flags), "GET_MEMBER": 0,
+    "INDEX_ASSIGN_TARGET": 0, "INDEX_ASSIGN_KEY": 0, "INDEX_ASSIGN": -2,
+    "MEMBER_ASSIGN_TARGET": 0, "SET_MEMBER": -1,
+    "DELETE_TARGET": 0, "DELETE_KEY": -1, "DELETE_FILE": 0,
+    "JUMP": 0, "JUMP_IF_NOT_TRUE": -1,
+    "LOOP_NUMBER": 0, "RANGE_PREP": None, "RANGE_NEXT": None, "ITER_PREP": -1,
+    "ITER_NEXT": None,
+    "MAKE_FUNCTION": 1, "CALL": lambda n: -n, "RETURN": -1, "THROW": -1, "RERAISE": 0,
+    "STRAY": 0, "FAIL": 0, "IMPORT": 1, "IMPORT_NAME": 0, "EXPORT": 0,
+}
+ENDS_FLOW = frozenset(OP[name] for name in ("JUMP", "RETURN", "THROW", "RERAISE", "STRAY",
+                                            "FAIL"))
+
+
+def jump_target(code, index):
+    arg = code.args[index]
+    return arg[1] if isinstance(arg, tuple) else arg
+
+
+def stack_effect(code, index):
+    name = OPCODES[code.ops[index]]
+    arg = code.args[index]
+    effect = STACK_EFFECT[name]
+    if name == "BUILD_DICT":
+        return 1 - len(code.constants[arg])
+    if name == "RANGE_PREP":
+        return -(2 + arg[2])            # start, end and maybe step, into the state slot
+    if callable(effect):
+        return effect(arg)
+    return effect
+
+
+def branch_effect(code, index):
+    """(depth change if the jump is taken, if it falls through)."""
+    name = OPCODES[code.ops[index]]
+    if name in ("JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP"):
+        return 0, -1
+    if name == "RANGE_NEXT":
+        return 0, 1                     # the loop variable, when there is one
+    if name == "ITER_NEXT":
+        count = code.args[index][0]
+        return 0, None                  # resolved from the ITER_PREP that set the slot
+    effect = stack_effect(code, index)
+    return effect, effect
+
+
+class BytecodeError(Exception):
+    pass
+
+
+def verify(code):
+    """Check one CodeObject (and the functions in it) is well formed: every
+    jump lands inside the code, every slot and constant exists, no path
+    falls off the end, and the stack depth agrees wherever paths meet and
+    never goes negative. A compiler bug is caught here, before any VM runs
+    the code."""
+    count = len(code.ops)
+    iter_names = {}
+    for index in range(count):
+        name = OPCODES[code.ops[index]]
+        arg = code.args[index]
+        if name == "ITER_PREP":
+            iter_names[arg[0]] = arg[1]
+        if code.ops[index] in JUMPS:
+            target = jump_target(code, index)
+            if not isinstance(target, int) or not 0 <= target < count:
+                raise BytecodeError("{}: instruction {} jumps to {}".format(code.name, index, target))
+        if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE") and not (
+                0 <= arg < code.nslots):
+            raise BytecodeError("{}: instruction {} uses slot {}".format(code.name, index, arg))
+        if name == "LOAD_FREE" and not 0 <= arg < len(code.freevars):
+            raise BytecodeError("{}: instruction {} uses free variable {}".format(
+                code.name, index, arg))
+    depth = {0: 0}
+    work = [0]
+    for start, end, handler, kind in code.exception_table:
+        if not (0 <= start < end <= count and 0 <= handler < count):
+            raise BytecodeError("{}: bad exception table entry".format(code.name))
+        if handler not in depth:
+            depth[handler] = 1          # the error (or its text) is pushed
+            work.append(handler)
+        elif depth[handler] != 1:
+            raise BytecodeError("{}: handler {} entered at two depths".format(code.name, handler))
+    while work:
+        index = work.pop()
+        here = depth[index]
+        if index >= count:
+            raise BytecodeError("{}: execution falls off the end".format(code.name))
+        op = code.ops[index]
+        name = OPCODES[op]
+        if name == "ITER_NEXT":
+            taken, through = 0, iter_names.get(code.args[index][0], 1)
+        else:
+            taken, through = branch_effect(code, index)
+        nexts = []
+        if op in JUMPS:
+            nexts.append((jump_target(code, index), here + taken))
+        if op not in ENDS_FLOW:
+            nexts.append((index + 1, here + through))
+        if name == "RETURN" and here != 1:
+            raise BytecodeError("{}: RETURN at depth {}".format(code.name, here))
+        for target, new in nexts:
+            if new < 0:
+                raise BytecodeError("{}: the stack underflows at {}".format(code.name, index))
+            if target in depth:
+                if depth[target] != new:
+                    raise BytecodeError("{}: depth {} and {} meet at {}".format(
+                        code.name, depth[target], new, target))
+            else:
+                depth[target] = new
+                work.append(target)
+    for constant in code.constants:
+        if isinstance(constant, CodeObject):
+            verify(constant)
+    return True
+
+
+def show_constant(value):
+    if isinstance(value, CodeObject):
+        return "<code {}>".format(value.name)
+    if isinstance(value, BuiltinFunction):
+        return "<built-in {}>".format(value.name)
+    if value is NOTHING:
+        return "nothing"
+    if isinstance(value, tuple) and all(isinstance(item, tuple) for item in value):
+        return " -> ".join("{}:{}".format(kind, where) for kind, where in value)
+    return repr(value)
+
+
+def disassemble(code, source=None):
+    """Readable text for a CodeObject and every function inside it."""
+    lines = []
+    line_of = (lambda pos: None) if source is None else LineLookup(source)
+    queue = [code]
+    while queue:
+        current = queue.pop(0)
+        header = "code {}".format(current.name)
+        if current.params:
+            header += "({})".format(", ".join(current.slot_names[s] for s in current.params))
+        lines.append(header)
+        if current.slot_names:
+            lines.append("  slots: " + ", ".join(
+                "{}={}".format(index, name) for index, name in enumerate(current.slot_names)))
+        if current.freevars:
+            lines.append("  free:  " + ", ".join(
+                "{}={}".format(index, name) for index, name in enumerate(current.freevars)))
+        if current.closure:
+            lines.append("  closure (made from the enclosing frame): " + ", ".join(
+                "{}:{}".format(kind, where) for kind, where in current.closure))
+        targets = {jump_target(current, i) for i in range(len(current.ops))
+                   if current.ops[i] in JUMPS}
+        targets |= {entry[2] for entry in current.exception_table}
+        last_line = None
+        for index, op in enumerate(current.ops):
+            name = OPCODES[op]
+            arg = current.args[index]
+            line = line_of(current.positions[index])
+            shown_line = "" if line is None or line == last_line else str(line)
+            if line is not None:
+                last_line = line
+            text = describe_arg(current, name, arg)
+            marker = ">>" if index in targets else "  "
+            lines.append("  {:>4} {} {:4d} {:<21}{}".format(
+                shown_line, marker, index, name, text).rstrip())
+        for start, end, handler, kind in current.exception_table:
+            lines.append("  exception: {}-{} -> {} ({})".format(start, end - 1, handler, kind))
+        lines.append("")
+        queue.extend(c for c in current.constants if isinstance(c, CodeObject))
+    return "\n".join(lines)
+
+
+def describe_arg(code, name, arg):
+    if arg is None:
+        return ""
+    if name in ("LOAD_CONST", "LOAD_CHAIN", "STORE_CHAIN", "BUILD_DICT", "GET_MEMBER",
+                "SET_MEMBER", "EXPORT", "IMPORT", "IMPORT_NAME", "STRAY", "FAIL", "LOOP_NUMBER",
+                "CHECK_BOOL", "NEW_CELLS", "MAKE_FUNCTION"):
+        value = code.constants[arg]
+        if name == "NEW_CELLS":
+            return " ".join("{}({})".format(s, code.slot_names[s]) for s in value)
+        if name == "CHECK_BOOL":
+            return "{} side of '{}'".format(*value)
+        return "{} ({})".format(arg, show_constant(value))
+    if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE"):
+        return "{} ({})".format(arg, code.slot_names[arg])
+    if name == "LOAD_FREE":
+        return "{} ({})".format(arg, code.freevars[arg])
+    if name in ("LOAD_GLOBAL", "STORE_GLOBAL"):
+        return arg
+    if name == "JUMP_IF_NOT_TRUE":
+        return "to {} ({} condition)".format(arg[1], code.constants[arg[0]])
+    if name in ("RANGE_NEXT", "ITER_NEXT"):
+        return "{} ({}), done: to {}".format(arg[0], code.slot_names[arg[0]], arg[1])
+    if name == "RANGE_PREP":
+        return "{} ({}){}{}".format(arg[0], code.slot_names[arg[0]],
+                                    " downto" if arg[1] else "", " +step" if arg[2] else "")
+    if name == "ITER_PREP":
+        return "{} ({}), {} name{}".format(arg[0], code.slot_names[arg[0]], arg[1],
+                                           "s" if arg[1] > 1 else "")
+    if name in ("JUMP", "JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP"):
+        return "to {}".format(arg)
+    if name == "SLICE":
+        return "[{}:{}]".format("start" if arg[0] else "", "end" if arg[1] else "")
+    return str(arg)
+
+
+class LineLookup:
+    def __init__(self, source):
+        self.starts = [start for start, _ in line_spans(source)]
+
+    def __call__(self, position):
+        if position is None:
+            return None
+        return bisect.bisect_right(self.starts, position)
+
+
 def type_gate(ast, source, base_dir=None):
     """Refuse to run a program that fails its type check (M1, gradual
     typing). A program with no annotations and no imports cannot break a
@@ -4035,6 +5268,9 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Multi-line input: an unclosed '{' keeps the prompt open as '  ... '.
   Finish the block with '}' (or press Ctrl-C to throw the draft away).
   Ctrl-C also stops a runaway loop.
+
+  Bytecode: `novalang.py --dis file.nova` prints the bytecode a program
+  compiles to (M4), without running it.
 
   Toolchain: `novalang.py --check file.nova` lints a program without
   running it (undefined names, unused variables, unreachable code),
@@ -4373,6 +5609,35 @@ def run_bootstrap(args):
     return bootstrap.run_bootstrap(args[0], script_args=args[1:])
 
 
+def dis_main(paths):
+    """`--dis file.nova ...` - compile each file and print its bytecode
+    (checked by verify() first). Nothing is run."""
+    if not paths:
+        print("usage: novalang.py --dis file.nova [more.nova ...]", file=sys.stderr)
+        return 2
+    status = 0
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                source = handle.read()
+        except OSError as problem:
+            print("cannot read {}: {}".format(path, problem), file=sys.stderr)
+            status = 2
+            continue
+        try:
+            code = compile_source(source)
+        except NovaError as error:
+            print(path, file=sys.stderr)
+            print(error.render(source), file=sys.stderr)
+            status = 2
+            continue
+        verify(code)
+        if len(paths) > 1:
+            print("== " + path)
+        print(disassemble(code, source))
+    return status
+
+
 def load_tool(filename):
     """Load tools/<filename> (nova-fmt.py, nova-lint.py). Their names have
     dashes, so they are loaded by path rather than imported by name."""
@@ -4400,6 +5665,8 @@ def main(argv):
         return load_tool("nova-lint.py").main(["novalang.py --check"] + args[1:])
     if args[0] == "--typecheck":
         return typecheck_tool().main(["novalang.py --typecheck"] + args[1:])
+    if args[0] == "--dis":
+        return dis_main(args[1:])
     if args[0] == "--format":
         if len(args) < 2:
             print("usage: novalang.py --format file.nova [more.nova ...]", file=sys.stderr)

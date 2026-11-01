@@ -1,0 +1,59 @@
+# try/catch/finally, and every way out of one.
+def returns_through_finally(n) {
+    try {
+        if n > 0 {
+            return "positive"
+        }
+        throw("not positive")
+    } catch problem {
+        return "caught: " + problem
+    } finally {
+        print("always")
+    }
+}
+
+def nested() {
+    try {
+        try {
+            return 1
+        } finally {
+            print("inner finally")
+        }
+    } finally {
+        print("outer finally")
+    }
+}
+
+def finally_wins() {
+    try {
+        return "from try"
+    } finally {
+        return "from finally"
+    }
+}
+
+def loops_through_finally() {
+    for i = 1 to 5 {
+        try {
+            if i == 2 {
+                continue
+            }
+            if i == 4 {
+                break
+            }
+        } finally {
+            print(i)
+        }
+    }
+}
+
+def stray() {
+    break  # not in a loop: an error when it runs
+}
+
+try {
+    print("top level")
+} catch {
+    print("no name")
+}
+return  # top level: an error when it runs
