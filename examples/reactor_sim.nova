@@ -51,7 +51,7 @@ def tick(reactor) {
         reactor.temp = cooled
         return
     }
-    let jitter = random() * 40 - 15               # ~ Python's random.uniform(-15, 25)
+    let jitter = random() * 40 - 15  # ~ Python's random.uniform(-15, 25)
     let heated = reactor.temp + reactor.power * 6 + jitter
     if heated < 20.0 { heated = 20.0 }
     reactor.temp = heated

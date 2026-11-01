@@ -25,7 +25,7 @@ print(person)
 
 # ---- delete ----
 delete person.country
-delete person["job"]          # deleting a key that is not there is harmless
+delete person["job"]  # deleting a key that is not there is harmless
 print(person)
 
 # ---- in ----
@@ -57,7 +57,7 @@ print(employee.address)
 let a = {x: 1, y: 2}
 let b = {y: 3, z: 4}
 print(a + b)
-print(a, b)                   # merging leaves both originals alone
+print(a, b)  # merging leaves both originals alone
 
 # ---- equality is by content ----
 print({x: 1} == {x: 1}, {x: 1} == {x: 2}, {} == {})

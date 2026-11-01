@@ -567,7 +567,13 @@ def parse_function_def(p) {
     }
     p_expect(p, "RPAREN", "a ')' to close the parameter list")
     let body = parse_block(p)
-    return {kind: "FunctionDef", name: name["value"], params: params, body: body, pos: keyword["pos"]}
+    return {
+        kind: "FunctionDef",
+        name: name["value"],
+        params: params,
+        body: body,
+        pos: keyword["pos"]
+    }
 }
 
 def parse_return(p) {
@@ -590,9 +596,22 @@ def parse_if(p) {
         } else {
             else_block = parse_block(p)
         }
-        return {kind: "If", condition: condition, then_block: then_block, has_else: true, else_block: else_block, pos: keyword["pos"]}
+        return {
+            kind: "If",
+            condition: condition,
+            then_block: then_block,
+            has_else: true,
+            else_block: else_block,
+            pos: keyword["pos"]
+        }
     }
-    return {kind: "If", condition: condition, then_block: then_block, has_else: false, pos: keyword["pos"]}
+    return {
+        kind: "If",
+        condition: condition,
+        then_block: then_block,
+        has_else: false,
+        pos: keyword["pos"]
+    }
 }
 
 def parse_while(p) {
@@ -600,7 +619,14 @@ def parse_while(p) {
     let condition = parse_expression(p)
     let body = parse_block(p)
     if p_optional_keyword(p, "ELSE") {
-        return {kind: "While", condition: condition, body: body, has_else: true, else_block: parse_block(p), pos: keyword["pos"]}
+        return {
+            kind: "While",
+            condition: condition,
+            body: body,
+            has_else: true,
+            else_block: parse_block(p),
+            pos: keyword["pos"]
+        }
     }
     return {kind: "While", condition: condition, body: body, has_else: false, pos: keyword["pos"]}
 }
@@ -616,9 +642,28 @@ def parse_for(p) {
         let iterable = parse_expression(p)
         let body = parse_block(p)
         if p_optional_keyword(p, "ELSE") {
-            return {kind: "ForIn", name: name["value"], has_second: true, second_name: second["value"], iterable: iterable, body: body, has_else: true, else_block: parse_block(p), pos: keyword["pos"]}
+            return {
+                kind: "ForIn",
+                name: name["value"],
+                has_second: true,
+                second_name: second["value"],
+                iterable: iterable,
+                body: body,
+                has_else: true,
+                else_block: parse_block(p),
+                pos: keyword["pos"]
+            }
         }
-        return {kind: "ForIn", name: name["value"], has_second: true, second_name: second["value"], iterable: iterable, body: body, has_else: false, pos: keyword["pos"]}
+        return {
+            kind: "ForIn",
+            name: name["value"],
+            has_second: true,
+            second_name: second["value"],
+            iterable: iterable,
+            body: body,
+            has_else: false,
+            pos: keyword["pos"]
+        }
     }
 
     if p_current(p)["kind"] == "IN" {
@@ -626,9 +671,26 @@ def parse_for(p) {
         let iterable = parse_expression(p)
         let body = parse_block(p)
         if p_optional_keyword(p, "ELSE") {
-            return {kind: "ForIn", name: name["value"], has_second: false, iterable: iterable, body: body, has_else: true, else_block: parse_block(p), pos: keyword["pos"]}
+            return {
+                kind: "ForIn",
+                name: name["value"],
+                has_second: false,
+                iterable: iterable,
+                body: body,
+                has_else: true,
+                else_block: parse_block(p),
+                pos: keyword["pos"]
+            }
         }
-        return {kind: "ForIn", name: name["value"], has_second: false, iterable: iterable, body: body, has_else: false, pos: keyword["pos"]}
+        return {
+            kind: "ForIn",
+            name: name["value"],
+            has_second: false,
+            iterable: iterable,
+            body: body,
+            has_else: false,
+            pos: keyword["pos"]
+        }
     }
 
     p_expect(p, "EQUALS", "a '=' or 'in' after the loop variable")
@@ -646,16 +708,42 @@ def parse_for(p) {
     }
     let body = parse_block(p)
     if p_optional_keyword(p, "ELSE") {
-        return {kind: "For", name: name["value"], start: start, end: end, step: step_node, descending: descending, body: body, has_else: true, else_block: parse_block(p), pos: keyword["pos"]}
+        return {
+            kind: "For",
+            name: name["value"],
+            start: start,
+            end: end,
+            step: step_node,
+            descending: descending,
+            body: body,
+            has_else: true,
+            else_block: parse_block(p),
+            pos: keyword["pos"]
+        }
     }
-    return {kind: "For", name: name["value"], start: start, end: end, step: step_node, descending: descending, body: body, has_else: false, pos: keyword["pos"]}
+    return {
+        kind: "For",
+        name: name["value"],
+        start: start,
+        end: end,
+        step: step_node,
+        descending: descending,
+        body: body,
+        has_else: false,
+        pos: keyword["pos"]
+    }
 }
 
 def parse_let(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a name after 'let'")
     p_expect(p, "EQUALS", "a '=' after the name in a 'let'")
-    return {kind: "Let", name: name["value"], value: parse_expression_statement(p), pos: keyword["pos"]}
+    return {
+        kind: "Let",
+        name: name["value"],
+        value: parse_expression_statement(p),
+        pos: keyword["pos"]
+    }
 }
 
 def parse_try(p) {
@@ -682,9 +770,17 @@ def parse_try(p) {
     if not has_catch and not has_finally {
         p_error("a 'try' needs a 'catch', a 'finally', or both", keyword["pos"])
     }
-    return {kind: "Try", body: body, has_catch: has_catch, catch_has_name: catch_has_name,
-            catch_name: catch_name, catch_block: catch_block, has_finally: has_finally,
-            finally_block: finally_block, pos: keyword["pos"]}
+    return {
+        kind: "Try",
+        body: body,
+        has_catch: has_catch,
+        catch_has_name: catch_has_name,
+        catch_name: catch_name,
+        catch_block: catch_block,
+        has_finally: has_finally,
+        finally_block: finally_block,
+        pos: keyword["pos"]
+    }
 }
 
 def parse_throw(p) {
@@ -706,7 +802,12 @@ def parse_delete(p) {
     }
     let target = parse_expression(p)
     if target["kind"] == "Member" {
-        return {kind: "Delete", target: target["target"], key: {kind: "String", value: target["name"]}, pos: keyword["pos"]}
+        return {
+            kind: "Delete",
+            target: target["target"],
+            key: {kind: "String", value: target["name"]},
+            pos: keyword["pos"]
+        }
     }
     if target["kind"] == "Index" {
         return {kind: "Delete", target: target["target"], key: target["index"], pos: keyword["pos"]}
@@ -720,7 +821,13 @@ def parse_import(p) {
     if p_current(p)["kind"] == "AS" {
         p_advance(p)
         let alias = p_expect(p, "IDENT", "a name after 'as'")
-        return {kind: "Import", path: path["value"], mode: "as", alias: alias["value"], pos: keyword["pos"]}
+        return {
+            kind: "Import",
+            path: path["value"],
+            mode: "as",
+            alias: alias["value"],
+            pos: keyword["pos"]
+        }
     }
     if p_current(p)["kind"] == "WITH" {
         p_advance(p)
@@ -733,7 +840,13 @@ def parse_import(p) {
             }
             p_advance(p)
         }
-        return {kind: "Import", path: path["value"], mode: "with", names: names, pos: keyword["pos"]}
+        return {
+            kind: "Import",
+            path: path["value"],
+            mode: "with",
+            names: names,
+            pos: keyword["pos"]
+        }
     }
     return {kind: "Import", path: path["value"], mode: "plain", pos: keyword["pos"]}
 }
@@ -762,10 +875,22 @@ def parse_expression_statement(p) {
         return {kind: "Assign", name: node["name"], value: value, pos: node["pos"]}
     }
     if node["kind"] == "Index" {
-        return {kind: "IndexAssign", target: node["target"], index: node["index"], value: value, pos: node["pos"]}
+        return {
+            kind: "IndexAssign",
+            target: node["target"],
+            index: node["index"],
+            value: value,
+            pos: node["pos"]
+        }
     }
     if node["kind"] == "Member" {
-        return {kind: "MemberAssign", target: node["target"], name: node["name"], value: value, pos: node["pos"]}
+        return {
+            kind: "MemberAssign",
+            target: node["target"],
+            name: node["name"],
+            value: value,
+            pos: node["pos"]
+        }
     }
     p_error("the left side of '=' must be a variable, a list item or a field", equals["pos"])
 }
@@ -888,8 +1013,15 @@ def parse_index_or_slice(p, target, bracket) {
             end = parse_expression(p)
         }
         p_expect(p, "RBRACKET", "a ']' to close the slice")
-        return {kind: "Slice", target: target, has_start: has_start, start: start,
-                has_end: has_end, end: end, pos: bracket["pos"]}
+        return {
+            kind: "Slice",
+            target: target,
+            has_start: has_start,
+            start: start,
+            has_end: has_end,
+            end: end,
+            pos: bracket["pos"]
+        }
     }
     if not has_start {
         p_error("an index cannot be empty", bracket["pos"])
@@ -929,7 +1061,11 @@ def parse_fstring_node(token) {
         if part["kind"] == "text" {
             append(parts, {kind: "String", value: part["value"]})
         } else {
-            let inner = {tokens: tokenize(part["source"]), index: 0, last_statement: {kind: "Program"}}
+            let inner = {
+                tokens: tokenize(part["source"]),
+                index: 0,
+                last_statement: {kind: "Program"}
+            }
             let expr = parse_expression(inner)
             if p_current(inner)["kind"] != "EOF" {
                 p_error("unexpected " + p_describe(p_current(inner)) + " inside this f-string", part["pos"])
@@ -2002,7 +2138,13 @@ def exec_stmt(node, scope) {
         return sig_continue()
     }
     if kind == "FunctionDef" {
-        env_define(scope, node["name"], {kind: "function", name: node["name"], params: node["params"], body: node["body"], closure: scope})
+        env_define(scope, node["name"], {
+            kind: "function",
+            name: node["name"],
+            params: node["params"],
+            body: node["body"],
+            closure: scope
+        })
         return sig_normal()
     }
     if kind == "Return" {
@@ -2052,10 +2194,10 @@ def exec_stmt(node, scope) {
 # the same absolute path is what makes the module cache and the circular-
 # import check trustworthy.
 
-let MODULE_CACHE = {}          # absolute path -> exports dict
-let MODULE_LOADING = []        # absolute paths currently being loaded
-let FILE_STACK = []            # directories of files currently executing
-let EXPORT_STACK = [{}]        # current module's {name: value} being built
+let MODULE_CACHE = {}    # absolute path -> exports dict
+let MODULE_LOADING = []  # absolute paths currently being loaded
+let FILE_STACK = []      # directories of files currently executing
+let EXPORT_STACK = [{}]  # current module's {name: value} being built
 
 def current_dir() {
     if len(FILE_STACK) == 0 {
@@ -2107,7 +2249,7 @@ def default_module_name(raw_path, pos) {
         j = j - 1
     }
     let stem = name[:dot]
-    let valid = len(stem) > 0 and (is_alpha(stem[0:1]))
+    let valid = len(stem) > 0 and is_alpha(stem[0:1])
     let k = 1
     while valid and k < len(stem) {
         if not is_alnum(stem[k:k + 1]) {
