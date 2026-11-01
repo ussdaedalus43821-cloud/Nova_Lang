@@ -23,6 +23,7 @@ BENCHMARKS = [
     ("self_host_test --bootstrap", ["--bootstrap", "examples/self_host_test.nova"]),
     ("loops (200k iterations)", ["tests/bench/loops.nova"]),
     ("closures (100k closure calls)", ["tests/bench/closures.nova"]),
+    ("index_assign (550k stores and deletes)", ["tests/bench/index_assign.nova"]),
 ]
 
 

@@ -1,0 +1,43 @@
+# Benchmark: assignment through an index, a member and delete, in loops
+# inside a function (where OmniCalc's perf calibration does it).
+#   d["k"] = v    INDEX_ASSIGN_TARGET, INDEX_ASSIGN_KEY, INDEX_ASSIGN on a dict
+#   xs[i] = v     the same three opcodes on a list
+#   d.k = v       MEMBER_ASSIGN_TARGET, SET_MEMBER
+#   delete d[k]   DELETE_TARGET, DELETE_KEY
+def dict_updates(n) {
+    let acc = {total: 0}
+    for i = 1 to n {
+        acc["total"] = (acc.total + i * 7) % 1000003
+    }
+    return acc.total
+}
+
+def list_updates(n) {
+    let xs = [0, 0, 0, 0, 0, 0, 0, 0]
+    for i = 1 to n {
+        xs[i % 8] = xs[(i + 3) % 8] + i
+    }
+    return xs[0] + xs[7]
+}
+
+def member_updates(n) {
+    let point = {x: 0, y: 0}
+    for i = 1 to n {
+        point.x = point.y + i
+        point.y = point.x % 1000
+    }
+    return point.x
+}
+
+def deletes(n) {
+    let seen = {}
+    let total = 0
+    for i = 1 to n {
+        seen["a"] = i
+        delete seen["a"]
+        total = total + len(seen)
+    }
+    return total
+}
+
+print(dict_updates(150000), list_updates(150000), member_updates(150000), deletes(100000))
