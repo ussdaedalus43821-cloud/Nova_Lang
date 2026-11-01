@@ -5304,8 +5304,6 @@ def execute(interpreter, entry):
     THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]; STRAY_ = OP["STRAY"]
     FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]; IMPORT_NAME_ = OP["IMPORT_NAME"]
     EXPORT_ = OP["EXPORT"]
-    binary = {ADD_: "+", SUB_: "-", MUL_: "*", DIV_: "/", FLOOR_DIV_: "//", MOD_: "%"}
-    compare = {EQ_: "==", NE_: "!=", LT_: "<", GT_: ">", LE_: "<=", GE_: ">=", IN_: "in"}
 
     code = frame.code
     ops, args, consts, positions = code.ops, code.args, code.constants, code.positions
@@ -5323,70 +5321,6 @@ def execute(interpreter, entry):
                     stack.append(slots[arg])
                 elif op == LOAD_CONST_:
                     stack.append(consts[arg])
-                elif op == STORE_FAST_:
-                    slots[arg] = stack.pop()
-                elif op == LOAD_GLOBAL_:
-                    value = glob.get(arg, UNSET)
-                    if value is UNSET:
-                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
-                    stack.append(value)
-                elif op == STORE_GLOBAL_:
-                    glob[arg] = stack.pop()
-                elif op == LOAD_CELL_:
-                    stack.append(slots[arg].value)
-                elif op == STORE_CELL_:
-                    slots[arg].value = stack.pop()
-                elif op == LOAD_CHAIN_:
-                    for kind, where in consts[arg]:
-                        if kind == "fast":
-                            value = slots[where]
-                        elif kind == "cell":
-                            value = slots[where].value
-                        elif kind == "free":
-                            value = cells[where].value
-                        else:
-                            value = glob.get(where, UNSET)
-                            name = where
-                        if value is not UNSET:
-                            stack.append(value)
-                            break
-                    else:
-                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
-                elif op == STORE_CHAIN_:
-                    value = stack.pop()
-                    chain = consts[arg]
-                    last = len(chain) - 1
-                    for index, (kind, where) in enumerate(chain):
-                        if kind == "fast":
-                            if index == last or slots[where] is not UNSET:
-                                slots[where] = value
-                                break
-                        elif kind == "cell":
-                            if index == last or slots[where].value is not UNSET:
-                                slots[where].value = value
-                                break
-                        elif kind == "free":
-                            if index == last or cells[where].value is not UNSET:
-                                cells[where].value = value
-                                break
-                        elif index == last or where in glob:
-                            glob[where] = value
-                            break
-                elif op == NEW_CELLS_:
-                    for slot in consts[arg]:
-                        slots[slot] = Cell()
-                elif op == POP_:
-                    stack.pop()
-                elif op == DUP_:
-                    stack.append(stack[-1])
-                elif op in binary:
-                    right = stack.pop()
-                    stack[-1] = binary_operation(binary[op], stack[-1], right, positions[ip - 1])
-                elif op in compare:
-                    right = stack.pop()
-                    stack[-1] = compare_operation(compare[op], stack[-1], right, positions[ip - 1])
-                elif op == JUMP_:
-                    ip = arg
                 elif op == JUMP_IF_NOT_TRUE_:
                     value = stack.pop()
                     if value is not True:
@@ -5441,6 +5375,51 @@ def execute(interpreter, entry):
                                                  frame.globals)
                     ip = frame.ip
                     stack.append(value)
+                elif op == LOAD_GLOBAL_:
+                    value = glob.get(arg, UNSET)
+                    if value is UNSET:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
+                elif op == INDEX_:
+                    index = stack.pop()
+                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                elif op == EQ_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("==", stack[-1], right, positions[ip - 1])
+                elif op == STORE_FAST_:
+                    slots[arg] = stack.pop()
+                elif op == LOAD_CHAIN_:
+                    for kind, where in consts[arg]:
+                        if kind == "fast":
+                            value = slots[where]
+                        elif kind == "cell":
+                            value = slots[where].value
+                        elif kind == "free":
+                            value = cells[where].value
+                        else:
+                            value = glob.get(where, UNSET)
+                            name = where
+                        if value is not UNSET:
+                            stack.append(value)
+                            break
+                    else:
+                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
+                elif op == ADD_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("+", stack[-1], right, positions[ip - 1])
+                elif op == SUB_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("-", stack[-1], right, positions[ip - 1])
+                elif op == LT_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("<", stack[-1], right, positions[ip - 1])
+                elif op == MOD_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("%", stack[-1], right, positions[ip - 1])
+                elif op == STORE_GLOBAL_:
+                    glob[arg] = stack.pop()
+                elif op == JUMP_:
+                    ip = arg
                 elif op == RANGE_NEXT_:
                     state = slots[arg[0]]
                     index = state[3]
@@ -5462,6 +5441,8 @@ def execute(interpreter, entry):
                             stack.append(item[1])
                         else:
                             stack.append(item)
+                elif op == POP_:
+                    stack.pop()
                 elif op == CHECK_BOOL_:
                     side, name = consts[arg]
                     logical_side(stack[-1], side, name, positions[ip - 1])
@@ -5475,14 +5456,34 @@ def execute(interpreter, entry):
                         ip = arg
                     else:
                         stack.pop()
-                elif op == NEG_ or op == POS_:
-                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
-                                                positions[ip - 1])
-                elif op == NOT_:
-                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
-                elif op == INDEX_:
-                    index = stack.pop()
-                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                elif op == IN_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
+                elif op == NE_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("!=", stack[-1], right, positions[ip - 1])
+                elif op == GT_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation(">", stack[-1], right, positions[ip - 1])
+                elif op == LE_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation("<=", stack[-1], right, positions[ip - 1])
+                elif op == GE_:
+                    right = stack.pop()
+                    stack[-1] = compare_operation(">=", stack[-1], right, positions[ip - 1])
+                elif op == MUL_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("*", stack[-1], right, positions[ip - 1])
+                elif op == FLOOR_DIV_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("//", stack[-1], right, positions[ip - 1])
+                elif op == DIV_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("/", stack[-1], right, positions[ip - 1])
+                elif op == LOAD_CELL_:
+                    stack.append(slots[arg].value)
+                elif op == STORE_CELL_:
+                    slots[arg].value = stack.pop()
                 elif op == GET_MEMBER_:
                     stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
                 elif op == BUILD_LIST_:
@@ -5492,6 +5493,10 @@ def execute(interpreter, entry):
                     else:
                         items = []
                     stack.append(items)
+                elif op == DUP_:
+                    stack.append(stack[-1])
+                elif op == NOT_:
+                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
                 elif op == BUILD_DICT_:
                     keys = consts[arg]
                     if keys:
@@ -5505,6 +5510,37 @@ def execute(interpreter, entry):
                     if arg:
                         del stack[-arg:]
                     stack.append(interpolate(parts))
+                elif op == STORE_CHAIN_:
+                    value = stack.pop()
+                    chain = consts[arg]
+                    last = len(chain) - 1
+                    for index, (kind, where) in enumerate(chain):
+                        if kind == "fast":
+                            if index == last or slots[where] is not UNSET:
+                                slots[where] = value
+                                break
+                        elif kind == "cell":
+                            if index == last or slots[where].value is not UNSET:
+                                slots[where].value = value
+                                break
+                        elif kind == "free":
+                            if index == last or cells[where].value is not UNSET:
+                                cells[where].value = value
+                                break
+                        elif index == last or where in glob:
+                            glob[where] = value
+                            break
+                elif op == NEW_CELLS_:
+                    for slot in consts[arg]:
+                        slots[slot] = Cell()
+                elif op == MAKE_FUNCTION_:
+                    child = consts[arg]
+                    closure = tuple(slots[where] if kind == "cell" else cells[where]
+                                    for kind, where in child.closure)
+                    stack.append(vm_function(child, closure, glob))
+                elif op == NEG_ or op == POS_:
+                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
+                                                positions[ip - 1])
                 elif op == SLICE_TARGET_:
                     slice_target(stack[-1], positions[ip - 1])
                 elif op == SLICE_BOUND_:
@@ -5547,11 +5583,6 @@ def execute(interpreter, entry):
                     slot, names = arg
                     items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
                     slots[slot] = [items, 0, names == 2]
-                elif op == MAKE_FUNCTION_:
-                    child = consts[arg]
-                    closure = tuple(slots[where] if kind == "cell" else cells[where]
-                                    for kind, where in child.closure)
-                    stack.append(vm_function(child, closure, glob))
                 elif op == THROW_:
                     raise throw_error(stack.pop(), positions[ip - 1])
                 elif op == RERAISE_:
