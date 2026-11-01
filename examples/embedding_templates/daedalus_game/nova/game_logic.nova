@@ -109,7 +109,7 @@ def resolve_player_hits() {
         if enemy["hp"] > 0 and distance(enemy["x"], enemy["y"], player.x, player.y) < 1.0 {
             player.hp = player.hp - enemy["damage"]
             player.score = player.score + 10
-            enemy["hp"] = 0                  # a hit on the player destroys the enemy too
+            enemy["hp"] = 0  # a hit on the player destroys the enemy too
         }
     }
 }

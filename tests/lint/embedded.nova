@@ -1,0 +1,5 @@
+# nova-lint: globals score, spawn_enemy
+# A script for an embedding host, which defines the two names above.
+spawn_enemy("orc")
+print(score)
+print(not_declared)             # E001

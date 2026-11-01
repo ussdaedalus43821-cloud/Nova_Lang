@@ -1,0 +1,3 @@
+tests/lint/unused.nova:4:1: W001 'never_read' is assigned but never used
+tests/lint/unused.nova:8:5: W001 'local' is assigned but never used
+tests/lint/unused.nova:16:5: W001 'total' is assigned but never used
