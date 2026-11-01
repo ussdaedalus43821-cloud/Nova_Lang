@@ -2861,6 +2861,344 @@ class Environment:
 # 4. Interpreter  (AST -> a value), tree-walking
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Shared operations (M4). What each operation *means* lives here, once, and
+# both engines call it: the tree-walking Interpreter and the bytecode VM.
+# The engines differ only in how they get the operands - and in what order
+# they evaluate them, which each preserves exactly - never in what an
+# operation does with them, so they cannot drift apart.
+# ---------------------------------------------------------------------------
+
+def binary_operation(op, left, right, position):
+    # "abc" + "def" is the one non-numeric arithmetic we allow.
+    if op == "+" and isinstance(left, str) and isinstance(right, str):
+        return left + right
+
+    # "Ha" * 3 repeats a string; the number may be on either side.
+    if op == "*" and (isinstance(left, str) or isinstance(right, str)):
+        text, count = (left, right) if isinstance(left, str) else (right, left)
+        if isinstance(text, str) and is_number(count):
+            times = whole_number(count, "string repetition", position)
+            if times < 0:
+                raise NovaError(
+                    "a string cannot be repeated a negative number of times", position
+                )
+            if len(text) * times > MAX_LIST_LENGTH:
+                raise NovaError(
+                    "repeating that string {} times would be too long".format(times),
+                    position,
+                )
+            return text * times
+
+    # Two dictionaries merge with '+'; the right-hand side wins.
+    if op == "+" and isinstance(left, dict) and isinstance(right, dict):
+        merged = dict(left)
+        merged.update(right)
+        return merged
+
+    # Lists join with '+' and repeat with '*', always into a new list.
+    if op == "+" and isinstance(left, list) and isinstance(right, list):
+        return left + right
+
+    if op == "*" and (isinstance(left, list) or isinstance(right, list)):
+        items, count = (left, right) if isinstance(left, list) else (right, left)
+        if not isinstance(items, list) or not is_number(count):
+            raise NovaError(
+                "a list can only be repeated by a whole number, not by {}".format(
+                    type_name(right if isinstance(left, list) else left)
+                ),
+                position,
+            )
+        times = whole_number(count, "list repetition", position)
+        if times < 0:
+            raise NovaError("a list cannot be repeated a negative number of times",
+                            position)
+        if len(items) * times > MAX_LIST_LENGTH:
+            raise NovaError(
+                "repeating that list {} times would exceed {} items".format(
+                    times, MAX_LIST_LENGTH
+                ),
+                position,
+            )
+        return items * times
+
+    if not is_number(left) or not is_number(right):
+        raise NovaError(
+            "cannot use '{}' on {} and {}".format(op, type_name(left), type_name(right)),
+            position,
+        )
+
+    if op == "+":
+        return left + right
+    if op == "-":
+        return left - right
+    if op == "*":
+        return left * right
+    if op == "/":
+        if right == 0:
+            raise NovaError("division by zero", position)
+        result = left / right
+        # Keep whole answers whole: 10 / 2 is 5, not 5.0
+        if isinstance(left, int) and isinstance(right, int) and result.is_integer():
+            return int(result)
+        return result
+    if op == "//":
+        if right == 0:
+            raise NovaError("integer division by zero", position)
+        return left // right            # rounds towards negative infinity
+    if op == "%":
+        if right == 0:
+            raise NovaError("cannot take the remainder of a division by zero",
+                            position)
+        return left % right             # the sign follows the right-hand side
+
+    raise NovaError("unknown operator {!r}".format(op), position)
+
+
+def compare_operation(op, left, right, position):
+    if op == "==":
+        return nova_equals(left, right)
+    if op == "!=":
+        return not nova_equals(left, right)
+    if op == "in":
+        return nova_contains(left, right, position)
+
+    ordered = (is_number(left) and is_number(right)) or (
+        isinstance(left, str) and isinstance(right, str)
+    )
+    if not ordered:
+        raise NovaError(
+            "cannot compare {} with {} using '{}'".format(
+                type_name(left), type_name(right), op
+            ),
+            position,
+        )
+
+    if op == "<":
+        return left < right
+    if op == ">":
+        return left > right
+    if op == "<=":
+        return left <= right
+    if op == ">=":
+        return left >= right
+
+    raise NovaError("unknown comparison {!r}".format(op), position)
+
+
+def unary_operation(op, value, position):
+    if not is_number(value):
+        raise NovaError(
+            "cannot apply unary '{}' to {}".format(op, type_name(value)), position
+        )
+    return value if op == "+" else -value
+
+
+def not_operation(value, position):
+    if not isinstance(value, bool):
+        raise NovaError(
+            "'not' needs true or false, but this is {}".format(type_name(value)),
+            position,
+        )
+    return not value
+
+
+def logical_side(value, side, op, position):
+    """`and` / `or` take only true or false, on either side."""
+    if not isinstance(value, bool):
+        raise NovaError(
+            "the {} side of '{}' must be true or false, but it is {}".format(
+                side, op, type_name(value)
+            ),
+            position,
+        )
+    return value
+
+
+def condition_check(value, keyword, position):
+    """Conditions are strict: only true or false will do."""
+    if not isinstance(value, bool):
+        raise NovaError(
+            "a '{}' condition must be true or false, but this is {}".format(
+                keyword, type_name(value)
+            ),
+            position,
+        )
+    return value
+
+
+def index_operation(target, index, position):
+    if isinstance(target, dict):
+        return lookup_key(target, dict_key(index, position), position)
+    return target[normalize_index(target, index, position)]
+
+
+def member_operation(target, name, position):
+    if not isinstance(target, dict):
+        raise NovaError(
+            "{} has no fields, so '.{}' means nothing here".format(
+                type_name(target), name
+            ),
+            position,
+        )
+    return lookup_key(target, name, position)
+
+
+def member_assign_target(target, position):
+    """`x.f = v` refuses a non-dictionary before v is evaluated."""
+    if not isinstance(target, dict):
+        raise NovaError(
+            "only a dictionary can have fields set, but this is {}".format(
+                type_name(target)
+            ),
+            position,
+        )
+
+
+def index_assign_target(target, position):
+    """`x[i] = v` refuses a string before i is evaluated."""
+    if isinstance(target, str):
+        raise NovaError(
+            "strings cannot be changed in place - build a new one instead",
+            position,
+        )
+
+
+def index_assign_key(target, index, position):
+    """...and checks a dictionary's key before v is evaluated."""
+    if isinstance(target, dict):
+        return dict_key(index, position)
+    return index
+
+
+def index_assign(target, index, value, position):
+    if isinstance(target, dict):
+        target[index] = value                         # a new key is fine
+        return value
+    spot = normalize_index(target, index, position)
+    target[spot] = value
+    return value
+
+
+def slice_target(target, position):
+    if not isinstance(target, (list, str)):
+        raise NovaError("{} cannot be sliced".format(type_name(target)), position)
+
+
+def slice_bound(value, position):
+    return whole_number(value, "a slice bound", position)
+
+
+def delete_target(target, position):
+    if not isinstance(target, dict):
+        raise NovaError(
+            "delete works on dictionary entries, but this is {}{}".format(
+                type_name(target),
+                " - use pop() to remove a list item" if isinstance(target, list) else "",
+            ),
+            position,
+        )
+
+
+def delete_key(target, key, position):
+    target.pop(dict_key(key, position), None)       # deleting twice is fine
+    return NOTHING
+
+
+def delete_file(path, position):
+    if not isinstance(path, str):
+        raise NovaError(
+            "delete() needs a file name, but got {}".format(type_name(path)), position
+        )
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass                                    # deleting twice is harmless
+    except IsADirectoryError:
+        raise NovaError(
+            "{} is a directory - delete() only removes files".format(path),
+            position, label="FileError",
+        )
+    except OSError as problem:
+        raise NovaError(
+            "{}: {}".format(path, problem.strerror or "cannot be deleted"),
+            position, label="FileError",
+        )
+    return NOTHING
+
+
+def throw_error(value, position):
+    """The NovaError `throw(value)` raises."""
+    if not isinstance(value, str):
+        return NovaError(
+            "throw needs a string, but got {} - use str() to convert it".format(
+                type_name(value)
+            ),
+            position,
+        )
+    # label "Error" so a thrown message reads as its own kind of trouble.
+    return NovaError(value, position, label="Error")
+
+
+def interpolate(values):
+    return "".join(format_value(value) for value in values)
+
+
+def loop_number(value, role, position):
+    """One part of a `for` header must be a number."""
+    if not is_number(value):
+        raise NovaError(
+            "{} must be a number, but this is {}".format(role, type_name(value)),
+            position,
+        )
+    return value
+
+
+def range_iterations(start, end, step, descending, position):
+    """How many times a `for` range runs, worked out up front the way
+    `range` does, so the loop cannot drift on floats and cannot be confused
+    by the body reassigning the loop variable."""
+    if step <= 0:
+        raise NovaError(
+            "a 'for' step must be greater than zero (use 'downto' to count down)",
+            position,
+        )
+    span = (start - end) if descending else (end - start)
+    return 0 if span < 0 else int(span / step + 1e-9) + 1
+
+
+def range_value(start, step, index, descending):
+    offset = index * step
+    return start - offset if descending else start + offset
+
+
+def iteration_items(iterable, two_names, position):
+    """What `for ... in` walks: a snapshot, so changing the value inside the
+    loop cannot make it run forever."""
+    if isinstance(iterable, dict):
+        # One name walks the keys; two walk key and value together.
+        return list(iterable.items()) if two_names else list(iterable)
+    if isinstance(iterable, (list, str)):
+        return list(enumerate(iterable)) if two_names else list(iterable)
+    raise NovaError(
+        "'for ... in' needs a list, a string or a dictionary, but this is {}".format(
+            type_name(iterable)
+        ),
+        position,
+    )
+
+
+def imported_name(exports, raw_path, name, position):
+    if name not in exports:
+        raise NovaError(
+            'module "{}" has no exported {!r} - it exports {}'.format(
+                raw_path, name, ", ".join(exports) or "nothing"
+            ),
+            position,
+        )
+    return exports[name]
+
+
 class Interpreter:
     def __init__(self):
         self.globals = Environment(barrier=True)
@@ -2969,30 +3307,14 @@ class Interpreter:
     def visit_IndexNode(self, node):
         target = self.evaluate(node.target)
         index = self.evaluate(node.index)
-        if isinstance(target, dict):
-            return lookup_key(target, dict_key(index, node.position), node.position)
-        return target[normalize_index(target, index, node.position)]
+        return index_operation(target, index, node.position)
 
     def visit_MemberNode(self, node):
-        target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "{} has no fields, so '.{}' means nothing here".format(
-                    type_name(target), node.name
-                ),
-                node.position,
-            )
-        return lookup_key(target, node.name, node.position)
+        return member_operation(self.evaluate(node.target), node.name, node.position)
 
     def visit_MemberAssignNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "only a dictionary can have fields set, but this is {}".format(
-                    type_name(target)
-                ),
-                node.position,
-            )
+        member_assign_target(target, node.position)
         value = self.evaluate(node.value)
         target[node.name] = value                       # a new key is fine
         return value
@@ -3025,35 +3347,22 @@ class Interpreter:
             self.env = saved
 
     def visit_ThrowNode(self, node):
-        value = self.evaluate(node.value)
-        if not isinstance(value, str):
-            raise NovaError(
-                "throw needs a string, but got {} - use str() to convert it".format(
-                    type_name(value)
-                ),
-                node.position,
-            )
-        # label "Error" so a thrown message reads as its own kind of trouble.
-        raise NovaError(value, node.position, label="Error")
+        raise throw_error(self.evaluate(node.value), node.position)
 
     def visit_ImportNode(self, node):
-        resolved = self.resolve_import(node.path, node.position)
-        exports = self.load_module(resolved, node.path, node.position)
-
+        exports = self.import_module(node.path, node.position)
         if node.names is not None:
             for name in node.names:
-                if name not in exports:
-                    raise NovaError(
-                        'module "{}" has no exported {!r} - it exports {}'.format(
-                            node.path, name, ", ".join(exports) or "nothing"
-                        ),
-                        node.position,
-                    )
-                self.env.define(name, exports[name])
+                self.env.define(name, imported_name(exports, node.path, name, node.position))
         else:
             module_name = node.alias or default_module_name(node.path, node.position)
             self.env.define(module_name, exports)
         return NOTHING
+
+    def import_module(self, raw_path, position):
+        """Load (once) the module `raw_path` names; its exports dict."""
+        resolved = self.resolve_import(raw_path, position)
+        return self.load_module(resolved, raw_path, position)
 
     def visit_ExportNode(self, node):
         value = self.evaluate(node.inner)
@@ -3147,52 +3456,20 @@ class Interpreter:
         return exports
 
     def visit_DeleteFileNode(self, node):
-        path = self.evaluate(node.path)
-        if not isinstance(path, str):
-            raise NovaError(
-                "delete() needs a file name, but got {}".format(type_name(path)), node.position
-            )
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass                                    # deleting twice is harmless
-        except IsADirectoryError:
-            raise NovaError(
-                "{} is a directory - delete() only removes files".format(path),
-                node.position, label="FileError",
-            )
-        except OSError as problem:
-            raise NovaError(
-                "{}: {}".format(path, problem.strerror or "cannot be deleted"),
-                node.position, label="FileError",
-            )
-        return NOTHING
+        return delete_file(self.evaluate(node.path), node.position)
 
     def visit_DeleteNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "delete works on dictionary entries, but this is {}{}".format(
-                    type_name(target),
-                    " - use pop() to remove a list item" if isinstance(target, list) else "",
-                ),
-                node.position,
-            )
-        key = dict_key(self.evaluate(node.key), node.position)
-        target.pop(key, None)                           # deleting twice is fine
-        return NOTHING
+        delete_target(target, node.position)
+        return delete_key(target, self.evaluate(node.key), node.position)
 
     def visit_SliceNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, (list, str)):
-            raise NovaError("{} cannot be sliced".format(type_name(target)), node.position)
-
-        bound = "a slice bound"
-        start = None if node.start is None else whole_number(
-            self.evaluate(node.start), bound, node.position)
-        end = None if node.end is None else whole_number(
-            self.evaluate(node.end), bound, node.position)
-
+        slice_target(target, node.position)
+        start = None if node.start is None else slice_bound(
+            self.evaluate(node.start), node.position)
+        end = None if node.end is None else slice_bound(
+            self.evaluate(node.end), node.position)
         # Slices clamp instead of failing: "Hello"[1:99] is "ello".
         return target[start:end]
 
@@ -3202,203 +3479,45 @@ class Interpreter:
     def visit_IndexAssignNode(self, node):
         target = self.evaluate(node.target)
         if isinstance(target, dict):
-            key = dict_key(self.evaluate(node.index), node.position)
-            value = self.evaluate(node.value)
-            target[key] = value                         # a new key is fine
-            return value
-        if isinstance(target, str):
-            raise NovaError(
-                "strings cannot be changed in place - build a new one instead",
-                node.position,
-            )
+            key = index_assign_key(target, self.evaluate(node.index), node.position)
+            return index_assign(target, key, self.evaluate(node.value), node.position)
+        index_assign_target(target, node.position)
         index = self.evaluate(node.index)
         value = self.evaluate(node.value)
-        spot = normalize_index(target, index, node.position)
-        target[spot] = value
-        return value
+        return index_assign(target, index, value, node.position)
 
     # -- operators ----------------------------------------------------------
 
     def visit_UnaryOpNode(self, node):
-        value = self.evaluate(node.operand)
-        if not is_number(value):
-            raise NovaError(
-                "cannot apply unary '{}' to {}".format(node.op, type_name(value)), node.position
-            )
-        return value if node.op == "+" else -value
+        return unary_operation(node.op, self.evaluate(node.operand), node.position)
 
     def visit_NotNode(self, node):
-        value = self.evaluate(node.operand)
-        if not isinstance(value, bool):
-            raise NovaError(
-                "'not' needs true or false, but this is {}".format(type_name(value)),
-                node.position,
-            )
-        return not value
+        return not_operation(self.evaluate(node.operand), node.position)
 
     def visit_LogicalOpNode(self, node):
-        left = self.evaluate(node.left)
-        if not isinstance(left, bool):
-            raise NovaError(
-                "the left side of '{}' must be true or false, but it is {}".format(
-                    node.op, type_name(left)
-                ),
-                node.position,
-            )
-
+        left = logical_side(self.evaluate(node.left), "left", node.op, node.position)
         # Short-circuit: the right side is never evaluated when the left
         # side already decides the answer.
         if node.op == "and" and not left:
             return False
         if node.op == "or" and left:
             return True
-
-        right = self.evaluate(node.right)
-        if not isinstance(right, bool):
-            raise NovaError(
-                "the right side of '{}' must be true or false, but it is {}".format(
-                    node.op, type_name(right)
-                ),
-                node.position,
-            )
-        return right
+        return logical_side(self.evaluate(node.right), "right", node.op, node.position)
 
     def visit_BinOpNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
-        op = node.op
-
-        # "abc" + "def" is the one non-numeric arithmetic we allow.
-        if op == "+" and isinstance(left, str) and isinstance(right, str):
-            return left + right
-
-        # "Ha" * 3 repeats a string; the number may be on either side.
-        if op == "*" and (isinstance(left, str) or isinstance(right, str)):
-            text, count = (left, right) if isinstance(left, str) else (right, left)
-            if isinstance(text, str) and is_number(count):
-                times = whole_number(count, "string repetition", node.position)
-                if times < 0:
-                    raise NovaError(
-                        "a string cannot be repeated a negative number of times", node.position
-                    )
-                if len(text) * times > MAX_LIST_LENGTH:
-                    raise NovaError(
-                        "repeating that string {} times would be too long".format(times),
-                        node.position,
-                    )
-                return text * times
-
-        # Two dictionaries merge with '+'; the right-hand side wins.
-        if op == "+" and isinstance(left, dict) and isinstance(right, dict):
-            merged = dict(left)
-            merged.update(right)
-            return merged
-
-        # Lists join with '+' and repeat with '*', always into a new list.
-        if op == "+" and isinstance(left, list) and isinstance(right, list):
-            return left + right
-
-        if op == "*" and (isinstance(left, list) or isinstance(right, list)):
-            items, count = (left, right) if isinstance(left, list) else (right, left)
-            if not isinstance(items, list) or not is_number(count):
-                raise NovaError(
-                    "a list can only be repeated by a whole number, not by {}".format(
-                        type_name(right if isinstance(left, list) else left)
-                    ),
-                    node.position,
-                )
-            times = whole_number(count, "list repetition", node.position)
-            if times < 0:
-                raise NovaError("a list cannot be repeated a negative number of times",
-                                node.position)
-            if len(items) * times > MAX_LIST_LENGTH:
-                raise NovaError(
-                    "repeating that list {} times would exceed {} items".format(
-                        times, MAX_LIST_LENGTH
-                    ),
-                    node.position,
-                )
-            return items * times
-
-        if not is_number(left) or not is_number(right):
-            raise NovaError(
-                "cannot use '{}' on {} and {}".format(op, type_name(left), type_name(right)),
-                node.position,
-            )
-
-        if op == "+":
-            return left + right
-        if op == "-":
-            return left - right
-        if op == "*":
-            return left * right
-        if op == "/":
-            if right == 0:
-                raise NovaError("division by zero", node.position)
-            result = left / right
-            # Keep whole answers whole: 10 / 2 is 5, not 5.0
-            if isinstance(left, int) and isinstance(right, int) and result.is_integer():
-                return int(result)
-            return result
-        if op == "//":
-            if right == 0:
-                raise NovaError("integer division by zero", node.position)
-            return left // right            # rounds towards negative infinity
-        if op == "%":
-            if right == 0:
-                raise NovaError("cannot take the remainder of a division by zero",
-                                node.position)
-            return left % right             # the sign follows the right-hand side
-
-        raise NovaError("unknown operator {!r}".format(op), node.position)
+        return binary_operation(node.op, left, right, node.position)
 
     def visit_CompareNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
-        op = node.op
-
-        if op == "==":
-            return nova_equals(left, right)
-        if op == "!=":
-            return not nova_equals(left, right)
-        if op == "in":
-            return nova_contains(left, right, node.position)
-
-        ordered = (is_number(left) and is_number(right)) or (
-            isinstance(left, str) and isinstance(right, str)
-        )
-        if not ordered:
-            raise NovaError(
-                "cannot compare {} with {} using '{}'".format(
-                    type_name(left), type_name(right), op
-                ),
-                node.position,
-            )
-
-        if op == "<":
-            return left < right
-        if op == ">":
-            return left > right
-        if op == "<=":
-            return left <= right
-        if op == ">=":
-            return left >= right
-
-        raise NovaError("unknown comparison {!r}".format(op), node.position)
+        return compare_operation(node.op, left, right, node.position)
 
     # -- control flow -------------------------------------------------------
 
     def condition_value(self, node, keyword):
-        """Conditions are strict: only true or false will do."""
-        value = self.evaluate(node.condition)
-        if not isinstance(value, bool):
-            raise NovaError(
-                "a '{}' condition must be true or false, but this is {}".format(
-                    keyword, type_name(value)
-                ),
-                node.position,
-            )
-        return value
+        return condition_check(self.evaluate(node.condition), keyword, node.position)
 
     def visit_IfNode(self, node):
         if self.condition_value(node, "if"):
@@ -3428,18 +3547,7 @@ class Interpreter:
         start = self.loop_number(node.start, "the start of a 'for' range", where)
         end = self.loop_number(node.end, "the end of a 'for' range", where)
         step = 1 if node.step is None else self.loop_number(node.step, "a 'for' step", where)
-
-        if step <= 0:
-            raise NovaError(
-                "a 'for' step must be greater than zero (use 'downto' to count down)",
-                node.position,
-            )
-
-        # Work out the iteration count up front, the way `range` does, so the
-        # loop cannot drift on floats and cannot be confused by the body
-        # reassigning the loop variable.
-        span = (start - end) if node.descending else (end - start)
-        iterations = 0 if span < 0 else int(span / step + 1e-9) + 1
+        iterations = range_iterations(start, end, step, node.descending, node.position)
 
         # The loop variable lives in a scope of its own, so it does not leak.
         loop_env = Environment(parent=self.env)
@@ -3449,8 +3557,7 @@ class Interpreter:
         try:
             index = 0
             while index < iterations:
-                offset = index * step
-                loop_env.define(node.name, start - offset if node.descending else start + offset)
+                loop_env.define(node.name, range_value(start, step, index, node.descending))
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
                 except ContinueSignal:
@@ -3467,23 +3574,8 @@ class Interpreter:
         return NOTHING
 
     def visit_ForInNode(self, node):
-        iterable = self.evaluate(node.iterable)
-
-        # Iterate over a snapshot, so changing the value inside the loop
-        # cannot make it run forever.
-        if isinstance(iterable, dict):
-            # One name walks the keys; two walk key and value together.
-            items = list(iterable.items()) if node.second_name else list(iterable)
-        elif isinstance(iterable, (list, str)):
-            items = list(enumerate(iterable)) if node.second_name else list(iterable)
-        else:
-            raise NovaError(
-                "'for ... in' needs a list, a string or a dictionary, but this is {}".format(
-                    type_name(iterable)
-                ),
-                node.position,
-            )
-
+        items = iteration_items(self.evaluate(node.iterable), bool(node.second_name),
+                                node.position)
         loop_env = Environment(parent=self.env)
         saved = self.env
         self.env = loop_env
@@ -3511,13 +3603,8 @@ class Interpreter:
 
     def loop_number(self, node, role, fallback_position):
         """Evaluate one part of a `for` header, insisting on a number."""
-        value = self.evaluate(node)
-        if not is_number(value):
-            raise NovaError(
-                "{} must be a number, but this is {}".format(role, type_name(value)),
-                getattr(node, "position", None) or fallback_position,
-            )
-        return value
+        return loop_number(self.evaluate(node), role,
+                           getattr(node, "position", None) or fallback_position)
 
     def visit_BreakNode(self, node):
         raise BreakSignal(node.position)
