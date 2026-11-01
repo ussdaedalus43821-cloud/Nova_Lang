@@ -1617,7 +1617,13 @@ NOTHING = Nothing()
 
 
 class NovaFunction:
-    """A function written in NovaLang."""
+    """A function written in NovaLang. The tree-walker's carry their `body`
+    and defining scope (`closure`); the VM's carry compiled `code`, the
+    `cells` they close over and their module's `globals`."""
+
+    code = None
+    cells = ()
+    globals = None
 
     def __init__(self, name, params, body, closure):
         self.name = name
@@ -2861,8 +2867,355 @@ class Environment:
 # 4. Interpreter  (AST -> a value), tree-walking
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Shared operations (M4). What each operation *means* lives here, once, and
+# both engines call it: the tree-walking Interpreter and the bytecode VM.
+# The engines differ only in how they get the operands - and in what order
+# they evaluate them, which each preserves exactly - never in what an
+# operation does with them, so they cannot drift apart.
+# ---------------------------------------------------------------------------
+
+def binary_operation(op, left, right, position):
+    # "abc" + "def" is the one non-numeric arithmetic we allow.
+    if op == "+" and isinstance(left, str) and isinstance(right, str):
+        return left + right
+
+    # "Ha" * 3 repeats a string; the number may be on either side.
+    if op == "*" and (isinstance(left, str) or isinstance(right, str)):
+        text, count = (left, right) if isinstance(left, str) else (right, left)
+        if isinstance(text, str) and is_number(count):
+            times = whole_number(count, "string repetition", position)
+            if times < 0:
+                raise NovaError(
+                    "a string cannot be repeated a negative number of times", position
+                )
+            if len(text) * times > MAX_LIST_LENGTH:
+                raise NovaError(
+                    "repeating that string {} times would be too long".format(times),
+                    position,
+                )
+            return text * times
+
+    # Two dictionaries merge with '+'; the right-hand side wins.
+    if op == "+" and isinstance(left, dict) and isinstance(right, dict):
+        merged = dict(left)
+        merged.update(right)
+        return merged
+
+    # Lists join with '+' and repeat with '*', always into a new list.
+    if op == "+" and isinstance(left, list) and isinstance(right, list):
+        return left + right
+
+    if op == "*" and (isinstance(left, list) or isinstance(right, list)):
+        items, count = (left, right) if isinstance(left, list) else (right, left)
+        if not isinstance(items, list) or not is_number(count):
+            raise NovaError(
+                "a list can only be repeated by a whole number, not by {}".format(
+                    type_name(right if isinstance(left, list) else left)
+                ),
+                position,
+            )
+        times = whole_number(count, "list repetition", position)
+        if times < 0:
+            raise NovaError("a list cannot be repeated a negative number of times",
+                            position)
+        if len(items) * times > MAX_LIST_LENGTH:
+            raise NovaError(
+                "repeating that list {} times would exceed {} items".format(
+                    times, MAX_LIST_LENGTH
+                ),
+                position,
+            )
+        return items * times
+
+    if not is_number(left) or not is_number(right):
+        raise NovaError(
+            "cannot use '{}' on {} and {}".format(op, type_name(left), type_name(right)),
+            position,
+        )
+
+    if op == "+":
+        return left + right
+    if op == "-":
+        return left - right
+    if op == "*":
+        return left * right
+    if op == "/":
+        if right == 0:
+            raise NovaError("division by zero", position)
+        result = left / right
+        # Keep whole answers whole: 10 / 2 is 5, not 5.0
+        if isinstance(left, int) and isinstance(right, int) and result.is_integer():
+            return int(result)
+        return result
+    if op == "//":
+        if right == 0:
+            raise NovaError("integer division by zero", position)
+        return left // right            # rounds towards negative infinity
+    if op == "%":
+        if right == 0:
+            raise NovaError("cannot take the remainder of a division by zero",
+                            position)
+        return left % right             # the sign follows the right-hand side
+
+    raise NovaError("unknown operator {!r}".format(op), position)
+
+
+def compare_operation(op, left, right, position):
+    if op == "==":
+        return nova_equals(left, right)
+    if op == "!=":
+        return not nova_equals(left, right)
+    if op == "in":
+        return nova_contains(left, right, position)
+
+    ordered = (is_number(left) and is_number(right)) or (
+        isinstance(left, str) and isinstance(right, str)
+    )
+    if not ordered:
+        raise NovaError(
+            "cannot compare {} with {} using '{}'".format(
+                type_name(left), type_name(right), op
+            ),
+            position,
+        )
+
+    if op == "<":
+        return left < right
+    if op == ">":
+        return left > right
+    if op == "<=":
+        return left <= right
+    if op == ">=":
+        return left >= right
+
+    raise NovaError("unknown comparison {!r}".format(op), position)
+
+
+def unary_operation(op, value, position):
+    if not is_number(value):
+        raise NovaError(
+            "cannot apply unary '{}' to {}".format(op, type_name(value)), position
+        )
+    return value if op == "+" else -value
+
+
+def not_operation(value, position):
+    if not isinstance(value, bool):
+        raise NovaError(
+            "'not' needs true or false, but this is {}".format(type_name(value)),
+            position,
+        )
+    return not value
+
+
+def logical_side(value, side, op, position):
+    """`and` / `or` take only true or false, on either side."""
+    if not isinstance(value, bool):
+        raise NovaError(
+            "the {} side of '{}' must be true or false, but it is {}".format(
+                side, op, type_name(value)
+            ),
+            position,
+        )
+    return value
+
+
+def condition_check(value, keyword, position):
+    """Conditions are strict: only true or false will do."""
+    if not isinstance(value, bool):
+        raise NovaError(
+            "a '{}' condition must be true or false, but this is {}".format(
+                keyword, type_name(value)
+            ),
+            position,
+        )
+    return value
+
+
+def index_operation(target, index, position):
+    if isinstance(target, dict):
+        return lookup_key(target, dict_key(index, position), position)
+    return target[normalize_index(target, index, position)]
+
+
+def member_operation(target, name, position):
+    if not isinstance(target, dict):
+        raise NovaError(
+            "{} has no fields, so '.{}' means nothing here".format(
+                type_name(target), name
+            ),
+            position,
+        )
+    return lookup_key(target, name, position)
+
+
+def member_assign_target(target, position):
+    """`x.f = v` refuses a non-dictionary before v is evaluated."""
+    if not isinstance(target, dict):
+        raise NovaError(
+            "only a dictionary can have fields set, but this is {}".format(
+                type_name(target)
+            ),
+            position,
+        )
+
+
+def index_assign_target(target, position):
+    """`x[i] = v` refuses a string before i is evaluated."""
+    if isinstance(target, str):
+        raise NovaError(
+            "strings cannot be changed in place - build a new one instead",
+            position,
+        )
+
+
+def index_assign_key(target, index, position):
+    """...and checks a dictionary's key before v is evaluated."""
+    if isinstance(target, dict):
+        return dict_key(index, position)
+    return index
+
+
+def index_assign(target, index, value, position):
+    if isinstance(target, dict):
+        target[index] = value                         # a new key is fine
+        return value
+    spot = normalize_index(target, index, position)
+    target[spot] = value
+    return value
+
+
+def slice_target(target, position):
+    if not isinstance(target, (list, str)):
+        raise NovaError("{} cannot be sliced".format(type_name(target)), position)
+
+
+def slice_bound(value, position):
+    return whole_number(value, "a slice bound", position)
+
+
+def delete_target(target, position):
+    if not isinstance(target, dict):
+        raise NovaError(
+            "delete works on dictionary entries, but this is {}{}".format(
+                type_name(target),
+                " - use pop() to remove a list item" if isinstance(target, list) else "",
+            ),
+            position,
+        )
+
+
+def delete_key(target, key, position):
+    target.pop(dict_key(key, position), None)       # deleting twice is fine
+    return NOTHING
+
+
+def delete_file(path, position):
+    if not isinstance(path, str):
+        raise NovaError(
+            "delete() needs a file name, but got {}".format(type_name(path)), position
+        )
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass                                    # deleting twice is harmless
+    except IsADirectoryError:
+        raise NovaError(
+            "{} is a directory - delete() only removes files".format(path),
+            position, label="FileError",
+        )
+    except OSError as problem:
+        raise NovaError(
+            "{}: {}".format(path, problem.strerror or "cannot be deleted"),
+            position, label="FileError",
+        )
+    return NOTHING
+
+
+def throw_error(value, position):
+    """The NovaError `throw(value)` raises."""
+    if not isinstance(value, str):
+        return NovaError(
+            "throw needs a string, but got {} - use str() to convert it".format(
+                type_name(value)
+            ),
+            position,
+        )
+    # label "Error" so a thrown message reads as its own kind of trouble.
+    return NovaError(value, position, label="Error")
+
+
+def interpolate(values):
+    return "".join(format_value(value) for value in values)
+
+
+def loop_number(value, role, position):
+    """One part of a `for` header must be a number."""
+    if not is_number(value):
+        raise NovaError(
+            "{} must be a number, but this is {}".format(role, type_name(value)),
+            position,
+        )
+    return value
+
+
+def range_iterations(start, end, step, descending, position):
+    """How many times a `for` range runs, worked out up front the way
+    `range` does, so the loop cannot drift on floats and cannot be confused
+    by the body reassigning the loop variable."""
+    if step <= 0:
+        raise NovaError(
+            "a 'for' step must be greater than zero (use 'downto' to count down)",
+            position,
+        )
+    span = (start - end) if descending else (end - start)
+    return 0 if span < 0 else int(span / step + 1e-9) + 1
+
+
+def range_value(start, step, index, descending):
+    offset = index * step
+    return start - offset if descending else start + offset
+
+
+def iteration_items(iterable, two_names, position):
+    """What `for ... in` walks: a snapshot, so changing the value inside the
+    loop cannot make it run forever."""
+    if isinstance(iterable, dict):
+        # One name walks the keys; two walk key and value together.
+        return list(iterable.items()) if two_names else list(iterable)
+    if isinstance(iterable, (list, str)):
+        return list(enumerate(iterable)) if two_names else list(iterable)
+    raise NovaError(
+        "'for ... in' needs a list, a string or a dictionary, but this is {}".format(
+            type_name(iterable)
+        ),
+        position,
+    )
+
+
+def imported_name(exports, raw_path, name, position):
+    if name not in exports:
+        raise NovaError(
+            'module "{}" has no exported {!r} - it exports {}'.format(
+                raw_path, name, ", ".join(exports) or "nothing"
+            ),
+            position,
+        )
+    return exports[name]
+
+
+# Which engine runs programs: "vm" (bytecode, the default) or "tree" (the
+# original tree-walker, kept for comparison - `novalang.py --tree-walk`).
+ENGINES = ("vm", "tree")
+DEFAULT_ENGINE = "vm"
+
+
 class Interpreter:
-    def __init__(self):
+    def __init__(self, engine=None):
+        self.engine = engine or DEFAULT_ENGINE
+        if self.engine not in ENGINES:
+            raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
         self.globals = Environment(barrier=True)
         self.env = self.globals
         self.call_stack = []            # function names, innermost last
@@ -2969,30 +3322,14 @@ class Interpreter:
     def visit_IndexNode(self, node):
         target = self.evaluate(node.target)
         index = self.evaluate(node.index)
-        if isinstance(target, dict):
-            return lookup_key(target, dict_key(index, node.position), node.position)
-        return target[normalize_index(target, index, node.position)]
+        return index_operation(target, index, node.position)
 
     def visit_MemberNode(self, node):
-        target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "{} has no fields, so '.{}' means nothing here".format(
-                    type_name(target), node.name
-                ),
-                node.position,
-            )
-        return lookup_key(target, node.name, node.position)
+        return member_operation(self.evaluate(node.target), node.name, node.position)
 
     def visit_MemberAssignNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "only a dictionary can have fields set, but this is {}".format(
-                    type_name(target)
-                ),
-                node.position,
-            )
+        member_assign_target(target, node.position)
         value = self.evaluate(node.value)
         target[node.name] = value                       # a new key is fine
         return value
@@ -3025,35 +3362,22 @@ class Interpreter:
             self.env = saved
 
     def visit_ThrowNode(self, node):
-        value = self.evaluate(node.value)
-        if not isinstance(value, str):
-            raise NovaError(
-                "throw needs a string, but got {} - use str() to convert it".format(
-                    type_name(value)
-                ),
-                node.position,
-            )
-        # label "Error" so a thrown message reads as its own kind of trouble.
-        raise NovaError(value, node.position, label="Error")
+        raise throw_error(self.evaluate(node.value), node.position)
 
     def visit_ImportNode(self, node):
-        resolved = self.resolve_import(node.path, node.position)
-        exports = self.load_module(resolved, node.path, node.position)
-
+        exports = self.import_module(node.path, node.position)
         if node.names is not None:
             for name in node.names:
-                if name not in exports:
-                    raise NovaError(
-                        'module "{}" has no exported {!r} - it exports {}'.format(
-                            node.path, name, ", ".join(exports) or "nothing"
-                        ),
-                        node.position,
-                    )
-                self.env.define(name, exports[name])
+                self.env.define(name, imported_name(exports, node.path, name, node.position))
         else:
             module_name = node.alias or default_module_name(node.path, node.position)
             self.env.define(module_name, exports)
         return NOTHING
+
+    def import_module(self, raw_path, position):
+        """Load (once) the module `raw_path` names; its exports dict."""
+        resolved = self.resolve_import(raw_path, position)
+        return self.load_module(resolved, raw_path, position)
 
     def visit_ExportNode(self, node):
         value = self.evaluate(node.inner)
@@ -3147,52 +3471,20 @@ class Interpreter:
         return exports
 
     def visit_DeleteFileNode(self, node):
-        path = self.evaluate(node.path)
-        if not isinstance(path, str):
-            raise NovaError(
-                "delete() needs a file name, but got {}".format(type_name(path)), node.position
-            )
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass                                    # deleting twice is harmless
-        except IsADirectoryError:
-            raise NovaError(
-                "{} is a directory - delete() only removes files".format(path),
-                node.position, label="FileError",
-            )
-        except OSError as problem:
-            raise NovaError(
-                "{}: {}".format(path, problem.strerror or "cannot be deleted"),
-                node.position, label="FileError",
-            )
-        return NOTHING
+        return delete_file(self.evaluate(node.path), node.position)
 
     def visit_DeleteNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, dict):
-            raise NovaError(
-                "delete works on dictionary entries, but this is {}{}".format(
-                    type_name(target),
-                    " - use pop() to remove a list item" if isinstance(target, list) else "",
-                ),
-                node.position,
-            )
-        key = dict_key(self.evaluate(node.key), node.position)
-        target.pop(key, None)                           # deleting twice is fine
-        return NOTHING
+        delete_target(target, node.position)
+        return delete_key(target, self.evaluate(node.key), node.position)
 
     def visit_SliceNode(self, node):
         target = self.evaluate(node.target)
-        if not isinstance(target, (list, str)):
-            raise NovaError("{} cannot be sliced".format(type_name(target)), node.position)
-
-        bound = "a slice bound"
-        start = None if node.start is None else whole_number(
-            self.evaluate(node.start), bound, node.position)
-        end = None if node.end is None else whole_number(
-            self.evaluate(node.end), bound, node.position)
-
+        slice_target(target, node.position)
+        start = None if node.start is None else slice_bound(
+            self.evaluate(node.start), node.position)
+        end = None if node.end is None else slice_bound(
+            self.evaluate(node.end), node.position)
         # Slices clamp instead of failing: "Hello"[1:99] is "ello".
         return target[start:end]
 
@@ -3202,203 +3494,45 @@ class Interpreter:
     def visit_IndexAssignNode(self, node):
         target = self.evaluate(node.target)
         if isinstance(target, dict):
-            key = dict_key(self.evaluate(node.index), node.position)
-            value = self.evaluate(node.value)
-            target[key] = value                         # a new key is fine
-            return value
-        if isinstance(target, str):
-            raise NovaError(
-                "strings cannot be changed in place - build a new one instead",
-                node.position,
-            )
+            key = index_assign_key(target, self.evaluate(node.index), node.position)
+            return index_assign(target, key, self.evaluate(node.value), node.position)
+        index_assign_target(target, node.position)
         index = self.evaluate(node.index)
         value = self.evaluate(node.value)
-        spot = normalize_index(target, index, node.position)
-        target[spot] = value
-        return value
+        return index_assign(target, index, value, node.position)
 
     # -- operators ----------------------------------------------------------
 
     def visit_UnaryOpNode(self, node):
-        value = self.evaluate(node.operand)
-        if not is_number(value):
-            raise NovaError(
-                "cannot apply unary '{}' to {}".format(node.op, type_name(value)), node.position
-            )
-        return value if node.op == "+" else -value
+        return unary_operation(node.op, self.evaluate(node.operand), node.position)
 
     def visit_NotNode(self, node):
-        value = self.evaluate(node.operand)
-        if not isinstance(value, bool):
-            raise NovaError(
-                "'not' needs true or false, but this is {}".format(type_name(value)),
-                node.position,
-            )
-        return not value
+        return not_operation(self.evaluate(node.operand), node.position)
 
     def visit_LogicalOpNode(self, node):
-        left = self.evaluate(node.left)
-        if not isinstance(left, bool):
-            raise NovaError(
-                "the left side of '{}' must be true or false, but it is {}".format(
-                    node.op, type_name(left)
-                ),
-                node.position,
-            )
-
+        left = logical_side(self.evaluate(node.left), "left", node.op, node.position)
         # Short-circuit: the right side is never evaluated when the left
         # side already decides the answer.
         if node.op == "and" and not left:
             return False
         if node.op == "or" and left:
             return True
-
-        right = self.evaluate(node.right)
-        if not isinstance(right, bool):
-            raise NovaError(
-                "the right side of '{}' must be true or false, but it is {}".format(
-                    node.op, type_name(right)
-                ),
-                node.position,
-            )
-        return right
+        return logical_side(self.evaluate(node.right), "right", node.op, node.position)
 
     def visit_BinOpNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
-        op = node.op
-
-        # "abc" + "def" is the one non-numeric arithmetic we allow.
-        if op == "+" and isinstance(left, str) and isinstance(right, str):
-            return left + right
-
-        # "Ha" * 3 repeats a string; the number may be on either side.
-        if op == "*" and (isinstance(left, str) or isinstance(right, str)):
-            text, count = (left, right) if isinstance(left, str) else (right, left)
-            if isinstance(text, str) and is_number(count):
-                times = whole_number(count, "string repetition", node.position)
-                if times < 0:
-                    raise NovaError(
-                        "a string cannot be repeated a negative number of times", node.position
-                    )
-                if len(text) * times > MAX_LIST_LENGTH:
-                    raise NovaError(
-                        "repeating that string {} times would be too long".format(times),
-                        node.position,
-                    )
-                return text * times
-
-        # Two dictionaries merge with '+'; the right-hand side wins.
-        if op == "+" and isinstance(left, dict) and isinstance(right, dict):
-            merged = dict(left)
-            merged.update(right)
-            return merged
-
-        # Lists join with '+' and repeat with '*', always into a new list.
-        if op == "+" and isinstance(left, list) and isinstance(right, list):
-            return left + right
-
-        if op == "*" and (isinstance(left, list) or isinstance(right, list)):
-            items, count = (left, right) if isinstance(left, list) else (right, left)
-            if not isinstance(items, list) or not is_number(count):
-                raise NovaError(
-                    "a list can only be repeated by a whole number, not by {}".format(
-                        type_name(right if isinstance(left, list) else left)
-                    ),
-                    node.position,
-                )
-            times = whole_number(count, "list repetition", node.position)
-            if times < 0:
-                raise NovaError("a list cannot be repeated a negative number of times",
-                                node.position)
-            if len(items) * times > MAX_LIST_LENGTH:
-                raise NovaError(
-                    "repeating that list {} times would exceed {} items".format(
-                        times, MAX_LIST_LENGTH
-                    ),
-                    node.position,
-                )
-            return items * times
-
-        if not is_number(left) or not is_number(right):
-            raise NovaError(
-                "cannot use '{}' on {} and {}".format(op, type_name(left), type_name(right)),
-                node.position,
-            )
-
-        if op == "+":
-            return left + right
-        if op == "-":
-            return left - right
-        if op == "*":
-            return left * right
-        if op == "/":
-            if right == 0:
-                raise NovaError("division by zero", node.position)
-            result = left / right
-            # Keep whole answers whole: 10 / 2 is 5, not 5.0
-            if isinstance(left, int) and isinstance(right, int) and result.is_integer():
-                return int(result)
-            return result
-        if op == "//":
-            if right == 0:
-                raise NovaError("integer division by zero", node.position)
-            return left // right            # rounds towards negative infinity
-        if op == "%":
-            if right == 0:
-                raise NovaError("cannot take the remainder of a division by zero",
-                                node.position)
-            return left % right             # the sign follows the right-hand side
-
-        raise NovaError("unknown operator {!r}".format(op), node.position)
+        return binary_operation(node.op, left, right, node.position)
 
     def visit_CompareNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
-        op = node.op
-
-        if op == "==":
-            return nova_equals(left, right)
-        if op == "!=":
-            return not nova_equals(left, right)
-        if op == "in":
-            return nova_contains(left, right, node.position)
-
-        ordered = (is_number(left) and is_number(right)) or (
-            isinstance(left, str) and isinstance(right, str)
-        )
-        if not ordered:
-            raise NovaError(
-                "cannot compare {} with {} using '{}'".format(
-                    type_name(left), type_name(right), op
-                ),
-                node.position,
-            )
-
-        if op == "<":
-            return left < right
-        if op == ">":
-            return left > right
-        if op == "<=":
-            return left <= right
-        if op == ">=":
-            return left >= right
-
-        raise NovaError("unknown comparison {!r}".format(op), node.position)
+        return compare_operation(node.op, left, right, node.position)
 
     # -- control flow -------------------------------------------------------
 
     def condition_value(self, node, keyword):
-        """Conditions are strict: only true or false will do."""
-        value = self.evaluate(node.condition)
-        if not isinstance(value, bool):
-            raise NovaError(
-                "a '{}' condition must be true or false, but this is {}".format(
-                    keyword, type_name(value)
-                ),
-                node.position,
-            )
-        return value
+        return condition_check(self.evaluate(node.condition), keyword, node.position)
 
     def visit_IfNode(self, node):
         if self.condition_value(node, "if"):
@@ -3428,18 +3562,7 @@ class Interpreter:
         start = self.loop_number(node.start, "the start of a 'for' range", where)
         end = self.loop_number(node.end, "the end of a 'for' range", where)
         step = 1 if node.step is None else self.loop_number(node.step, "a 'for' step", where)
-
-        if step <= 0:
-            raise NovaError(
-                "a 'for' step must be greater than zero (use 'downto' to count down)",
-                node.position,
-            )
-
-        # Work out the iteration count up front, the way `range` does, so the
-        # loop cannot drift on floats and cannot be confused by the body
-        # reassigning the loop variable.
-        span = (start - end) if node.descending else (end - start)
-        iterations = 0 if span < 0 else int(span / step + 1e-9) + 1
+        iterations = range_iterations(start, end, step, node.descending, node.position)
 
         # The loop variable lives in a scope of its own, so it does not leak.
         loop_env = Environment(parent=self.env)
@@ -3449,8 +3572,7 @@ class Interpreter:
         try:
             index = 0
             while index < iterations:
-                offset = index * step
-                loop_env.define(node.name, start - offset if node.descending else start + offset)
+                loop_env.define(node.name, range_value(start, step, index, node.descending))
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
                 except ContinueSignal:
@@ -3467,23 +3589,8 @@ class Interpreter:
         return NOTHING
 
     def visit_ForInNode(self, node):
-        iterable = self.evaluate(node.iterable)
-
-        # Iterate over a snapshot, so changing the value inside the loop
-        # cannot make it run forever.
-        if isinstance(iterable, dict):
-            # One name walks the keys; two walk key and value together.
-            items = list(iterable.items()) if node.second_name else list(iterable)
-        elif isinstance(iterable, (list, str)):
-            items = list(enumerate(iterable)) if node.second_name else list(iterable)
-        else:
-            raise NovaError(
-                "'for ... in' needs a list, a string or a dictionary, but this is {}".format(
-                    type_name(iterable)
-                ),
-                node.position,
-            )
-
+        items = iteration_items(self.evaluate(node.iterable), bool(node.second_name),
+                                node.position)
         loop_env = Environment(parent=self.env)
         saved = self.env
         self.env = loop_env
@@ -3511,13 +3618,8 @@ class Interpreter:
 
     def loop_number(self, node, role, fallback_position):
         """Evaluate one part of a `for` header, insisting on a number."""
-        value = self.evaluate(node)
-        if not is_number(value):
-            raise NovaError(
-                "{} must be a number, but this is {}".format(role, type_name(value)),
-                getattr(node, "position", None) or fallback_position,
-            )
-        return value
+        return loop_number(self.evaluate(node), role,
+                           getattr(node, "position", None) or fallback_position)
 
     def visit_BreakNode(self, node):
         raise BreakSignal(node.position)
@@ -3578,6 +3680,13 @@ class Interpreter:
                 ),
                 position,
             )
+
+        if callee.code is not None:
+            # A compiled function: the VM runs it (and everything it calls),
+            # popping this name, attaching the stack trace and turning a
+            # stray break/continue into an error exactly as below.
+            self.call_stack.append(callee.name)
+            return execute(self, function_frame(callee, args))
 
         # A fresh barrier scope per call: this is what makes recursion work,
         # what keeps locals from leaking, and what stops an assignment inside
@@ -3867,14 +3976,15 @@ OPCODES = [
     # stack
     "LOAD_CONST", "POP", "DUP",
     # names
-    "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "LOAD_FREE",
+    "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL",
     "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS",
     # arithmetic, comparison, logic
     "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
     "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
     "CHECK_BOOL", "JUMP_IF_FALSE_KEEP", "JUMP_IF_TRUE_KEEP",
     # data
-    "BUILD_LIST", "BUILD_DICT", "BUILD_STRING", "INDEX", "SLICE", "GET_MEMBER",
+    "BUILD_LIST", "BUILD_DICT", "BUILD_STRING", "INDEX",
+    "SLICE_TARGET", "SLICE_BOUND", "SLICE", "GET_MEMBER",
     "INDEX_ASSIGN_TARGET", "INDEX_ASSIGN_KEY", "INDEX_ASSIGN",
     "MEMBER_ASSIGN_TARGET", "SET_MEMBER",
     "DELETE_TARGET", "DELETE_KEY", "DELETE_FILE",
@@ -4222,6 +4332,7 @@ class CodeObject:
         self.slot_names = frame.slot_names
         self.nslots = 0
         self.params = []                # slots of the parameters, in order
+        self.param_names = []
         self.cell_params = []           # the subset of those that are cells
         self.freevars = [var.name for var in frame.freevars]
         self.closure = []               # how MAKE_FUNCTION builds it (in the parent)
@@ -4277,6 +4388,7 @@ class Compiler:
         saved = self.save()
         self.start(code, frame, root)
         code.params = [root.vars[name].slot for name in node.params]
+        code.param_names = list(node.params)
         code.cell_params = [root.vars[name].slot for name in node.params
                             if root.vars[name].captured]
         self.new_cells(root, skip=set(node.params))
@@ -4340,8 +4452,9 @@ class Compiler:
     def load(self, candidates, position):
         if len(candidates) == 1:
             kind, where = self.location(candidates[0])
-            op = {"fast": "LOAD_FAST", "cell": "LOAD_CELL", "free": "LOAD_FREE",
-                  "global": "LOAD_GLOBAL"}[kind]
+            # A closure's read is always a chain (it ends in the globals),
+            # so a single candidate is never "free".
+            op = {"fast": "LOAD_FAST", "cell": "LOAD_CELL", "global": "LOAD_GLOBAL"}[kind]
             self.emit(op, where, position)
             return
         chain = tuple(self.location(var) for var in candidates)
@@ -4690,7 +4803,7 @@ class Compiler:
         if node.names is not None:
             for name in node.names:
                 self.emit("DUP", None, None)
-                self.emit("IMPORT_NAME", self.code.const(name), node.position)
+                self.emit("IMPORT_NAME", self.code.const((name, node.path)), node.position)
                 self.store(node, name, node.position)
             self.emit("POP", None, None)
         elif getattr(node, "_name_error", None) is not None:
@@ -4782,11 +4895,14 @@ class Compiler:
         self.emit("INDEX", None, node.position)
 
     def e_SliceNode(self, node):
+        # The target is checked before the bounds are evaluated, and each
+        # bound is made a whole number as soon as it is.
         self.expression(node.target)
-        if node.start is not None:
-            self.expression(node.start)
-        if node.end is not None:
-            self.expression(node.end)
+        self.emit("SLICE_TARGET", None, node.position)
+        for bound in (node.start, node.end):
+            if bound is not None:
+                self.expression(bound)
+                self.emit("SLICE_BOUND", None, node.position)
         self.emit("SLICE", (node.start is not None, node.end is not None), node.position)
 
     def e_MemberNode(self, node):
@@ -4823,14 +4939,15 @@ def compile_source(source):
 # functions of the argument).
 STACK_EFFECT = {
     "LOAD_CONST": 1, "POP": -1, "DUP": 1,
-    "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1, "LOAD_FREE": 1,
+    "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1,
     "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0,
     "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
     "NEG": 0, "POS": 0, "NOT": 0,
     "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
     "CHECK_BOOL": 0, "JUMP_IF_FALSE_KEEP": -1, "JUMP_IF_TRUE_KEEP": -1,
     "BUILD_LIST": lambda n: 1 - n, "BUILD_DICT": None, "BUILD_STRING": lambda n: 1 - n,
-    "INDEX": -1, "SLICE": lambda flags: -sum(flags), "GET_MEMBER": 0,
+    "INDEX": -1, "SLICE_TARGET": 0, "SLICE_BOUND": 0, "SLICE": lambda flags: -sum(flags),
+    "GET_MEMBER": 0,
     "INDEX_ASSIGN_TARGET": 0, "INDEX_ASSIGN_KEY": 0, "INDEX_ASSIGN": -2,
     "MEMBER_ASSIGN_TARGET": 0, "SET_MEMBER": -1,
     "DELETE_TARGET": 0, "DELETE_KEY": -1, "DELETE_FILE": 0,
@@ -4900,9 +5017,6 @@ def verify(code):
         if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE") and not (
                 0 <= arg < code.nslots):
             raise BytecodeError("{}: instruction {} uses slot {}".format(code.name, index, arg))
-        if name == "LOAD_FREE" and not 0 <= arg < len(code.freevars):
-            raise BytecodeError("{}: instruction {} uses free variable {}".format(
-                code.name, index, arg))
     depth = {0: 0}
     work = [0]
     for start, end, handler, kind in code.exception_table:
@@ -5015,8 +5129,6 @@ def describe_arg(code, name, arg):
         return "{} ({})".format(arg, show_constant(value))
     if name in ("LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL", "RERAISE"):
         return "{} ({})".format(arg, code.slot_names[arg])
-    if name == "LOAD_FREE":
-        return "{} ({})".format(arg, code.freevars[arg])
     if name in ("LOAD_GLOBAL", "STORE_GLOBAL"):
         return arg
     if name == "JUMP_IF_NOT_TRUE":
@@ -5046,6 +5158,446 @@ class LineLookup:
         return bisect.bisect_right(self.starts, position)
 
 
+# ---------------------------------------------------------------------------
+# 6. Virtual machine  (bytecode -> a value)  - M4
+# ---------------------------------------------------------------------------
+#
+# Runs what the Compiler makes. One execute() call runs a frame and every
+# NovaLang function it calls - calls push a Frame and stay in the same
+# loop, so NovaLang recursion does not use Python's stack. Python recurses
+# only where Python calls back into NovaLang (map/filter/reduce, the
+# embedding API), through Interpreter.call_value, exactly as before.
+#
+# What each operation means is the shared functions above; this loop only
+# moves values between the stack, slots and cells. Errors follow the
+# Interpreter: the exception table finds a handler (a catch takes a
+# NovaError and starts with its text; a finally takes anything and starts
+# with the exception, which RERAISE raises again); an error leaving a
+# function gets its stack trace there if it has none yet; a stray
+# break/continue leaving a function becomes, in the caller, the same error
+# Interpreter.call_value raised; MAX_CALL_DEPTH is checked on every call.
+
+class Unset:
+    """A slot or cell with nothing in it yet."""
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return "<unset>"
+
+
+UNSET = Unset()
+
+
+class Cell:
+    """A binding a closure shares with the frame that made it."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value=UNSET):
+        self.value = value
+
+
+class Frame:
+    __slots__ = ("code", "slots", "stack", "ip", "cells", "globals", "function")
+
+    def __init__(self, code, slots, cells, globals_, function):
+        self.code = code
+        self.slots = slots
+        self.stack = []
+        self.ip = 0
+        self.cells = cells              # the closure: Cells from enclosing frames
+        self.globals = globals_         # the defining module's global dictionary
+        self.function = function        # the NovaFunction, or None for a module
+
+
+class VMError(Exception):
+    """The VM broke one of its own invariants - a bug in NovaLang itself,
+    never in the program being run, so it is not a NovaError."""
+
+
+class StraySignal(Exception):
+    """A `break` or `continue` outside a loop, or `return` at the top level,
+    when it runs. `catch` cannot intercept it; `finally` still runs, as with
+    the Interpreter's Break/Continue/ReturnSignal."""
+
+    def __init__(self, kind, position):
+        super().__init__(kind)
+        self.kind = kind
+        self.position = position
+
+
+def module_frame(code, globals_):
+    return Frame(code, [UNSET] * code.nslots, (), globals_, None)
+
+
+def function_frame(function, args):
+    code = function.code
+    slots = [UNSET] * code.nslots
+    for slot, value in zip(code.params, args):
+        slots[slot] = value
+    for slot in code.cell_params:
+        slots[slot] = Cell(slots[slot])
+    return Frame(code, slots, function.cells, function.globals, function)
+
+
+def stray_error(signal, function_name):
+    """What a stray signal leaving a function becomes (Interpreter.call_value)."""
+    return NovaError("'{}' is not inside a loop in {}()".format(signal.kind, function_name),
+                     signal.position)
+
+
+def top_level_error(signal):
+    """What a stray signal reaching the top level becomes (run())."""
+    if signal.kind == "return":
+        return NovaError("'return' only makes sense inside a function")
+    return NovaError("'{}' is not inside a loop".format(signal.kind), signal.position)
+
+
+def find_handler(code, index, problem):
+    """(handler, what to push) for the error raised by instruction `index`."""
+    for start, end, handler, kind in code.exception_table:
+        if start <= index < end:
+            if kind == "catch":
+                if isinstance(problem, NovaError):
+                    return handler, error_text(problem)
+                continue
+            return handler, problem
+    return None, None
+
+
+def vm_function(code, cells, globals_):
+    function = NovaFunction(code.name, code.param_names, None, None)
+    function.code = code
+    function.cells = cells
+    function.globals = globals_
+    return function
+
+
+def execute(interpreter, entry):
+    """Run `entry` (a Frame) to its RETURN; the value it returns."""
+    frames = []                         # the callers of the current frame
+    frame = entry
+    call_stack = interpreter.call_stack
+
+    # Each opcode number as a local variable (looked up by name, so the
+    # order of OPCODES never matters here); locals are fastest in the loop.
+    LOAD_CONST_ = OP["LOAD_CONST"]; POP_ = OP["POP"]; DUP_ = OP["DUP"]
+    LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
+    STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
+    LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
+    ADD_ = OP["ADD"]; SUB_ = OP["SUB"]; MUL_ = OP["MUL"]
+    DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]; MOD_ = OP["MOD"]
+    NEG_ = OP["NEG"]; POS_ = OP["POS"]; NOT_ = OP["NOT"]
+    EQ_ = OP["EQ"]; NE_ = OP["NE"]; LT_ = OP["LT"]
+    GT_ = OP["GT"]; LE_ = OP["LE"]; GE_ = OP["GE"]
+    IN_ = OP["IN"]; CHECK_BOOL_ = OP["CHECK_BOOL"]; JUMP_IF_FALSE_KEEP_ = OP["JUMP_IF_FALSE_KEEP"]
+    JUMP_IF_TRUE_KEEP_ = OP["JUMP_IF_TRUE_KEEP"]; BUILD_LIST_ = OP["BUILD_LIST"]; BUILD_DICT_ = OP["BUILD_DICT"]
+    BUILD_STRING_ = OP["BUILD_STRING"]; INDEX_ = OP["INDEX"]; SLICE_TARGET_ = OP["SLICE_TARGET"]
+    SLICE_BOUND_ = OP["SLICE_BOUND"]; SLICE_ = OP["SLICE"]; GET_MEMBER_ = OP["GET_MEMBER"]
+    INDEX_ASSIGN_TARGET_ = OP["INDEX_ASSIGN_TARGET"]; INDEX_ASSIGN_KEY_ = OP["INDEX_ASSIGN_KEY"]; INDEX_ASSIGN_ = OP["INDEX_ASSIGN"]
+    MEMBER_ASSIGN_TARGET_ = OP["MEMBER_ASSIGN_TARGET"]; SET_MEMBER_ = OP["SET_MEMBER"]; DELETE_TARGET_ = OP["DELETE_TARGET"]
+    DELETE_KEY_ = OP["DELETE_KEY"]; DELETE_FILE_ = OP["DELETE_FILE"]; JUMP_ = OP["JUMP"]
+    JUMP_IF_NOT_TRUE_ = OP["JUMP_IF_NOT_TRUE"]; LOOP_NUMBER_ = OP["LOOP_NUMBER"]; RANGE_PREP_ = OP["RANGE_PREP"]
+    RANGE_NEXT_ = OP["RANGE_NEXT"]; ITER_PREP_ = OP["ITER_PREP"]; ITER_NEXT_ = OP["ITER_NEXT"]
+    MAKE_FUNCTION_ = OP["MAKE_FUNCTION"]; CALL_ = OP["CALL"]; RETURN_ = OP["RETURN"]
+    THROW_ = OP["THROW"]; RERAISE_ = OP["RERAISE"]; STRAY_ = OP["STRAY"]
+    FAIL_ = OP["FAIL"]; IMPORT_ = OP["IMPORT"]; IMPORT_NAME_ = OP["IMPORT_NAME"]
+    EXPORT_ = OP["EXPORT"]
+    binary = {ADD_: "+", SUB_: "-", MUL_: "*", DIV_: "/", FLOOR_DIV_: "//", MOD_: "%"}
+    compare = {EQ_: "==", NE_: "!=", LT_: "<", GT_: ">", LE_: "<=", GE_: ">=", IN_: "in"}
+
+    code = frame.code
+    ops, args, consts, positions = code.ops, code.args, code.constants, code.positions
+    slots, stack, cells, glob = frame.slots, frame.stack, frame.cells, frame.globals
+    ip = frame.ip
+
+    while True:
+        try:
+            while True:
+                op = ops[ip]
+                arg = args[ip]
+                ip += 1
+
+                if op == LOAD_FAST_:
+                    stack.append(slots[arg])
+                elif op == LOAD_CONST_:
+                    stack.append(consts[arg])
+                elif op == STORE_FAST_:
+                    slots[arg] = stack.pop()
+                elif op == LOAD_GLOBAL_:
+                    value = glob.get(arg, UNSET)
+                    if value is UNSET:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
+                elif op == STORE_GLOBAL_:
+                    glob[arg] = stack.pop()
+                elif op == LOAD_CELL_:
+                    stack.append(slots[arg].value)
+                elif op == STORE_CELL_:
+                    slots[arg].value = stack.pop()
+                elif op == LOAD_CHAIN_:
+                    for kind, where in consts[arg]:
+                        if kind == "fast":
+                            value = slots[where]
+                        elif kind == "cell":
+                            value = slots[where].value
+                        elif kind == "free":
+                            value = cells[where].value
+                        else:
+                            value = glob.get(where, UNSET)
+                            name = where
+                        if value is not UNSET:
+                            stack.append(value)
+                            break
+                    else:
+                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
+                elif op == STORE_CHAIN_:
+                    value = stack.pop()
+                    chain = consts[arg]
+                    last = len(chain) - 1
+                    for index, (kind, where) in enumerate(chain):
+                        if kind == "fast":
+                            if index == last or slots[where] is not UNSET:
+                                slots[where] = value
+                                break
+                        elif kind == "cell":
+                            if index == last or slots[where].value is not UNSET:
+                                slots[where].value = value
+                                break
+                        elif kind == "free":
+                            if index == last or cells[where].value is not UNSET:
+                                cells[where].value = value
+                                break
+                        elif index == last or where in glob:
+                            glob[where] = value
+                            break
+                elif op == NEW_CELLS_:
+                    for slot in consts[arg]:
+                        slots[slot] = Cell()
+                elif op == POP_:
+                    stack.pop()
+                elif op == DUP_:
+                    stack.append(stack[-1])
+                elif op in binary:
+                    right = stack.pop()
+                    stack[-1] = binary_operation(binary[op], stack[-1], right, positions[ip - 1])
+                elif op in compare:
+                    right = stack.pop()
+                    stack[-1] = compare_operation(compare[op], stack[-1], right, positions[ip - 1])
+                elif op == JUMP_:
+                    ip = arg
+                elif op == JUMP_IF_NOT_TRUE_:
+                    value = stack.pop()
+                    if value is not True:
+                        if value is not False:
+                            condition_check(value, consts[arg[0]], positions[ip - 1])
+                        ip = arg[1]
+                elif op == CALL_:
+                    if arg:
+                        call_args = stack[-arg:]
+                        del stack[-arg:]
+                    else:
+                        call_args = []
+                    callee = stack.pop()
+                    if type(callee) is NovaFunction and callee.code is not None:
+                        if len(call_args) != len(callee.params):
+                            raise NovaError("{}() expects {} argument(s) but got {}".format(
+                                callee.name, len(callee.params), len(call_args)),
+                                positions[ip - 1])
+                        if len(call_stack) >= MAX_CALL_DEPTH:
+                            raise NovaError(
+                                "call depth of {} exceeded - is the recursion missing a base "
+                                "case?".format(MAX_CALL_DEPTH), positions[ip - 1])
+                        frame.ip = ip
+                        frames.append(frame)
+                        call_stack.append(callee.name)
+                        frame = function_frame(callee, call_args)
+                        code = frame.code
+                        ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                        code.positions)
+                        slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                                     frame.globals)
+                        ip = 0
+                    else:
+                        stack.append(interpreter.call_value(callee, call_args, positions[ip - 1]))
+                elif op == RETURN_:
+                    value = stack.pop()
+                    if stack:
+                        # verify() proves RETURN runs with exactly one value
+                        # on the stack; anything left means the VM itself
+                        # went wrong. Stop the line rather than carry on.
+                        raise VMError("{} returned with {} stray value(s) on its stack".format(
+                            code.name, len(stack)))
+                    if frame.function is not None:
+                        call_stack.pop()
+                    if frame is entry:
+                        return value
+                    frame = frames.pop()
+                    code = frame.code
+                    ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                    code.positions)
+                    slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                                 frame.globals)
+                    ip = frame.ip
+                    stack.append(value)
+                elif op == RANGE_NEXT_:
+                    state = slots[arg[0]]
+                    index = state[3]
+                    if index >= state[2]:
+                        ip = arg[1]
+                    else:
+                        state[3] = index + 1
+                        stack.append(range_value(state[0], state[1], index, state[4]))
+                elif op == ITER_NEXT_:
+                    state = slots[arg[0]]
+                    index = state[1]
+                    if index >= len(state[0]):
+                        ip = arg[1]
+                    else:
+                        state[1] = index + 1
+                        item = state[0][index]
+                        if state[2]:
+                            stack.append(item[0])
+                            stack.append(item[1])
+                        else:
+                            stack.append(item)
+                elif op == CHECK_BOOL_:
+                    side, name = consts[arg]
+                    logical_side(stack[-1], side, name, positions[ip - 1])
+                elif op == JUMP_IF_FALSE_KEEP_:
+                    if stack[-1]:
+                        stack.pop()
+                    else:
+                        ip = arg
+                elif op == JUMP_IF_TRUE_KEEP_:
+                    if stack[-1]:
+                        ip = arg
+                    else:
+                        stack.pop()
+                elif op == NEG_ or op == POS_:
+                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
+                                                positions[ip - 1])
+                elif op == NOT_:
+                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
+                elif op == INDEX_:
+                    index = stack.pop()
+                    stack[-1] = index_operation(stack[-1], index, positions[ip - 1])
+                elif op == GET_MEMBER_:
+                    stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
+                elif op == BUILD_LIST_:
+                    if arg:
+                        items = stack[-arg:]
+                        del stack[-arg:]
+                    else:
+                        items = []
+                    stack.append(items)
+                elif op == BUILD_DICT_:
+                    keys = consts[arg]
+                    if keys:
+                        values = stack[-len(keys):]
+                        del stack[-len(keys):]
+                    else:
+                        values = []
+                    stack.append(dict(zip(keys, values)))
+                elif op == BUILD_STRING_:
+                    parts = stack[-arg:] if arg else []
+                    if arg:
+                        del stack[-arg:]
+                    stack.append(interpolate(parts))
+                elif op == SLICE_TARGET_:
+                    slice_target(stack[-1], positions[ip - 1])
+                elif op == SLICE_BOUND_:
+                    stack[-1] = slice_bound(stack[-1], positions[ip - 1])
+                elif op == SLICE_:
+                    end = stack.pop() if arg[1] else None
+                    start = stack.pop() if arg[0] else None
+                    stack[-1] = stack[-1][start:end]
+                elif op == INDEX_ASSIGN_TARGET_:
+                    index_assign_target(stack[-1], positions[ip - 1])
+                elif op == INDEX_ASSIGN_KEY_:
+                    stack[-1] = index_assign_key(stack[-2], stack[-1], positions[ip - 1])
+                elif op == INDEX_ASSIGN_:
+                    value = stack.pop()
+                    index = stack.pop()
+                    stack[-1] = index_assign(stack[-1], index, value, positions[ip - 1])
+                elif op == MEMBER_ASSIGN_TARGET_:
+                    member_assign_target(stack[-1], positions[ip - 1])
+                elif op == SET_MEMBER_:
+                    value = stack.pop()
+                    stack[-1][consts[arg]] = value          # a new key is fine
+                    stack[-1] = value
+                elif op == DELETE_TARGET_:
+                    delete_target(stack[-1], positions[ip - 1])
+                elif op == DELETE_KEY_:
+                    key = stack.pop()
+                    stack[-1] = delete_key(stack[-1], key, positions[ip - 1])
+                elif op == DELETE_FILE_:
+                    stack[-1] = delete_file(stack[-1], positions[ip - 1])
+                elif op == LOOP_NUMBER_:
+                    loop_number(stack[-1], consts[arg], positions[ip - 1])
+                elif op == RANGE_PREP_:
+                    slot, descending, has_step = arg
+                    step = stack.pop() if has_step else 1
+                    end = stack.pop()
+                    start = stack.pop()
+                    iterations = range_iterations(start, end, step, descending, positions[ip - 1])
+                    slots[slot] = [start, step, iterations, 0, descending]
+                elif op == ITER_PREP_:
+                    slot, names = arg
+                    items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
+                    slots[slot] = [items, 0, names == 2]
+                elif op == MAKE_FUNCTION_:
+                    child = consts[arg]
+                    closure = tuple(slots[where] if kind == "cell" else cells[where]
+                                    for kind, where in child.closure)
+                    stack.append(vm_function(child, closure, glob))
+                elif op == THROW_:
+                    raise throw_error(stack.pop(), positions[ip - 1])
+                elif op == RERAISE_:
+                    raise slots[arg]
+                elif op == STRAY_:
+                    raise StraySignal(consts[arg], positions[ip - 1])
+                elif op == FAIL_:
+                    message, label = consts[arg]
+                    raise NovaError(message, positions[ip - 1], label=label)
+                elif op == IMPORT_:
+                    stack.append(interpreter.import_module(consts[arg], positions[ip - 1]))
+                elif op == IMPORT_NAME_:
+                    name, raw_path = consts[arg]
+                    stack[-1] = imported_name(stack[-1], raw_path, name, positions[ip - 1])
+                elif op == EXPORT_:
+                    interpreter.current_exports[consts[arg]] = stack[-1]
+                else:
+                    raise NovaError("internal error: unknown opcode {}".format(op))
+        except VMError:
+            raise
+        except BaseException as problem:  # noqa: BLE001 - unwound exactly like Python's
+            # Unwind: this frame's handler, else leave it and try its caller's.
+            while True:
+                handler, payload = find_handler(code, ip - 1, problem)
+                if handler is not None:
+                    del stack[:]
+                    stack.append(payload)
+                    ip = handler
+                    break
+                if frame.function is not None:
+                    if isinstance(problem, NovaError) and problem.stack is None:
+                        problem.stack = ["{}()".format(name) for name in reversed(call_stack)]
+                    call_stack.pop()
+                    if isinstance(problem, StraySignal):
+                        problem = stray_error(problem, frame.function.name)
+                if frame is entry:
+                    raise problem
+                frame = frames.pop()
+                code = frame.code
+                ops, args, consts, positions = (code.ops, code.args, code.constants,
+                                                code.positions)
+                slots, stack, cells, glob = (frame.slots, frame.stack, frame.cells,
+                                             frame.globals)
+                ip = frame.ip
+
+
 def type_gate(ast, source, base_dir=None):
     """Refuse to run a program that fails its type check (M1, gradual
     typing). A program with no annotations and no imports cannot break a
@@ -5073,15 +5625,28 @@ def run(source, interpreter):
     tokens = Lexer(source).tokenize()
     ast = Parser(tokens).parse()
     type_gate(ast, source, interpreter.file_stack[-1] if interpreter.file_stack else None)
+    return ast, run_program(ast, interpreter)
+
+
+def run_program(ast, interpreter):
+    """Run a parsed program on the interpreter's engine; its value. A stray
+    `return`, `break` or `continue` at the top level is an error here."""
+    if interpreter.engine == "vm":
+        code = getattr(ast, "_code", None)
+        if code is None:
+            code = ast._code = compile_ast(ast)     # compiled once per parse
+        try:
+            return execute(interpreter, module_frame(code, interpreter.globals.values))
+        except StraySignal as signal:
+            raise top_level_error(signal) from None
     try:
-        value = interpreter.evaluate(ast)
+        return interpreter.evaluate(ast)
     except ReturnSignal:
         raise NovaError("'return' only makes sense inside a function")
     except BreakSignal as signal:
         raise NovaError("'break' is not inside a loop", signal.position)
     except ContinueSignal as signal:
         raise NovaError("'continue' is not inside a loop", signal.position)
-    return ast, value
 
 
 # ---------------------------------------------------------------------------
@@ -5269,8 +5834,11 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
   Finish the block with '}' (or press Ctrl-C to throw the draft away).
   Ctrl-C also stops a runaway loop.
 
-  Bytecode: `novalang.py --dis file.nova` prints the bytecode a program
-  compiles to (M4), without running it.
+  Bytecode: programs are compiled to bytecode and run on a virtual
+  machine (M4). `novalang.py --dis file.nova` prints the bytecode without
+  running it, and `novalang.py --tree-walk ...` runs anything - a file,
+  --bootstrap, the REPL - on the original tree-walking interpreter
+  instead, for comparison.
 
   Toolchain: `novalang.py --check file.nova` lints a program without
   running it (undefined names, unused variables, unreachable code),
@@ -5470,13 +6038,7 @@ class CompiledScript:
         own that caller would have to import novalang to catch."""
         interpreter = engine.interpreter
         try:
-            value = interpreter.evaluate(self.ast)
-        except ReturnSignal:
-            raise NovaLangError(NovaError("'return' only makes sense inside a function")) from None
-        except BreakSignal as signal:
-            raise NovaLangError(NovaError("'break' is not inside a loop", signal.position)) from None
-        except ContinueSignal as signal:
-            raise NovaLangError(NovaError("'continue' is not inside a loop", signal.position)) from None
+            value = run_program(self.ast, interpreter)
         except NovaError as error:
             raise NovaLangError(error) from None
         return to_python_value(value, interpreter)
@@ -5498,8 +6060,9 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self):
-        self.interpreter = Interpreter()
+    def __init__(self, engine=None):
+        """`engine` is "vm" (the default) or "tree" (the tree-walker)."""
+        self.interpreter = Interpreter(engine)
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
@@ -5654,6 +6217,15 @@ def main(argv):
 
     if not args:
         return repl()
+
+    # `--tree-walk ...` runs anything below on the original tree-walking
+    # interpreter instead of the bytecode VM, for comparing the two.
+    if args[0] == "--tree-walk":
+        global DEFAULT_ENGINE
+        DEFAULT_ENGINE = "tree"
+        args = args[1:]
+        if not args:
+            return repl()
 
     if args[0] == "--bootstrap":
         return run_bootstrap(args[1:])

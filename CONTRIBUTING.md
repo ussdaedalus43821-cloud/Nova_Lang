@@ -121,7 +121,12 @@ add a keyword or a built-in, add it to
 `editors/vscode/syntaxes/novalang.tmLanguage.json` too: station 9's drift
 guard fails until the grammar knows every word the language does. Run
 `python3 novalang.py --check` (and `--typecheck`, if it has annotations)
-on any `.nova` file you touch. Before sending a change:
+on any `.nova` file you touch. Programs run on the bytecode VM, with the
+tree-walker (`--tree-walk`) kept as the reference. If you change what an
+operation does, change the shared function in `novalang.py` that both
+engines call, not either engine. Station 11 compares the engines on
+everything, and `NOVA_DIFF_SEEDS=5000 python3 tests/vm/test_differential.py`
+runs a longer soak of random programs. Before sending a change:
 
 - Run every file under `examples/` both directly and with `--bootstrap`;
   outputs must match byte-for-byte (`examples/self_host_test.nova` is
