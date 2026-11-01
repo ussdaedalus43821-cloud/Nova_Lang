@@ -55,28 +55,21 @@ def test_enemies_advance_toward_the_player():
 
 
 def test_player_takes_damage_on_contact():
-    """Rather than waiting for a real enemy to walk into the player
-    (random y-placement makes that flaky to assert on), this drives the
-    same NovaLang engine but starts the player exactly where a spawned
-    enemy will be, and checks the invariant that matters: contact costs
-    hp and clears that enemy - not the exact tick it happens on."""
+    """Places two stationary enemies exactly on the player, so contact is
+    certain on the very next update - no waiting on random spawn heights -
+    and checks its exact cost: each hit takes that enemy's damage, adds 10
+    to the score, and destroys the enemy."""
     engine = make_engine()
-    engine.call("update", 5.0, NO_INPUT)
-    starting_hp = 100
-    hit = False
-    for _ in range(300):
-        state = engine.call("update", 0.5, NO_INPUT)
-        if state["player_hp"] < starting_hp:
-            hit = True
-            break
-        if state["game_over"]:
-            hit = True
-            break
-    return check("player eventually takes damage or the wave ends (contact logic runs)", hit or True)
-    # Note: with the player stationary at x=10 and enemies always crossing
-    # x=10 on their way to the base, `hit` is expected true almost always;
-    # this is deliberately tolerant (see test_game_over below for the
-    # strict, deterministic version of "contact matters").
+    for damage in (8, 5):
+        engine.nova.exec(
+            "append(enemies, {{x: player.x, y: player.y, hp: 40, speed: 0.0, damage: {}}})"
+            .format(damage)
+        )
+    state = engine.call("update", 0.0, NO_INPUT)
+    ok = check("each contact costs that enemy's damage (100 - 8 - 5 = 87)", state["player_hp"] == 87)
+    ok &= check("each contact scores exactly 10 (two hits = 20)", state["score"] == 20)
+    ok &= check("an enemy that hits the player is destroyed", len(state["enemies"]) == 0)
+    return ok
 
 
 def test_game_over_flag():
@@ -94,10 +87,12 @@ def test_reset_restores_initial_state():
     engine = make_engine()
     engine.call("update", 5.0, NO_INPUT)
     engine.nova.exec("player.hp = 10")
+    engine.nova.exec("player.score = 70")
     engine.call("reset_game")
     state = engine.call("update", 0.0, NO_INPUT)
     ok = check("reset_game() restores player.hp to 100", state["player_hp"] == 100)
     ok &= check("reset_game() clears any leftover enemies", len(state["enemies"]) == 0)
+    ok &= check("reset_game() sets the score back to 0", state["score"] == 0)
     return ok
 
 
