@@ -1,0 +1,26 @@
+# Where names live.
+let seen = 0
+if true {
+    seen = seen + 1  # a global that is certainly there: STORE_GLOBAL
+    fresh = 1        # maybe a global already (REPL, embedding): checked when it runs
+    let local = 2    # always this block's
+    print(fresh, local)
+}
+
+def counter() {
+    seen = 5  # a function's assignment never reaches a global
+    return seen
+}
+
+def shadow(x) {
+    if x > 0 {
+        let x = "inner"  # shadows the parameter, in this block only
+        print(x)
+    }
+    return x
+}
+
+def reads_global_late() {
+    return defined_after  # resolved when called
+}
+let defined_after = 1

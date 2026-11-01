@@ -18,6 +18,34 @@ AST          ->  Interpreter ->  a value
 
 ---
 
+## [Unreleased] — M4: Bytecode VM (in progress)
+
+### Added (phase 1: the compiler)
+- A bytecode compiler in `novalang.py`. `Resolver` decides where every name
+  lives: module globals stay a dictionary, and other bindings get frame
+  slots, or cells when a closure reads them. Late-bound reads in closures
+  become a chain of candidate cells. `Compiler` emits about 60 opcodes for
+  a stack machine, with a CPython 3.11-style exception table for
+  try/catch/finally. `verify()` checks every jump, slot, constant and
+  stack depth on every path.
+- `python3 novalang.py --dis file.nova` (and `tools/nova_compiler.py`)
+  prints the bytecode. Nothing runs it yet: the tree-walking interpreter
+  is still the only engine.
+- `tests/run_all.py` station 10. It checks golden disassembly (closures
+  three levels deep, a closure per loop iteration, every way out of
+  try/finally), every `.nova` file compiling and verifying, verify()
+  rejecting broken bytecode, and the resolver agreeing with
+  `tools/nova_scope.py` about the scope of every name read in the
+  repository.
+
+### Changing in phase 2
+- Very deep recursion under `--bootstrap` will report NovaLang's own
+  "call depth of 1200 exceeded" instead of Python's RecursionError ("ran
+  out of stack"), because NovaLang calls will no longer use Python's
+  stack.
+
+---
+
 ## [Unreleased] — M3: Editor tooling
 
 ### Added

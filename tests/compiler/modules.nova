@@ -1,0 +1,8 @@
+# Imports and exports (compiling resolves nothing; running would).
+import "./helpers.nova" with tool, other
+import "./helpers.nova" as helpers
+import "./not-a-name.nova"  # no valid name: an error when it runs, after loading
+export let version = "1.0"
+export def greet(name) {
+    return "hi " + name
+}
