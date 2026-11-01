@@ -1,0 +1,3 @@
+v1.2.0 49 42
+hello from a path package
+hello from git

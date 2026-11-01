@@ -3040,8 +3040,11 @@ class Interpreter:
         return value
 
     def resolve_import(self, raw_path, position):
-        """Search relative to the importing file, then the current directory."""
+        """A package name goes through resolve_package; a file path is
+        searched relative to the importing file, then the current directory."""
         current_dir = self.file_stack[-1] if self.file_stack else None
+        if is_package_import(raw_path):
+            return resolve_package(raw_path, current_dir, position)
         candidates = []
         if current_dir is not None:
             candidates.append(os.path.normpath(os.path.join(current_dir, raw_path)))
@@ -3076,7 +3079,7 @@ class Interpreter:
 
         if resolved_path in self.import_stack:
             cycle = self.import_stack[self.import_stack.index(resolved_path):] + [resolved_path]
-            chain = " -> ".join(os.path.basename(path) for path in cycle)
+            chain = " -> ".join(module_label(path) for path in cycle)
             raise NovaError(
                 "circular import: {}".format(chain), position, label="ImportError"
             )
@@ -3592,9 +3595,123 @@ def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+# ---------------------------------------------------------------------------
+# Packages (M2). `import "math-utils"` names a package installed by
+# tools/nova-pkg.py; anything else - every path ending in .nova, or with a
+# '/' in it - is a file, resolved exactly as before packages existed.
+# ---------------------------------------------------------------------------
+
+PACKAGE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
+PACKAGE_DIR = ".nova_modules"
+
+
+def is_package_import(raw_path):
+    return bool(PACKAGE_NAME.match(raw_path)) and not raw_path.endswith(".nova")
+
+
+def resolve_package(name, start_dir, position):
+    """The entry file of package `name`, found the way Node finds
+    node_modules: walk up from `start_dir` (the importing file's directory,
+    or the current directory) to the first `.nova_modules/<name>/nova.json`.
+    Walking up is what lets a package's own imports find its dependencies,
+    which nova-pkg installs side by side in the project's .nova_modules."""
+    directory = os.path.abspath(start_dir or os.getcwd())
+    searched = []
+    while True:
+        package = os.path.join(directory, PACKAGE_DIR, name)
+        if os.path.isfile(os.path.join(package, "nova.json")):
+            break
+        searched.append(os.path.join(directory, PACKAGE_DIR))
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            raise NovaError(
+                'cannot find package "{}" - looked in:\n{}\nIs it in nova.json, and has '
+                "`python3 tools/nova-pkg.py install` been run?".format(
+                    name, "\n".join("  " + path for path in searched[:6])
+                    + ("\n  ..." if len(searched) > 6 else "")
+                ),
+                position, label="ImportError",
+            )
+        directory = parent
+
+    check_installed(directory, position)
+    manifest_path = os.path.join(package, "nova.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as handle:
+            manifest = json_module.load(handle)
+    except (OSError, ValueError) as problem:
+        raise NovaError('package "{}" has an unreadable nova.json: {}'.format(name, problem),
+                        position, label="ImportError")
+    main = manifest.get("main", "main.nova") if isinstance(manifest, dict) else None
+    if not isinstance(main, str) or not main.endswith(".nova"):
+        raise NovaError('package "{}": "main" in its nova.json must name a .nova file'.format(name),
+                        position, label="ImportError")
+    entry = os.path.normpath(os.path.join(package, main))
+    if not os.path.isfile(entry):
+        raise NovaError('package "{}" has no entry file {}'.format(name, main),
+                        position, label="ImportError")
+    return entry
+
+
+INSTALL_HINT = "run `python3 tools/nova-pkg.py install`"
+_CHECKED_PROJECTS = set()
+
+
+def check_installed(project_dir, position):
+    """Stop the line if a project's installed packages are not exactly the
+    ones its nova.json and nova.lock describe - nova.json edited without an
+    install, a lockfile changed or deleted, an install that never finished.
+    Checked once per project per run."""
+    if project_dir in _CHECKED_PROJECTS:
+        return
+    modules = os.path.join(project_dir, PACKAGE_DIR)
+
+    def refuse(problem):
+        raise NovaError("the packages in {} cannot be used: {} - {}".format(
+            modules, problem, INSTALL_HINT), position, label="ImportError")
+
+    def text(name):
+        try:
+            with open(os.path.join(project_dir, name), "r", encoding="utf-8") as handle:
+                return handle.read()
+        except OSError:
+            return None
+
+    lock_text = text("nova.lock")
+    if lock_text is None:
+        refuse("there is no nova.lock beside them")
+    try:
+        lock = json_module.loads(lock_text)
+        manifest = json_module.loads(text("nova.json") or "null")
+    except ValueError:
+        refuse("nova.json or nova.lock is not valid JSON")
+    if not isinstance(manifest, dict) or not isinstance(lock, dict):
+        refuse("there is no nova.json beside them")
+    if lock.get("requires") != manifest.get("dependencies", {}):
+        refuse("nova.json has changed since nova.lock was written")
+    if text(os.path.join(PACKAGE_DIR, ".installed.lock")) != lock_text:
+        refuse("they were not installed from the current nova.lock")
+    _CHECKED_PROJECTS.add(project_dir)
+
+
+def module_label(path):
+    """How a module is named in messages: a file inside an installed
+    package as <package>/<file> (every package's entry is main.nova, so a
+    bare file name would not say which), any other file by its name."""
+    marker = os.sep + PACKAGE_DIR + os.sep
+    if marker in path:
+        return path.rsplit(marker, 1)[1].replace(os.sep, "/")
+    return os.path.basename(path)
+
+
 def default_module_name(raw_path, position):
-    """The name a bare `import "path.nova"` binds, absent an alias."""
-    stem = os.path.splitext(os.path.basename(raw_path))[0]
+    """The name a bare `import "path.nova"` binds, absent an alias. A
+    package binds its name with '-' and '.' made '_': "math-utils" binds
+    math_utils."""
+    if is_package_import(raw_path):
+        stem = raw_path.replace("-", "_").replace(".", "_")
+    else:
+        stem = os.path.splitext(os.path.basename(raw_path))[0]
     valid = stem and (stem[0].isalpha() or stem[0] == "_") and all(
         char.isalnum() or char == "_" for char in stem
     )
@@ -3880,6 +3997,8 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     import "f.nova"      run a file once; its exports are in f.<name>
     import "f.nova" as g       ...under the name g instead
     import "f.nova" with a, b  ...or bring specific names straight in
+    import "math-utils"  a package from nova.json, installed with
+                         tools/nova-pkg.py; binds math_utils
     export def f() { }   export let x = 1   mark a name as importable
     while c { } else { } the else runs only if no break happened
     def f(a) { return a } functions; print(...) is built in

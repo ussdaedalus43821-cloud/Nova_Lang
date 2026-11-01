@@ -37,6 +37,18 @@ Stations, in order:
                   embedding API; and every other annotated .nova file in
                   the repo checks clean, so none can bypass the checker.
 
+  8. packages     tests/pkg/ is copied to a scratch directory (sources/
+                  git-lib becomes a real git repo there) and nova-pkg is
+                  driven through every case: install from a registry, a
+                  path and a git ref; the lock, its determinism and the
+                  git commit it records; .nova_modules kept out of git;
+                  the project run on both engines; and each failure -
+                  package not installed, not in the registry, a version
+                  conflict, a package cycle, --frozen without a lock or
+                  with a stale one, tampering, a source changed after
+                  locking, a typed package's contract, and the
+                  interpreter refusing a stale install.
+
 Stations 4-5 compare output byte for byte; timestamps that `log()` stamps
 on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
@@ -44,6 +56,7 @@ the two engines word their error messages (stderr) differently on purpose.
 
 import concurrent.futures
 import glob
+import json
 import os
 import re
 import shutil
@@ -387,6 +400,165 @@ def station_types(line):
                    out + err)
 
 
+def station_packages(line):
+    print("8. packages")
+    pkg = os.path.join(ROOT, "tools", "nova-pkg.py")
+    novalang_py = os.path.join(ROOT, "novalang.py")
+    scratch = tempfile.mkdtemp(prefix="nova-pkg-test-")
+    try:
+        work = os.path.join(scratch, "pkg")
+        shutil.copytree(os.path.join(HERE, "pkg"), work)
+
+        def sh(args, cwd):
+            done = subprocess.run(args, cwd=cwd, stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=600)
+            return done.returncode, done.stdout, done.stderr
+
+        def git(args, cwd):
+            return sh(["git", "-c", "user.name=nova", "-c", "user.email=nova@example.com"]
+                      + args, cwd)
+
+        # git-lib: v0.3.0 is tagged, then the branch moves on, so a lock that
+        # recorded the ref instead of the commit would drift.
+        git_lib = os.path.join(work, "sources", "git-lib")
+        git(["init", "-q"], git_lib)
+        git(["add", "-A"], git_lib)
+        git(["commit", "-qm", "v0.3.0"], git_lib)
+        git(["tag", "v0.3.0"], git_lib)
+        tagged = git(["rev-parse", "HEAD"], git_lib)[1].strip()
+        with open(os.path.join(git_lib, "main.nova"), "a", encoding="utf-8") as handle:
+            handle.write("# a later, untagged change\n")
+        git(["commit", "-qam", "later"], git_lib)
+
+        def project(name):
+            return os.path.join(work, "projects", name)
+
+        def install(name, *flags):
+            return sh([sys.executable, pkg, "install"] + list(flags), project(name))
+
+        def run(name, script, *flags):
+            return sh([sys.executable, novalang_py] + list(flags) + [script], project(name))
+
+        def both(name, script):
+            return run(name, script), run(name, script, "--bootstrap")
+
+        def check(ok, label, result=None):
+            detail = "" if result is None else "exit {}\nstdout: {}\nstderr: {}".format(
+                result[0], result[1][-800:], result[2][-800:])
+            line.check(ok, "pkg: " + label, detail)
+
+        # -- the happy path --------------------------------------------------
+        app = project("app")
+        git(["init", "-q"], app)                # a project under version control
+        result = install("app")
+        check(result[0] == 0, "app installs", result)
+        lock_path = os.path.join(app, "nova.lock")
+        check(os.path.isfile(lock_path), "install writes nova.lock")
+        modules = os.path.join(app, ".nova_modules")
+        check(sorted(os.listdir(modules)) == [".gitignore", ".installed.lock", "git-lib",
+                                              "local-lib", "math-utils", "str-tools"],
+              "install creates .nova_modules with every package, flat",
+              (0, str(sorted(os.listdir(modules))), ""))
+        status = git(["status", "--porcelain", "--untracked-files=all"], app)
+        check(status[0] == 0 and ".nova_modules" not in status[1] and "nova.lock" in status[1],
+              "git ignores .nova_modules but not nova.lock", status)
+        lock = json.loads(read(lock_path))
+        check(lock["packages"]["math-utils"]["version"] == "1.2.0",
+              "^1.0.0 picks the newest 1.x (1.2.0, not 2.0.0)")
+        check(lock["packages"]["git-lib"]["source"] == {"git": "../../sources/git-lib",
+                                                        "commit": tagged},
+              "the lock pins git-lib to the tag's commit", (0, json.dumps(lock["packages"]), ""))
+        first_lock = read(lock_path)
+        expected = read(os.path.join(app, "expected.txt"))
+        direct, booted = both("app", "src/main.nova")
+        check(direct == (0, expected, ""), "app runs with its packages", direct)
+        check(booted == direct, "app runs the same under --bootstrap", booted)
+        result = sh([sys.executable, pkg, "verify"], app)
+        check(result[0] == 0, "verify passes after install", result)
+        result = install("app", "--frozen")
+        check(result[0] == 0 and read(lock_path) == first_lock, "install --frozen reuses the lock",
+              result)
+        os.remove(lock_path)
+        shutil.rmtree(modules)
+        install("app")
+        check(read(lock_path) == first_lock, "resolving again writes the identical lock")
+
+        # -- the interpreter stops the line on a stale install ----------------
+        def refused(label, needle):
+            for result in both("app", "src/main.nova"):
+                check(result[0] == 1 and needle in result[2] and "nova-pkg.py install" in result[2],
+                      label, result)
+
+        manifest_path = os.path.join(app, "nova.json")
+        manifest_text = read(manifest_path)
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            handle.write(manifest_text.replace('"^1.0.0"', '"~1.2.0"'))
+        refused("nova.json edited without an install is refused",
+                "nova.json has changed since nova.lock was written")
+        result = install("app", "--frozen")
+        check(result[0] == 1 and "out of date" in result[2], "--frozen refuses a stale lock", result)
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            handle.write(manifest_text)
+        os.remove(os.path.join(modules, ".installed.lock"))
+        refused("an unfinished install is refused", "not installed from the current nova.lock")
+        install("app")
+        os.remove(lock_path)
+        refused("a deleted nova.lock is refused", "there is no nova.lock")
+        result = install("app", "--frozen")
+        check(result[0] == 1 and "there is no nova.lock" in result[2],
+              "--frozen refuses a missing lock", result)
+        result = install("app")
+        check(result[0] == 0 and run("app", "src/main.nova")[0] == 0,
+              "install without --frozen recreates a missing lock", result)
+
+        # -- tampering ------------------------------------------------------
+        with open(os.path.join(modules, "str-tools", "tools.nova"), "a", encoding="utf-8") as handle:
+            handle.write("# edited by hand\n")
+        result = sh([sys.executable, pkg, "verify"], app)
+        check(result[0] == 1 and '"str-tools" was changed after it was installed' in result[1],
+              "verify catches an edited package", result)
+        install("app")
+        check(sh([sys.executable, pkg, "verify"], app)[0] == 0, "install repairs it")
+        registry_file = os.path.join(work, "registry", "str-tools", "0.1.0", "tools.nova")
+        original = read(registry_file)
+        with open(registry_file, "a", encoding="utf-8") as handle:
+            handle.write("# republished without a version bump\n")
+        result = install("app")
+        check(result[0] == 1 and "no longer matches nova.lock" in result[2],
+              "a package changed at its source after locking is refused", result)
+        with open(registry_file, "w", encoding="utf-8") as handle:
+            handle.write(original)
+
+        # -- resolution failures ---------------------------------------------
+        result = run("cycle", "main.nova")
+        check(result[0] == 1 and 'cannot find package "cyc-a"' in result[2],
+              "a package that was never installed is reported", result)
+        result = install("cycle")
+        check(result[0] == 0, "a dependency cycle (cyc-a <-> cyc-b) still resolves", result)
+        for result in both("cycle", "main.nova"):
+            check(result[0] == 1 and "circular import: cyc-a/main.nova -> cyc-b/main.nova" in
+                  result[2], "...and running it reports the circular import, naming packages",
+                  result)
+        result = install("missing")
+        check(result[0] == 1 and 'package "no-such-package"' in result[2]
+              and "is not in the registry" in result[2],
+              "a package missing from the registry is reported", result)
+        result = install("conflict")
+        check(result[0] == 1 and 'conflicting requirements for "math-utils"' in result[2]
+              and "conflict wants ^1.0.0" in result[2] and "needs-two@1.0.0 wants ^2.0.0" in result[2],
+              "a version conflict names both requirers", result)
+        check(not os.path.exists(os.path.join(project("conflict"), "nova.lock")),
+              "a failed install writes no lock")
+
+        # -- types through packages -----------------------------------------
+        install("typed")
+        for result in both("typed", "main.nova"):
+            check(result[0] == 1 and "TypeCheckError" in result[2] and SENTINEL not in result[1],
+                  "a typed package's contract binds an untyped importer", result)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def main(argv):
     quick = "--quick" in argv[1:]
     line = Line()
@@ -397,6 +569,7 @@ def main(argv):
         station_parity(line)
     station_python(line)
     station_types(line)
+    station_packages(line)
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(

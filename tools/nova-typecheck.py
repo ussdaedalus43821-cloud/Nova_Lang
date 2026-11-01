@@ -645,12 +645,19 @@ class Program:
     interpreter resolves them (relative to the importing file, then the
     current directory). A module that is missing, does not parse, or is
     part of an import cycle simply has no known exports here; the
-    interpreter reports those problems itself when it runs."""
+    interpreter reports those problems itself when it runs. A package name
+    is resolved by novalang.resolve_package, exactly as at run time."""
 
     def __init__(self):
         self.modules = {}           # absolute path -> Module (None while loading)
 
     def resolve(self, raw_path, base_dir):
+        if nl.is_package_import(raw_path):
+            # The interpreter's own resolver, so the two cannot disagree.
+            try:
+                return nl.resolve_package(raw_path, base_dir, None)
+            except NovaError:
+                return None
         candidates = []
         if base_dir is not None:
             candidates.append(os.path.normpath(os.path.join(base_dir, raw_path)))

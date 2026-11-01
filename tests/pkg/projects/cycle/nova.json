@@ -1,0 +1,8 @@
+{
+  "name": "cycle",
+  "version": "1.0.0",
+  "registry": "../../registry",
+  "dependencies": {
+    "cyc-a": "^1.0.0"
+  }
+}
