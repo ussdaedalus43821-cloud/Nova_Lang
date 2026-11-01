@@ -251,16 +251,32 @@ def builtin_type(name):
 # ---------------------------------------------------------------------------
 
 class Finding:
-    def __init__(self, position, code, message, contract=False):
+    """`end` is where the problem stops (exclusive), or None when only its
+    start is known; the command line shows only the start."""
+
+    def __init__(self, position, code, message, contract=False, end=None):
         self.position = position
         self.code = code
         self.message = message
         self.contract = contract    # a typed function's signature was broken
+        self.end = end
 
 
 def position_of(node):
     start = getattr(node, "_start", None)
     return start if start is not None else getattr(node, "position", None)
+
+
+def end_of(node):
+    """Where a node's source text stops, when that is known."""
+    end = getattr(node, "_end", None)
+    if end is not None:
+        return end
+    if isinstance(node, (nl.VarNode, nl.TypeNode)):
+        return node.position + len(node.name)
+    if isinstance(node, nl.MemberNode):
+        return node.position + 1 + len(node.name)       # the '.' and the field
+    return None
 
 
 def callee_name(node):
@@ -299,13 +315,15 @@ class Checker(ScopeWalker):
         self.findings.sort(key=lambda finding: (finding.position or 0, finding.code))
         return exports
 
-    def report(self, node_or_position, code, message, contract=False):
+    def report(self, node_or_position, code, message, contract=False, end=None):
         if self.contracts_only and not contract:
             return
         position = node_or_position
         if not isinstance(position, int) and position is not None:
             position = position_of(node_or_position)
-        self.findings.append(Finding(position, code, message, contract))
+            if end is None:
+                end = end_of(node_or_position)
+        self.findings.append(Finding(position, code, message, contract, end))
 
     def resolve(self, type_node):
         """The Type an annotation names; ANY (after a T001) if none."""
@@ -322,7 +340,7 @@ class Checker(ScopeWalker):
         hint = " - did you mean '{}'?".format(guess) if guess else (
             " - the types are " + ", ".join(ANNOTATIONS)
         )
-        self.report(type_node.position, "T001",
+        self.report(type_node, "T001",
                     "unknown type '{}'{}".format(type_node.name, hint))
         return ANY
 
@@ -406,9 +424,11 @@ class Checker(ScopeWalker):
         signature = self.returns
         self.returns = None
         if signature.ret is not ANY and not terminates(node.body):
+            span = self.parsed.name_after(node.position, node.name)
             self.report(node.position, "T005",
                         "{}() is declared to return {}, but can reach its end without "
-                        "returning anything".format(node.name, signature.ret.describe()))
+                        "returning anything".format(node.name, signature.ret.describe()),
+                        end=span[1] if span else None)
 
     def visit_ReturnNode(self, node):
         kind = NOTHING if node.value is None else self.visit(node.value)
@@ -416,10 +436,13 @@ class Checker(ScopeWalker):
         if signature is None or signature.ret is ANY:
             return
         if not fits(kind, signature.ret):
-            self.report(node.value if node.value is not None else node.position, "T004",
-                        "{}() must return {}, but this returns {}".format(
-                            signature.function_name, signature.ret.describe(),
-                            "nothing" if kind is NOTHING else kind.describe()))
+            message = "{}() must return {}, but this returns {}".format(
+                signature.function_name, signature.ret.describe(),
+                "nothing" if kind is NOTHING else kind.describe())
+            if node.value is not None:
+                self.report(node.value, "T004", message)
+            else:
+                self.report(node.position, "T004", message, end=node.position + len("return"))
 
     def visit_ThrowNode(self, node):
         kind = self.visit(node.value)
@@ -536,7 +559,8 @@ class Checker(ScopeWalker):
         result = binary_result(node.op, left, right)
         if result is None:
             self.report(node.left, "T007", "cannot use '{}' on {} and {}".format(
-                node.op, left.describe(), right.describe()))
+                node.op, left.describe(), right.describe()),
+                end=end_of(node) or end_of(node.right))
             return ANY
         return result
 
@@ -545,7 +569,8 @@ class Checker(ScopeWalker):
         right = self.visit(node.right)
         if compare_result(node.op, left, right) is None:
             self.report(node.left, "T007", "cannot use '{}' on {} and {}".format(
-                node.op, left.describe(), right.describe()))
+                node.op, left.describe(), right.describe()),
+                end=end_of(node) or end_of(node.right))
         return BOOL
 
     def index_check(self, kind, node, role):
