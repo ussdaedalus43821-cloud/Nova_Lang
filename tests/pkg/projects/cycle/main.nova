@@ -1,0 +1,2 @@
+import "cyc-a"
+print(cyc_a.a)

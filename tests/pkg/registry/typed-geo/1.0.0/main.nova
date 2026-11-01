@@ -1,0 +1,4 @@
+# A typed package: its contracts bind every importer.
+export def area(width: float, height: float) -> float {
+    return width * height
+}

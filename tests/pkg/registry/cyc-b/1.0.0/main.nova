@@ -1,0 +1,2 @@
+import "cyc-a"
+export let b = 2

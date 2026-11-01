@@ -1,0 +1,10 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "registry": "../../registry",
+  "dependencies": {
+    "math-utils": "^1.0.0",
+    "local-lib": {"path": "../../sources/local-lib"},
+    "git-lib": {"git": "../../sources/git-lib", "ref": "v0.3.0"}
+  }
+}

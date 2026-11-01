@@ -1,0 +1,7 @@
+{
+  "name": "needs-two",
+  "version": "1.0.0",
+  "dependencies": {
+    "math-utils": "^2.0.0"
+  }
+}
