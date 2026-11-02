@@ -177,9 +177,11 @@ class Generator:
             self.emit(depth, "{} = {}".format(self.pick(NAMES), self.assigned()))
         elif roll < 0.24 or deep:
             self.emit(depth, "let {} = {}".format(self.pick(NAMES), self.assigned()))
-        elif roll < 0.36:
+        elif roll < 0.33:
             self.emit(depth, "print({})".format(", ".join(
                 self.expression() for _ in range(self.random.randint(1, 3)))))
+        elif roll < 0.36:
+            self.store_through(depth)
         elif roll < 0.46:
             self.emit(depth, "if {} {{".format(self.condition()))
             self.block(depth + 1, context)
@@ -218,11 +220,40 @@ class Generator:
             self.emit(depth, 'delete {}["n"]'.format(record))
             self.emit(depth, "print({})".format(record))
         else:
-            bucket = self.fresh("list")
-            self.emit(depth, "let {} = [1, 2, 3]".format(bucket))
-            self.emit(depth, "{}[{}] = {}".format(bucket, self.random.randint(-2, 2),
-                                                  self.expression()))
-            self.emit(depth, "print({}[0:2], {}[1:])".format(bucket, bucket))
+            self.store_through(depth)
+
+    # Assignment through an index, a member or delete, on every kind of
+    # target with every kind of index (INDEXES, plus -4: a negative index
+    # Python would take but NovaLang refuses), and a value that may change
+    # the target while it is evaluated - the cases a fast path for these
+    # opcodes could get wrong, or get right in the wrong order (M6).
+    STORE_TARGETS = ["[10, 20, 30]", "[]", '"abc"', "{k: 1, n: 2}", "{}", "7"]
+
+    def store_through(self, depth):
+        target = self.fresh("held")
+        literal = self.pick(self.STORE_TARGETS)
+        self.emit(depth, "let {} = {}".format(target, literal))
+        values = [self.expression(), self.expression(), "pop({})".format(target),
+                  "len({})".format(target)]
+        if literal.startswith("["):
+            # Grows the list before the store happens. Only ever on a list:
+            # append() on a string appends to the file of that name.
+            values.append("len(append({}, 1))".format(target))
+        value = self.pick(values)
+        index = self.pick(self.INDEXES + ["-4"])
+        kind = self.random.random()
+        if kind < 0.6:
+            statement = "{}[{}] = {}".format(target, index, value)
+        elif kind < 0.8:
+            statement = "{}.k = {}".format(target, value)
+        else:
+            statement = "delete {}[{}]".format(target, index)
+        self.emit(depth, "try {")
+        self.emit(depth + 1, statement)
+        self.emit(depth, "} catch problem {")
+        self.emit(depth + 1, 'print("refused:", problem)')
+        self.emit(depth, "}")
+        self.emit(depth, "print({})".format(target))
 
     def loop(self, depth, context):
         inner = dict(context, in_loop=True)
