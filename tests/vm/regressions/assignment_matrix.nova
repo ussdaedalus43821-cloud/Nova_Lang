@@ -1,0 +1,133 @@
+# assignment_matrix.nova - every way an assignment through an index, a
+# member or delete can go, on both engines (station 11 compares them byte
+# for byte; M6).
+#
+# Each part of a statement - the target, the index and the value - comes
+# from a function that prints when it is evaluated, so the output records
+# the order of evaluation and the moment each error fires. The order the
+# tree-walker defines, and the VM must keep:
+#   d[k] = v      target, index, key must be a string, value, store
+#   x[i] = v      target, strings refused, index, value, list index checked
+#   x.f = v       target, non-dictionaries refused, value, store
+#   delete x[k]   target, non-dictionaries refused, key, key must be a string
+#
+# The values include one that changes the target while it is evaluated
+# (a list that grows or shrinks), so a check made too early or too late
+# gives a different answer.
+
+let mx_kinds = ["list", "empty list", "string", "dict", "empty dict", "number"]
+let mx_indexes = [0, 1, 2, 3, 5, -1, -3, -4, 1.0, 1.5, true, false, "k", "n", "missing"]
+let mx_givers = ["plain", "throws", "grows", "shrinks"]
+
+def mx_target(kind) {
+    print("  target")
+    if kind == "list" {
+        return [10, 20, 30]
+    }
+    if kind == "empty list" {
+        return []
+    }
+    if kind == "string" {
+        return "abc"
+    }
+    if kind == "dict" {
+        return {k: 1, n: 2}
+    }
+    if kind == "empty dict" {
+        return {}
+    }
+    return 5
+}
+
+def mx_index(i) {
+    print("  index", i)
+    return i
+}
+
+def mx_value(giver, t) {
+    print("  value", giver)
+    if giver == "throws" {
+        throw("the value failed")
+    }
+    if type(t) == "list" {
+        if giver == "grows" {
+            append(t, 40)
+        }
+        if giver == "shrinks" and len(t) > 0 {
+            pop(t)
+        }
+    }
+    return 99
+}
+
+def mx_case(label, run) {
+    print(label)
+    try {
+        print("  ->", run())
+    } catch e {
+        print("  error:", e)
+    }
+}
+
+# t[i] = v: every target, every index, every kind of value. The target is
+# held in a list so the value function can reach the very object being
+# assigned to.
+for kind in mx_kinds {
+    for i in mx_indexes {
+        for giver in mx_givers {
+            let held = []
+            def assign() {
+                let t = mx_target(kind)
+                append(held, t)
+                t[mx_index(i)] = mx_value(giver, t)
+                return t
+            }
+            mx_case(f"{kind}[{i}] = <{giver}>", assign)
+        }
+    }
+}
+
+# The same at the top level of a block rather than in a function, where
+# the target is a global.
+let mx_global = [10, 20, 30]
+for i in mx_indexes {
+    try {
+        mx_global[mx_index(i)] = mx_value("plain", mx_global)
+        print("  global ->", mx_global)
+    } catch e {
+        print("  global error:", e)
+    }
+}
+
+# t.f = v: every target, every kind of value.
+for kind in mx_kinds {
+    for giver in mx_givers {
+        def set_field() {
+            let t = mx_target(kind)
+            t.k = mx_value(giver, t)
+            return t
+        }
+        mx_case(f"{kind}.k = <{giver}>", set_field)
+    }
+}
+
+# delete t[k]: every target, every key.
+for kind in mx_kinds {
+    for i in mx_indexes {
+        def remove_it() {
+            let t = mx_target(kind)
+            delete t[mx_index(i)]
+            return t
+        }
+        mx_case(f"delete {kind}[{i}]", remove_it)
+    }
+}
+
+# Chained: the value is stored in both, right to left, and is the result.
+def chained() {
+    let a = [0, 0]
+    let d = {}
+    a[1] = d["x"] = mx_value("plain", a)
+    return [a, d]
+}
+mx_case("a[1] = d[\"x\"] = <plain>", chained)
