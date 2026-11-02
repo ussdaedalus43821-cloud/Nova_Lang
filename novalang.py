@@ -5363,6 +5363,11 @@ def execute(interpreter, entry):
                         if value is not False:
                             condition_check(value, consts[arg[0]], positions[ip - 1])
                         ip = arg[1]
+                elif op == LOAD_GLOBAL_:
+                    value = glob.get(arg, UNSET)
+                    if value is UNSET:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
                 elif op == CALL_:
                     if arg:
                         call_args = stack[-arg:]
@@ -5398,6 +5403,8 @@ def execute(interpreter, entry):
                         ip = 0
                     else:
                         stack.append(interpreter.call_value(callee, call_args, positions[ip - 1]))
+                elif op == STORE_FAST_:
+                    slots[arg] = stack.pop()
                 elif op == RETURN_:
                     value = stack.pop()
                     if stack:
@@ -5418,27 +5425,6 @@ def execute(interpreter, entry):
                                                  frame.globals)
                     ip = frame.ip
                     stack.append(value)
-                elif op == LOAD_GLOBAL_:
-                    value = glob.get(arg, UNSET)
-                    if value is UNSET:
-                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
-                    stack.append(value)
-                elif op == INDEX_:
-                    index = stack.pop()
-                    target = stack[-1]
-                    kind = type(target)
-                    # Fast: a present string key, or an in-range non-negative
-                    # whole index. Anything else - negative indexes, misses
-                    # and every error - goes through index_operation.
-                    if kind is dict:
-                        if type(index) is str and index in target:
-                            stack[-1] = target[index]
-                            continue
-                    elif kind is list or kind is str:
-                        if type(index) is int and 0 <= index < len(target):
-                            stack[-1] = target[index]
-                            continue
-                    stack[-1] = index_operation(target, index, positions[ip - 1])
                 elif op == EQ_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5447,24 +5433,6 @@ def execute(interpreter, entry):
                         stack[-1] = left == right
                     else:
                         stack[-1] = compare_operation("==", left, right, positions[ip - 1])
-                elif op == STORE_FAST_:
-                    slots[arg] = stack.pop()
-                elif op == LOAD_CHAIN_:
-                    for kind, where in consts[arg]:
-                        if kind == "fast":
-                            value = slots[where]
-                        elif kind == "cell":
-                            value = slots[where].value
-                        elif kind == "free":
-                            value = cells[where].value
-                        else:
-                            value = glob.get(where, UNSET)
-                            name = where
-                        if value is not UNSET:
-                            stack.append(value)
-                            break
-                    else:
-                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
                 elif op == ADD_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5481,6 +5449,26 @@ def execute(interpreter, entry):
                         stack[-1] = left - right
                     else:
                         stack[-1] = binary_operation("-", left, right, positions[ip - 1])
+                elif op == INDEX_:
+                    index = stack.pop()
+                    target = stack[-1]
+                    kind = type(target)
+                    # Fast: a present string key, or an in-range non-negative
+                    # whole index. Anything else - negative indexes, misses
+                    # and every error - goes through index_operation.
+                    if kind is dict:
+                        if type(index) is str and index in target:
+                            stack[-1] = target[index]
+                            continue
+                    elif kind is list or kind is str:
+                        if type(index) is int and 0 <= index < len(target):
+                            stack[-1] = target[index]
+                            continue
+                    stack[-1] = index_operation(target, index, positions[ip - 1])
+                elif op == JUMP_:
+                    ip = arg
+                elif op == STORE_GLOBAL_:
+                    glob[arg] = stack.pop()
                 elif op == LT_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5489,6 +5477,22 @@ def execute(interpreter, entry):
                         stack[-1] = left < right
                     else:
                         stack[-1] = compare_operation("<", left, right, positions[ip - 1])
+                elif op == LOAD_CHAIN_:
+                    for kind, where in consts[arg]:
+                        if kind == "fast":
+                            value = slots[where]
+                        elif kind == "cell":
+                            value = slots[where].value
+                        elif kind == "free":
+                            value = cells[where].value
+                        else:
+                            value = glob.get(where, UNSET)
+                            name = where
+                        if value is not UNSET:
+                            stack.append(value)
+                            break
+                    else:
+                        raise NovaError("undefined name {!r}".format(name), positions[ip - 1])
                 elif op == MOD_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5497,18 +5501,6 @@ def execute(interpreter, entry):
                         stack[-1] = left % right
                     else:
                         stack[-1] = binary_operation("%", left, right, positions[ip - 1])
-                elif op == STORE_GLOBAL_:
-                    glob[arg] = stack.pop()
-                elif op == JUMP_:
-                    ip = arg
-                elif op == RANGE_NEXT_:
-                    state = slots[arg[0]]
-                    index = state[3]
-                    if index >= state[2]:
-                        ip = arg[1]
-                    else:
-                        state[3] = index + 1
-                        stack.append(range_value(state[0], state[1], index, state[4]))
                 elif op == ITER_NEXT_:
                     state = slots[arg[0]]
                     index = state[1]
@@ -5524,54 +5516,12 @@ def execute(interpreter, entry):
                             stack.append(item)
                 elif op == POP_:
                     stack.pop()
-                elif op == CHECK_BOOL_:
-                    side, name = consts[arg]
-                    logical_side(stack[-1], side, name, positions[ip - 1])
-                elif op == JUMP_IF_FALSE_KEEP_:
-                    if stack[-1]:
-                        stack.pop()
-                    else:
-                        ip = arg
-                elif op == JUMP_IF_TRUE_KEEP_:
-                    if stack[-1]:
-                        ip = arg
-                    else:
-                        stack.pop()
                 elif op == IN_:
                     right = stack.pop()
                     stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
-                elif op == NE_:
-                    right = stack.pop()
-                    left = stack[-1]
-                    kind = type(left)
-                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
-                        stack[-1] = left != right
-                    else:
-                        stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
-                elif op == GT_:
-                    right = stack.pop()
-                    left = stack[-1]
-                    kind = type(left)
-                    if type(right) is kind and (kind is int or kind is float or kind is str):
-                        stack[-1] = left > right
-                    else:
-                        stack[-1] = compare_operation(">", left, right, positions[ip - 1])
-                elif op == LE_:
-                    right = stack.pop()
-                    left = stack[-1]
-                    kind = type(left)
-                    if type(right) is kind and (kind is int or kind is float or kind is str):
-                        stack[-1] = left <= right
-                    else:
-                        stack[-1] = compare_operation("<=", left, right, positions[ip - 1])
-                elif op == GE_:
-                    right = stack.pop()
-                    left = stack[-1]
-                    kind = type(left)
-                    if type(right) is kind and (kind is int or kind is float or kind is str):
-                        stack[-1] = left >= right
-                    else:
-                        stack[-1] = compare_operation(">=", left, right, positions[ip - 1])
+                elif op == CHECK_BOOL_:
+                    side, name = consts[arg]
+                    logical_side(stack[-1], side, name, positions[ip - 1])
                 elif op == MUL_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5580,34 +5530,22 @@ def execute(interpreter, entry):
                         stack[-1] = left * right
                     else:
                         stack[-1] = binary_operation("*", left, right, positions[ip - 1])
-                elif op == FLOOR_DIV_:
-                    right = stack.pop()
-                    left = stack[-1]
-                    kind = type(left)
-                    if type(right) is kind and (kind is int or kind is float) and right != 0:
-                        stack[-1] = left // right
+                elif op == INDEX_ASSIGN_TARGET_:
+                    index_assign_target(stack[-1], positions[ip - 1])
+                elif op == INDEX_ASSIGN_KEY_:
+                    stack[-1] = index_assign_key(stack[-2], stack[-1], positions[ip - 1])
+                elif op == RANGE_NEXT_:
+                    state = slots[arg[0]]
+                    index = state[3]
+                    if index >= state[2]:
+                        ip = arg[1]
                     else:
-                        stack[-1] = binary_operation("//", left, right, positions[ip - 1])
-                elif op == DIV_:
-                    right = stack.pop()
-                    stack[-1] = binary_operation("/", stack[-1], right, positions[ip - 1])
-                elif op == LOAD_CELL_:
-                    stack.append(slots[arg].value)
-                elif op == STORE_CELL_:
-                    slots[arg].value = stack.pop()
-                elif op == GET_MEMBER_:
-                    stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
-                elif op == BUILD_LIST_:
-                    if arg:
-                        items = stack[-arg:]
-                        del stack[-arg:]
-                    else:
-                        items = []
-                    stack.append(items)
-                elif op == DUP_:
-                    stack.append(stack[-1])
-                elif op == NOT_:
-                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
+                        state[3] = index + 1
+                        stack.append(range_value(state[0], state[1], index, state[4]))
+                elif op == INDEX_ASSIGN_:
+                    value = stack.pop()
+                    index = stack.pop()
+                    stack[-1] = index_assign(stack[-1], index, value, positions[ip - 1])
                 elif op == BUILD_DICT_:
                     keys = consts[arg]
                     if keys:
@@ -5616,6 +5554,121 @@ def execute(interpreter, entry):
                     else:
                         values = []
                     stack.append(dict(zip(keys, values)))
+                elif op == ITER_PREP_:
+                    slot, names = arg
+                    items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
+                    slots[slot] = [items, 0, names == 2]
+                elif op == GET_MEMBER_:
+                    stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
+                elif op == MEMBER_ASSIGN_TARGET_:
+                    member_assign_target(stack[-1], positions[ip - 1])
+                elif op == NE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                        stack[-1] = left != right
+                    else:
+                        stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
+                elif op == SET_MEMBER_:
+                    value = stack.pop()
+                    stack[-1][consts[arg]] = value          # a new key is fine
+                    stack[-1] = value
+                elif op == JUMP_IF_FALSE_KEEP_:
+                    if stack[-1]:
+                        stack.pop()
+                    else:
+                        ip = arg
+                elif op == BUILD_LIST_:
+                    if arg:
+                        items = stack[-arg:]
+                        del stack[-arg:]
+                    else:
+                        items = []
+                    stack.append(items)
+                elif op == JUMP_IF_TRUE_KEEP_:
+                    if stack[-1]:
+                        ip = arg
+                    else:
+                        stack.pop()
+                elif op == MAKE_FUNCTION_:
+                    child = consts[arg]
+                    closure = tuple(slots[where] if kind == "cell" else cells[where]
+                                    for kind, where in child.closure)
+                    stack.append(vm_function(child, closure, glob))
+                elif op == DELETE_TARGET_:
+                    delete_target(stack[-1], positions[ip - 1])
+                elif op == DELETE_KEY_:
+                    key = stack.pop()
+                    stack[-1] = delete_key(stack[-1], key, positions[ip - 1])
+                elif op == GT_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left > right
+                    else:
+                        stack[-1] = compare_operation(">", left, right, positions[ip - 1])
+                elif op == NOT_:
+                    stack[-1] = not_operation(stack[-1], positions[ip - 1])
+                elif op == LOAD_CELL_:
+                    stack.append(slots[arg].value)
+                elif op == GE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left >= right
+                    else:
+                        stack[-1] = compare_operation(">=", left, right, positions[ip - 1])
+                elif op == SLICE_BOUND_:
+                    stack[-1] = slice_bound(stack[-1], positions[ip - 1])
+                elif op == STORE_CELL_:
+                    slots[arg].value = stack.pop()
+                elif op == NEW_CELLS_:
+                    for slot in consts[arg]:
+                        slots[slot] = Cell()
+                elif op == LOOP_NUMBER_:
+                    loop_number(stack[-1], consts[arg], positions[ip - 1])
+                elif op == LE_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                        stack[-1] = left <= right
+                    else:
+                        stack[-1] = compare_operation("<=", left, right, positions[ip - 1])
+                elif op == SLICE_TARGET_:
+                    slice_target(stack[-1], positions[ip - 1])
+                elif op == RANGE_PREP_:
+                    slot, descending, has_step = arg
+                    step = stack.pop() if has_step else 1
+                    end = stack.pop()
+                    start = stack.pop()
+                    iterations = range_iterations(start, end, step, descending, positions[ip - 1])
+                    slots[slot] = [start, step, iterations, 0, descending]
+                elif op == SLICE_:
+                    end = stack.pop() if arg[1] else None
+                    start = stack.pop() if arg[0] else None
+                    stack[-1] = stack[-1][start:end]
+                elif op == NEG_ or op == POS_:
+                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
+                                                positions[ip - 1])
+                elif op == DIV_:
+                    right = stack.pop()
+                    stack[-1] = binary_operation("/", stack[-1], right, positions[ip - 1])
+                elif op == FLOOR_DIV_:
+                    right = stack.pop()
+                    left = stack[-1]
+                    kind = type(left)
+                    if type(right) is kind and (kind is int or kind is float) and right != 0:
+                        stack[-1] = left // right
+                    else:
+                        stack[-1] = binary_operation("//", left, right, positions[ip - 1])
+                elif op == THROW_:
+                    raise throw_error(stack.pop(), positions[ip - 1])
+                elif op == DUP_:
+                    stack.append(stack[-1])
                 elif op == BUILD_STRING_:
                     parts = stack[-arg:] if arg else []
                     if arg:
@@ -5641,64 +5694,11 @@ def execute(interpreter, entry):
                         elif index == last or where in glob:
                             glob[where] = value
                             break
-                elif op == NEW_CELLS_:
-                    for slot in consts[arg]:
-                        slots[slot] = Cell()
                 elif op == RESET_SLOTS_:
                     for slot in consts[arg]:
                         slots[slot] = UNSET
-                elif op == MAKE_FUNCTION_:
-                    child = consts[arg]
-                    closure = tuple(slots[where] if kind == "cell" else cells[where]
-                                    for kind, where in child.closure)
-                    stack.append(vm_function(child, closure, glob))
-                elif op == NEG_ or op == POS_:
-                    stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
-                                                positions[ip - 1])
-                elif op == SLICE_TARGET_:
-                    slice_target(stack[-1], positions[ip - 1])
-                elif op == SLICE_BOUND_:
-                    stack[-1] = slice_bound(stack[-1], positions[ip - 1])
-                elif op == SLICE_:
-                    end = stack.pop() if arg[1] else None
-                    start = stack.pop() if arg[0] else None
-                    stack[-1] = stack[-1][start:end]
-                elif op == INDEX_ASSIGN_TARGET_:
-                    index_assign_target(stack[-1], positions[ip - 1])
-                elif op == INDEX_ASSIGN_KEY_:
-                    stack[-1] = index_assign_key(stack[-2], stack[-1], positions[ip - 1])
-                elif op == INDEX_ASSIGN_:
-                    value = stack.pop()
-                    index = stack.pop()
-                    stack[-1] = index_assign(stack[-1], index, value, positions[ip - 1])
-                elif op == MEMBER_ASSIGN_TARGET_:
-                    member_assign_target(stack[-1], positions[ip - 1])
-                elif op == SET_MEMBER_:
-                    value = stack.pop()
-                    stack[-1][consts[arg]] = value          # a new key is fine
-                    stack[-1] = value
-                elif op == DELETE_TARGET_:
-                    delete_target(stack[-1], positions[ip - 1])
-                elif op == DELETE_KEY_:
-                    key = stack.pop()
-                    stack[-1] = delete_key(stack[-1], key, positions[ip - 1])
                 elif op == DELETE_FILE_:
                     stack[-1] = delete_file(stack[-1], positions[ip - 1])
-                elif op == LOOP_NUMBER_:
-                    loop_number(stack[-1], consts[arg], positions[ip - 1])
-                elif op == RANGE_PREP_:
-                    slot, descending, has_step = arg
-                    step = stack.pop() if has_step else 1
-                    end = stack.pop()
-                    start = stack.pop()
-                    iterations = range_iterations(start, end, step, descending, positions[ip - 1])
-                    slots[slot] = [start, step, iterations, 0, descending]
-                elif op == ITER_PREP_:
-                    slot, names = arg
-                    items = iteration_items(stack.pop(), names == 2, positions[ip - 1])
-                    slots[slot] = [items, 0, names == 2]
-                elif op == THROW_:
-                    raise throw_error(stack.pop(), positions[ip - 1])
                 elif op == RERAISE_:
                     raise slots[arg]
                 elif op == STRAY_:
