@@ -20,7 +20,7 @@ No `eval()`. No `exec()`. No parser generators. Every stage is built by
 hand. See [Architecture](#architecture) for how the pieces fit, and for
 the tree-walking interpreter that is kept as the fallback and reference.
 
-**Current release: v2.0.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
+**Current release: v2.0.1.** See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history, from the 14 build stages of 1.x to the bytecode VM.
 
 ## Contents
@@ -599,6 +599,9 @@ process, best of 5, on the same machine:
 | self_host_test --bootstrap | 0.632 s | 1.071 s |
 | loops (200k iterations) | 0.961 s | 2.546 s |
 | closures (100k closure calls) | 0.493 s | 0.694 s |
+| index_assign (550k stores and deletes)¹ | 2.483 s | 2.823 s |
+
+¹ Measured for 2.0.1, after the assignment fast paths; the other rows are from 2.0.0.
 
 Compiling costs a little at load time; a program that loads many modules
 and runs briefly gains less than one that loops.

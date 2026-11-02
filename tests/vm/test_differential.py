@@ -216,6 +216,22 @@ def test_embedding(check):
             handle.write("let made = 6 * 7\nmade\n")
         seen.append(nova.load_file(path))
         seen.append(nova.eval("history"))
+        # A live Python object is a PythonObjectProxy, a dict subclass:
+        # stores and deletes through it must reach the real object (M6's
+        # fast paths take only exact dicts, so it keeps the slow path).
+        class Thing:
+            pass
+        thing = Thing()
+        thing.temp = 1
+        nova.expose_global("thing", thing)
+        nova.exec('thing["temp"] = 5\nthing.level = thing.temp + 1\ndelete thing["absent"]')
+        seen.append((thing.temp, thing.level, nova.eval('thing["level"]')))
+        for bad in ("thing[3] = 1", "delete thing[true]"):
+            try:
+                nova.exec(bad)
+                seen.append("no error")
+            except nl.NovaLangError as error:
+                seen.append(str(error))
         return seen
     tree, vm = session("tree"), session("vm")
     check(tree == vm, "the embedding API gives the same results and errors on both engines",

@@ -24,6 +24,58 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ---
 
+## [2.0.1] - 2026-11-02 — Assignment fast paths (M6)
+
+Found while integrating 2.0.0 into OmniCalc: on code that assigns
+through indexes, the VM was about 30% slower than the tree-walker, and
+OmniCalc's perf calibration workload (`acc["total"] = ...` in a loop) did
+not speed up at all, which blinded its performance gate. A performance release: no program
+behaves differently, on either engine.
+
+### Changed
+- The VM's dispatch ladder is reordered. Phase 3 ordered it by frequency
+  in benchmarks that never assign through an index, so the assignment
+  opcodes sat at positions 47-53 of 64. The new order comes from opcode
+  counts on all seven benchmarks, chosen so that no benchmark needs more
+  comparisons per instruction than before (sorting by frequency alone
+  always regressed one); branch bodies are unchanged.
+- Inline fast paths for `INDEX_ASSIGN_TARGET`, `INDEX_ASSIGN_KEY`,
+  `INDEX_ASSIGN`, `MEMBER_ASSIGN_TARGET`, `DELETE_TARGET` and
+  `DELETE_KEY`. Each skips its helper only where the helper would do
+  nothing or exactly the same store, using exact `type()` checks (no bool
+  as an int, no `PythonObjectProxy` as a dict). Negative and fractional
+  indexes, bools, out-of-range indexes and every error still go through
+  the shared helpers. No opcode was fused, moved or added, so evaluation
+  and error order are unchanged: a string target is refused before the
+  index, a dictionary key checked before the value, a list index after it.
+
+| Benchmark | VM, 2.0.0 | VM, M6 | Tree-walker |
+|---|---|---|---|
+| index_assign (550k stores and deletes), whole process, best of 5 | 3.566 s | 2.483 s | 2.823 s |
+| OmniCalc's calibration workload, median of 15 | 114.6 ms | 87.9 ms | 97.8 ms |
+
+fib(22), loops, closures and both `--bootstrap` benchmarks are unchanged
+within noise (in-process medians -4.2%, -2.2%, +1.6%; fib.nova
+--bootstrap -1.3%).
+
+### Added
+- `tests/bench/index_assign.nova`, in `run_bench.py`.
+- `tests/vm/regressions/assignment_matrix.nova`: every combination of six
+  targets, fifteen indexes and four kinds of value (one throws, two
+  change the target while it is evaluated) for `t[i] = v`, `t.k = v` and
+  `delete t[i]`, printing as each part is evaluated, so station 11
+  compares the order of evaluation and of errors, not just results.
+- Station 11's generator assigns through every kind of target and index
+  (it only ever assigned on the happy path, so two of the planned
+  mutants would have passed), and its embedding test stores through a
+  `PythonObjectProxy`.
+- Mutation-tested: ten mutants of the fast paths (a bool index, a
+  skipped key check, a negative index, off by one, a float index, a
+  list check before the value, and the four skipped target or key
+  checks) are each caught by both the matrix and the generator. One,
+  `isinstance` instead of `type()` for the dict store, is equivalent:
+  a proxy receives exactly the same `__setitem__` calls either way.
+
 ## [2.0.0] - 2026-11-01 — Bytecode compiler and VM
 
 Programs now run on a bytecode virtual machine. The tree-walking
