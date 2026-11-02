@@ -5531,9 +5531,22 @@ def execute(interpreter, entry):
                     else:
                         stack[-1] = binary_operation("*", left, right, positions[ip - 1])
                 elif op == INDEX_ASSIGN_TARGET_:
-                    index_assign_target(stack[-1], positions[ip - 1])
+                    # The fast paths for assignment (M6) skip a helper only
+                    # where it would do nothing, or exactly the same store,
+                    # and use exact type(): no bool as an int, and no
+                    # PythonObjectProxy (a dict subclass) as a dict. Every
+                    # other case, and every error, is the helper's, at the
+                    # same instruction - so the order of evaluation and of
+                    # errors is the compiler's, unchanged.
+                    target = stack[-1]
+                    if type(target) is not dict and type(target) is not list:
+                        index_assign_target(target, positions[ip - 1])
                 elif op == INDEX_ASSIGN_KEY_:
-                    stack[-1] = index_assign_key(stack[-2], stack[-1], positions[ip - 1])
+                    # A dictionary's key is checked here, before the value.
+                    target = stack[-2]
+                    if not (type(target) is list
+                            or type(target) is dict and type(stack[-1]) is str):
+                        stack[-1] = index_assign_key(target, stack[-1], positions[ip - 1])
                 elif op == RANGE_NEXT_:
                     state = slots[arg[0]]
                     index = state[3]
@@ -5543,9 +5556,20 @@ def execute(interpreter, entry):
                         state[3] = index + 1
                         stack.append(range_value(state[0], state[1], index, state[4]))
                 elif op == INDEX_ASSIGN_:
+                    # After the value: a list index is checked now, exactly
+                    # when index_assign would check it.
                     value = stack.pop()
                     index = stack.pop()
-                    stack[-1] = index_assign(stack[-1], index, value, positions[ip - 1])
+                    target = stack[-1]
+                    if type(target) is dict and type(index) is str:
+                        target[index] = value
+                        stack[-1] = value
+                    elif (type(target) is list and type(index) is int
+                          and 0 <= index < len(target)):
+                        target[index] = value
+                        stack[-1] = value
+                    else:   # negative, float, bool, out of range, empty, any error
+                        stack[-1] = index_assign(target, index, value, positions[ip - 1])
                 elif op == BUILD_DICT_:
                     keys = consts[arg]
                     if keys:
@@ -5561,7 +5585,8 @@ def execute(interpreter, entry):
                 elif op == GET_MEMBER_:
                     stack[-1] = member_operation(stack[-1], consts[arg], positions[ip - 1])
                 elif op == MEMBER_ASSIGN_TARGET_:
-                    member_assign_target(stack[-1], positions[ip - 1])
+                    if type(stack[-1]) is not dict:
+                        member_assign_target(stack[-1], positions[ip - 1])
                 elif op == NE_:
                     right = stack.pop()
                     left = stack[-1]
@@ -5597,10 +5622,16 @@ def execute(interpreter, entry):
                                     for kind, where in child.closure)
                     stack.append(vm_function(child, closure, glob))
                 elif op == DELETE_TARGET_:
-                    delete_target(stack[-1], positions[ip - 1])
+                    if type(stack[-1]) is not dict:
+                        delete_target(stack[-1], positions[ip - 1])
                 elif op == DELETE_KEY_:
                     key = stack.pop()
-                    stack[-1] = delete_key(stack[-1], key, positions[ip - 1])
+                    target = stack[-1]
+                    if type(target) is dict and type(key) is str:
+                        target.pop(key, None)                   # deleting twice is fine
+                        stack[-1] = NOTHING
+                    else:
+                        stack[-1] = delete_key(target, key, positions[ip - 1])
                 elif op == GT_:
                     right = stack.pop()
                     left = stack[-1]
