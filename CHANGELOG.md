@@ -24,12 +24,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ---
 
-## [Unreleased] — M6: Assignment fast paths
+## [2.0.1] - 2026-11-02 — Assignment fast paths (M6)
 
 Found while integrating 2.0.0 into OmniCalc: on code that assigns
 through indexes, the VM was about 30% slower than the tree-walker, and
 OmniCalc's perf calibration workload (`acc["total"] = ...` in a loop) did
-not speed up at all, which blinded its performance gate.
+not speed up at all, which blinded its performance gate. A performance release: no program
+behaves differently, on either engine.
 
 ### Changed
 - The VM's dispatch ladder is reordered. Phase 3 ordered it by frequency

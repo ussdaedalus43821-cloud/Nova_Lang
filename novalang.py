@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v2.0.0 - a small language built from a hand-written lexer,
+# NovaLang v2.0.1 - a small language built from a hand-written lexer,
 # recursive-descent parser, bytecode compiler and virtual machine.
 """
-NovaLang v2.0.0 - a bytecode compiler and VM
+NovaLang v2.0.1 - a bytecode compiler and VM
 
 Since 2.0.0 a program runs as bytecode:
 
@@ -68,6 +68,9 @@ Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
           and the bytecode compiler and VM (M4: --dis), now the default
           engine. Every program runs the same on both engines; the few
           deliberate changes from 1.1.0 are listed in CHANGELOG.md.
+2.0.1:    fast paths for assignment through an index, a member and
+          delete, and a dispatch order that keeps them out of the bottom
+          of the ladder (M6). No behavior changed.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -85,7 +88,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -5884,7 +5887,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v2.0.0            ║
+║       NOVALANG v2.0.1            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
