@@ -41,9 +41,10 @@ Established, with evidence (the full suite is 1,919 checks, all passing):
 
 Not established:
 
-- **No continuous integration.** Every verification so far was run by hand, on
-  one or two machines. The advertised Python 3.7+ range and non-Mac platforms
-  are untested.
+- **Continuous integration is written but has not run.** A workflow exists
+  (`.github/workflows/ci.yml`, see [`CI.md`](CI.md)); until it has run on
+  GitHub, every verification so far was done by hand on one or two machines.
+  The advertised Python 3.7+ range and non-Linux platforms remain unproven.
 - **The GDScript port is unverified.** The bytecode VM for Godot is written and
   pushed, but has not yet been run against its parity harness.
 - **There is no specification.** The Python implementation is the definition of
@@ -58,7 +59,7 @@ Not established:
 | # | Milestone | Status | Needs | Size |
 | --- | --- | --- | --- | --- |
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
-| M7 | Continuous verification | Planned | | M |
+| M7 | Continuous verification | In progress | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
 | M9 | Language specification and conformance corpus | Planned | M7 | L |
 | M10 | One language: dialects become profiles | Planned | M8, M9 | L |
@@ -116,6 +117,14 @@ Without CI, each change is re-verified by hand on whatever machine is at hand.
 - The known REPL gaps closed or ticketed: a `{` inside a quoted string in a
   draft, `help` transcript, Ctrl-C.
 - Windows-specific fixes the matrix exposes (paths, newlines, `chmod`).
+
+**Status (2026-11-07).** Done: the workflow (a fast tier and a full matrix with
+required rows and probe rows), SHA-pinned actions with Dependabot updates,
+[`CI.md`](CI.md), and local reproduction of each job. Static evidence puts the
+Python floor at 3.7 (syntax and stdlib use) and the suite is green on 3.11,
+3.12 and 3.13. Remaining: the first run on GitHub and whatever it exposes,
+branch protection (a repository setting), promoting or dropping each probe
+row, the Windows fixes the matrix exposes, and the REPL gaps below.
 
 **Exit criteria**
 

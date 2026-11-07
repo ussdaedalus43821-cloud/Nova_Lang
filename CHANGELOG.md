@@ -47,6 +47,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   when a check fails.
 
 ### Added
+- Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
+  fast tier (`run_all.py --quick`) on every pull request and the full suite
+  across a Python/OS matrix on the default branch, weekly and on demand. Rows
+  not yet seen passing (Python 3.7-3.10, macOS, Windows) are probes that cannot
+  fail the run. Actions are pinned to commit SHAs and kept current by
+  Dependabot. `docs/CI.md` explains the jobs, the Python-support evidence and
+  the one-time branch-protection step.
 - `docs/ROADMAP.md`: the plan for milestones M7-M14 (continuous verification,
   the GDScript VM, a language specification and conformance corpus, dialect
   profiles, a security model, runtime work, a package registry, product pilots),

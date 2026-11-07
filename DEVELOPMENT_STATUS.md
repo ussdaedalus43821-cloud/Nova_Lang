@@ -30,8 +30,9 @@ branch coverage including Python subprocesses (see `docs/COVERAGE.md`).
 ## Roadmap
 
 The milestones after M6 are in [`docs/ROADMAP.md`](docs/ROADMAP.md). The first,
-M7, adds continuous verification: there is no CI today, and every result above
-was produced by running the suite by hand.
+M7, adds continuous verification. A CI workflow is written (see
+[`docs/CI.md`](docs/CI.md)) but has not yet run on GitHub, so every result above
+was still produced by running the suite by hand.
 
 ## Known gaps
 

@@ -141,6 +141,12 @@ runs a longer soak of random programs. Before sending a change:
   new language feature or built-in, rather than only testing it by hand
   at the REPL.
 
+## Continuous integration
+
+Pull requests run the quick tier of the suite on GitHub Actions; see
+[`docs/CI.md`](docs/CI.md) for what runs, how to reproduce it locally, and how
+a matrix row moves from probe to required. A red check is fixed, not skipped.
+
 ## Milestones
 
 Larger changes are planned as numbered milestones in
