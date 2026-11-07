@@ -2377,9 +2377,12 @@ def default_module_name(raw_path, pos) {
     }
     let name = raw_path
     let slash = -1
+    # os.path.basename: "/" always separates, and so does "\\" on Windows.
+    let windows = platform() == "Windows"
     let i = len(name) - 1
     while i >= 0 {
-        if name[i:i + 1] == "/" {
+        let ch = name[i:i + 1]
+        if ch == "/" or (windows and ch == "\\") {
             slash = i
             break
         }
@@ -2415,7 +2418,12 @@ def default_module_name(raw_path, pos) {
 # A file inside an installed package is named <package>/<file> in
 # messages, as the host does; any other file by its module name.
 def module_label(path, pos) {
-    let marker = "/.nova_modules/"
+    # The host's os.sep: a native path on Windows is written with backslashes.
+    let sep = "/"
+    if platform() == "Windows" {
+        sep = "\\"
+    }
+    let marker = sep + ".nova_modules" + sep
     let at = -1
     let i = 0
     while i + len(marker) <= len(path) {
@@ -2425,7 +2433,7 @@ def module_label(path, pos) {
         i = i + 1
     }
     if at >= 0 {
-        return path[at + len(marker):]
+        return replace_all(path[at + len(marker):], sep, "/")
     }
     return default_module_name(path, pos)
 }

@@ -17,6 +17,9 @@ Stations, in order:
   0d. repl          multiline input, error recovery, EOF and session state
                     through the real interactive entry points.
   0e. input-errors  formatter refusal and malformed package/LSP input.
+  0f. portability   behavior that must not depend on the platform (Windows
+                    paths, file URIs, newlines, the time limit), tested on
+                    every platform by simulating the one that differs.
 
   1. fmt golden     tests/fmt/X.nova formats to exactly X.expected.nova,
                     and every expected file is already a fixed point.
@@ -806,12 +809,22 @@ def station_input_errors(line):
                done.stdout + done.stderr)
 
 
+def station_portability(line):
+    print("0f. platform-independence regressions")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "portability"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=300)
+    line.check(done.returncode == 0, "platform-independence regressions pass",
+               done.stdout + done.stderr)
+
+
 STATIONS = [
     ("harness", station_harness),
     ("cli", station_cli),
     ("embedding", station_embedding),
     ("repl", station_repl),
     ("input-errors", station_input_errors),
+    ("portability", station_portability),
     ("fmt-golden", station_fmt_golden),
     ("lint-golden", station_lint_golden),
     ("fmt-repo", station_fmt_repo),
