@@ -1,0 +1,120 @@
+# NovaLang CI. See docs/CI.md for what each job means and how to change it.
+#
+#   fast  the --quick tier of tests/run_all.py. Runs on every pull request and
+#         on pushes to the default branch. This is the required check.
+#   full  the whole suite across a Python/OS matrix. Runs on pushes to the
+#         default branch, weekly, and on demand. Entries marked `probe` report
+#         but cannot fail the run, until they have passed once (docs/CI.md).
+#
+# Actions are pinned to commit SHAs (the tag is in the trailing comment);
+# Dependabot keeps them current.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+  schedule:
+    - cron: "17 5 * * 1"   # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONUTF8: "1"          # the suite's own output and fixtures are UTF-8
+
+jobs:
+  fast:
+    name: fast
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install NumPy (the examples station needs it)
+        run: python -m pip install numpy
+      - name: Versions
+        run: |
+          python --version
+          node --version
+          git --version
+      - name: Quick tier
+        run: python -u tests/run_all.py --quick --report checks.jsonl
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: checks-fast
+          path: checks.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
+
+  full:
+    name: full (${{ matrix.os }}, py${{ matrix.python }})
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.probe }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Required: versions and platform this suite has been seen passing on.
+          - { os: ubuntu-24.04, python: "3.13", probe: false }
+          - { os: ubuntu-24.04, python: "3.12", probe: false }
+          - { os: ubuntu-24.04, python: "3.11", probe: false }
+          # Probes: the README says 3.7+, which is evidenced statically (syntax
+          # and stdlib use) but not yet by a run. Promote each to required once
+          # it passes, or raise the stated minimum (docs/CI.md).
+          - { os: ubuntu-22.04, python: "3.10", probe: true }
+          - { os: ubuntu-22.04, python: "3.9", probe: true }
+          - { os: ubuntu-22.04, python: "3.8", probe: true }
+          - { os: ubuntu-22.04, python: "3.7", probe: true }
+          # Probes: platforms the suite has never run on.
+          - { os: macos-latest, python: "3.12", probe: true }
+          - { os: windows-latest, python: "3.12", probe: true }
+          - { os: windows-latest, python: "3.7", probe: true }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install NumPy (the examples station needs it)
+        run: python -m pip install numpy
+      - name: Versions
+        run: |
+          python --version
+          node --version
+          git --version
+      - name: Full suite
+        run: python -u tests/run_all.py --report checks.jsonl
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: checks-${{ matrix.os }}-py${{ matrix.python }}
+          path: checks.jsonl
+          if-no-files-found: ignore
+          retention-days: 14

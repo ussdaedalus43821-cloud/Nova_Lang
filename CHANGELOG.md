@@ -24,6 +24,64 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ---
 
+## [Unreleased] - Baseline continuation
+
+### Fixed
+- The package manager reports unreadable lockfiles and malformed package
+  entries before installation. The language server rejects negative and
+  out-of-range frame lengths and reads message bodies in bounded chunks.
+- The REPL keeps open list literals in continuation mode across blank lines.
+- Exposed Python callables retain the calling interpreter when converting
+  NovaLang callback arguments and returned host objects. Callbacks can pass
+  through global functions, methods, nested containers and returned callables.
+- Host property getter/setter failures become catchable PythonError diagnostics
+  through live proxies and dotted registry access, and NovaLangError at the
+  public embedding boundary. Control-flow exceptions continue to propagate.
+- Formatter, linter and disassembly commands report malformed UTF-8 input as a
+  read error and continue batch processing. Direct execution reports a FileError;
+  bootstrap delegates the unreadable target to its existing FileError handling.
+  These paths no longer leak UnicodeDecodeError tracebacks.
+- Parity and differential checks reject timeouts even when both engines time out.
+- The standard-library regression accepts the local calendar date at the Unix
+  epoch, reports its numeric check count correctly, and exits with status 1
+  when a check fails.
+
+### Added
+- Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
+  fast tier (`run_all.py --quick`) on every pull request and the full suite
+  across a Python/OS matrix on the default branch, weekly and on demand. Rows
+  not yet seen passing (Python 3.7-3.10, macOS, Windows) are probes that cannot
+  fail the run. Actions are pinned to commit SHAs and kept current by
+  Dependabot. `docs/CI.md` explains the jobs, the Python-support evidence and
+  the one-time branch-protection step.
+- `docs/ROADMAP.md`: the plan for milestones M7-M14 (continuous verification,
+  the GDScript VM, a language specification and conformance corpus, dialect
+  profiles, a security model, runtime work, a package registry, product pilots),
+  with exit criteria per milestone. `docs/decisions/` holds three decision
+  records: the specification is normative (accepted), the game dialect is a
+  profile of NovaLang (accepted), and the security stance (proposed).
+- An `input-errors` station exercises all four formatter refusal checks,
+  malformed package input and language server framing. It contributes one
+  parent check for six tests, bringing the full suite to 1,919 parent checks.
+- A `repl` station wraps 26 subprocess tests for multiline input, recovery,
+  EOF and session state across both engines. The REPL increment passed 1,918
+  parent checks.
+- An `embedding` station runs 53 callback/conversion/property/permission tests
+  across both engines and bootstrap error-boundary parity. The embedding
+  increment passed 1,917 parent checks.
+- A `cli` station runs 32 subprocess-based regression tests for formatter/linter
+  modes, diagnostics, exit codes, batch continuation, non-execution, disassembly,
+  bootstrap arguments/imports and malformed UTF-8 handling. The CLI increment
+  passed 1,916 parent checks before the embedding station was added.
+- `tests/run_coverage.py` measures statement and branch coverage in a scratch
+  copy, includes child Python processes and unexecuted files, and saves per-station
+  JSON plus annotated HTML reports.
+- `tests/run_all.py --station NAME` selects one or more test stations.
+- `--report PATH` flushes each completed check to a JSON Lines file.
+- Differential file comparisons report results as each file finishes.
+- A harness regression station covers timeout rejection, incremental reports,
+  station selection, and standard-library behavior across timezones.
+
 ## [2.0.1] - 2026-11-02 — Assignment fast paths (M6)
 
 Found while integrating 2.0.0 into OmniCalc: on code that assigns

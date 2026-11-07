@@ -50,7 +50,7 @@ def type_check_graph(target_path):
         with open(target_path, "r", encoding="utf-8") as handle:
             source = handle.read()
         ast = novalang.Parser(novalang.Lexer(source).tokenize()).parse()
-    except (OSError, NovaError):
+    except (OSError, UnicodeDecodeError, NovaError):
         return []
     if not (ast.annotated or ast.imports):
         return []

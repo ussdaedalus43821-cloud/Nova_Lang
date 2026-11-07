@@ -39,6 +39,7 @@ full history, from the 14 build stages of 1.x to the bytecode VM.
 - [Examples](#examples)
 - [Performance](#performance)
 - [Security](#security)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -63,8 +64,9 @@ python3 novalang.py "1 + 2 * 3"
 python3 novalang.py --bootstrap examples/fib.nova
 ```
 
-The REPL accepts multi-line input (an unclosed `{` keeps the prompt open),
-and has a few of its own commands:
+The REPL collects blocks and list literals across lines. Blank lines inside
+open blocks and lists stay in the draft. A blank line after a bare block
+header submits it for a syntax diagnostic. The REPL also has a few commands:
 
 ```
 nova> help              # full syntax and built-in reference
@@ -300,7 +302,21 @@ python3 novalang.py --check program.nova    # lint without running
 python3 novalang.py --typecheck program.nova  # check type annotations
 python3 novalang.py --format program.nova   # rewrite in the standard layout
 python3 tests/run_all.py                    # the full regression suite
+python3 tests/run_all.py --station compiler # one station; repeat --station for several
+python3 tests/run_all.py --station cli      # command-line modes, diagnostics and exit codes
+python3 tests/run_all.py --station embedding # callbacks, value conversion and host errors
+python3 tests/run_all.py --station repl      # interactive transcripts on both engines
+python3 tests/run_all.py --station input-errors # formatter refusal and malformed tool input
+python3 tests/run_all.py --report checks.jsonl # flush each result for long audit runs
 ```
+
+The complete suite records 1,919 parent checks. The REPL station contributes
+one check for 26 tests, and the input-errors station contributes one check
+for six tests with parameterized cases.
+
+Statement and branch coverage, including Python subprocesses, can be measured
+with `python3 tests/run_coverage.py` after installing the optional coverage tool.
+See [coverage instructions](docs/COVERAGE.md) for setup, report scope and limitations.
 
 **`--check`** (`tools/nova-lint.py`) reads the program with the real
 Lexer and Parser and never executes it. It reports undefined names
@@ -474,6 +490,25 @@ same pattern used throughout `examples/` (`reactor_sim.nova`'s `reactor`,
 function that mutates such a value returns it, and the Python caller
 reassigns — `state = nova.call("update", state, ...)` — every time, not
 just on the calls where you remember a mutation happened.
+
+A NovaLang function returned through `eval()`, `call()`, or a compiled script
+becomes a Python callable tied to its interpreter. Functions inside returned
+lists and dictionaries are converted too. Exposed Python functions and methods
+can accept these NovaLang functions as callback arguments:
+
+```python
+nova.exec("def twice(x) { return x * 2 }")
+callback = nova.eval("twice")
+assert callback(21) == 42
+nova.expose_global("apply", lambda fn, value: fn(value))
+assert nova.eval("apply(twice, 21)") == 42
+```
+
+Callback failures surface in Python as `NovaLangError`. Ordinary exceptions from
+exposed functions or object properties become `PythonError` diagnostics that a
+NovaLang `try`/`catch` can handle. Host `SystemExit` and `KeyboardInterrupt`
+remain control-flow signals. A failed operation does not roll back host mutations
+that already happened.
 
 From the NovaLang side, the `python` namespace reaches back into Python:
 
@@ -658,6 +693,14 @@ This design was a deliberate departure from an earlier, broader spec
 If your embedding program needs more, opt it in explicitly with
 `expose()` / `expose_module()` / `expose_global()`; don't loosen the
 allowlist itself without deciding that's actually what you want.
+
+## Roadmap
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) sets out the milestones after M6, from
+continuous verification and a written language specification through a security
+model, runtime work and a package registry, and what each product in the wider
+Nova ecosystem needs before it can start. Decisions that need the project
+owner are recorded in [`docs/decisions/`](docs/decisions/README.md).
 
 ## Contributing
 

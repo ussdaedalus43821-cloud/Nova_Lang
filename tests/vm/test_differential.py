@@ -87,19 +87,31 @@ def show(tree, vm):
     return "\n".join(parts)
 
 
+def same(tree, vm, name):
+    if tree[0] == "timeout" or vm[0] == "timeout":
+        return False
+    return tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
+
+
 def both(args):
     """One file's runs, one after the other (some programs write files)."""
     return cli(["--tree-walk"] + args), cli(args)
 
 
-def run_all_of(paths, prefix):
+def run_all_of(paths, prefix, on_result):
     """{path: (tree-walker, vm)}, in parallel except for the ALONE ones."""
     shared = [p for p in paths if rel(p) not in ALONE]
+    results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        results = dict(zip(shared, pool.map(lambda p: both(prefix + [rel(p)]), shared)))
+        jobs = {pool.submit(both, prefix + [rel(path)]): path for path in shared}
+        for future in concurrent.futures.as_completed(jobs):
+            path = jobs[future]
+            results[path] = future.result()
+            on_result(path, results[path])
     for path in paths:
         if rel(path) in ALONE:
             results[path] = both(prefix + [rel(path)])
+            on_result(path, results[path])
     return results
 
 
@@ -139,19 +151,17 @@ def test_bootstrap_engine(check):
 
 
 def test_files(check):
+    def record(path, result, suffix=""):
+        tree, vm = result
+        name = rel(path)
+        check(same(tree, vm, name), "{}{}: the VM matches the tree-walker".format(name, suffix),
+              "comparison timed out" if "timeout" in (tree[0], vm[0]) else show(tree, vm))
+
     paths = list(nova_files())
-    results = run_all_of(paths, [])
+    results = run_all_of(paths, [], record)
     examples = sorted(glob.glob(os.path.join(ROOT, "examples", "*.nova")))
-    booted = run_all_of(examples, ["--bootstrap"])
-    for path, (tree, vm) in results.items():
-        name = rel(path)
-        same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
-        check(same, "{}: the VM matches the tree-walker".format(name), show(tree, vm))
-    for path, (tree, vm) in booted.items():
-        name = rel(path)
-        same = tree[0] == vm[0] if name in NONDETERMINISTIC else tree == vm
-        check(same, "{} under --bootstrap: the VM matches the tree-walker".format(name),
-              show(tree, vm))
+    run_all_of(examples, ["--bootstrap"],
+               lambda path, result: record(path, result, " under --bootstrap"))
     check(len(results) > 70, "every .nova file was compared ({})".format(len(results)))
 
 
