@@ -2192,15 +2192,30 @@ class PythonObjectProxy(dict):
         return [name for name in dir(self._nova_target) if not name.startswith("_")]
 
     def __contains__(self, key):
-        return isinstance(key, str) and hasattr(self._nova_target, key)
+        try:
+            return isinstance(key, str) and hasattr(self._nova_target, key)
+        except NovaError:
+            raise
+        except Exception as problem:
+            raise NovaError("{}: {}".format(type(problem).__name__, problem), label="PythonError")
 
     def __getitem__(self, key):
-        if not hasattr(self._nova_target, key):
+        if key not in self:
             raise KeyError(key)
-        return to_nova_value(getattr(self._nova_target, key), self._nova_interpreter)
+        try:
+            return to_nova_value(getattr(self._nova_target, key), self._nova_interpreter)
+        except NovaError:
+            raise
+        except Exception as problem:
+            raise NovaError("{}: {}".format(type(problem).__name__, problem), label="PythonError")
 
     def __setitem__(self, key, value):
-        setattr(self._nova_target, key, to_python_value(value, self._nova_interpreter))
+        try:
+            setattr(self._nova_target, key, to_python_value(value, self._nova_interpreter))
+        except NovaError:
+            raise
+        except Exception as problem:
+            raise NovaError("{}: {}".format(type(problem).__name__, problem), label="PythonError")
 
     def __iter__(self):
         return iter(self._visible_keys())
@@ -2267,8 +2282,8 @@ def wrap_python_callable(func, name=None):
     """A Python callable, reachable from NovaLang - its own errors become
     a NovaError labelled PythonError, per Stage 12's error-handling rule."""
 
-    def implementation(args, position):
-        python_args = [to_python_value(arg) for arg in args]
+    def implementation(args, position, interpreter):
+        python_args = [to_python_value(arg, interpreter) for arg in args]
         try:
             result = func(*python_args)
         except NovaError:
@@ -2277,9 +2292,10 @@ def wrap_python_callable(func, name=None):
             raise NovaError(
                 "{}: {}".format(type(problem).__name__, problem), position, label="PythonError"
             )
-        return to_nova_value(result)
+        return to_nova_value(result, interpreter)
 
-    return BuiltinFunction(name or getattr(func, "__name__", "python function"), None, implementation)
+    return BuiltinFunction(name or getattr(func, "__name__", "python function"), None,
+                           implementation, needs_interpreter=True)
 
 
 def wrap_nova_callable(fn, interpreter):
@@ -2309,12 +2325,17 @@ def resolve_python_path(interpreter, dotted_name, position):
             position, label="PythonError",
         )
     target = interpreter.python_registry[root]
-    for part in parts[1:]:
-        if not hasattr(target, part):
-            raise NovaError(
-                '"{}" has no attribute "{}"'.format(dotted_name, part), position, label="PythonError"
-            )
-        target = getattr(target, part)
+    try:
+        for part in parts[1:]:
+            if not hasattr(target, part):
+                raise NovaError(
+                    '"{}" has no attribute "{}"'.format(dotted_name, part), position, label="PythonError"
+                )
+            target = getattr(target, part)
+    except NovaError:
+        raise
+    except Exception as problem:
+        raise NovaError("{}: {}".format(type(problem).__name__, problem), position, label="PythonError")
     return target
 
 
@@ -2378,14 +2399,19 @@ def builtin_python_set(args, position, interpreter):
             position, label="PythonError",
         )
     target = interpreter.python_registry[root]
-    for part in parts[1:-1]:
-        if not hasattr(target, part):
-            raise NovaError('"{}" has no attribute "{}"'.format(name, part), position, label="PythonError")
-        target = getattr(target, part)
     try:
+        for part in parts[1:-1]:
+            if not hasattr(target, part):
+                raise NovaError('"{}" has no attribute "{}"'.format(name, part), position, label="PythonError")
+            target = getattr(target, part)
         setattr(target, parts[-1], to_python_value(value, interpreter))
+    except NovaError:
+        raise
     except AttributeError as problem:
         raise NovaError("python.set(): {}".format(problem), position, label="PythonError")
+    except Exception as problem:
+        raise NovaError("python.set(): {}: {}".format(type(problem).__name__, problem),
+                        position, label="PythonError")
     return NOTHING
 
 
@@ -6054,7 +6080,7 @@ CONTINUATION_TOKENS = (
 BLOCK_OPENERS = (TT_IF, TT_WHILE, TT_FOR, TT_TRY)
 
 
-def needs_more_input(source):
+def needs_more_input(source, *, blank_line=False):
     """Decide whether the REPL should keep collecting lines."""
     try:
         tokens = Lexer(source).tokenize()
@@ -6068,9 +6094,6 @@ def needs_more_input(source):
     needs_block = any(t.type == TT_DEF for t in meaningful_for_def) or (
         meaningful_for_def and meaningful_for_def[0].type in BLOCK_OPENERS
     )
-    if needs_block and not any(t.type == TT_LBRACE for t in meaningful_for_def):
-        return True
-
     braces = brackets = 0
     for token in tokens:
         if token.type == TT_LBRACE:
@@ -6082,6 +6105,13 @@ def needs_more_input(source):
         elif token.type == TT_RBRACKET:
             brackets -= 1
     if braces > 0 or brackets > 0:
+        return True
+
+    # Preserve blank-line submission for drafts outside an open block or list.
+    if blank_line and "{" not in source and not source.rstrip().endswith((",", "(")):
+        return False
+
+    if needs_block and not any(t.type == TT_LBRACE for t in meaningful_for_def):
         return True
 
     meaningful = meaningful_for_def
@@ -6103,10 +6133,8 @@ def read_block(first_line):
         except KeyboardInterrupt:
             print("\n(input discarded)")
             return None
-        if not more.strip() and not source.rstrip().endswith(("{", ",", "(")):
-            # A blank line ends a draft that is only waiting on a '{'.
-            if needs_more_input(source) and "{" not in source:
-                break
+        if not more.strip() and not needs_more_input(source, blank_line=True):
+            break
         source += "\n" + more
     return source
 
@@ -6370,7 +6398,7 @@ def dis_main(paths):
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 source = handle.read()
-        except OSError as problem:
+        except (OSError, UnicodeDecodeError) as problem:
             print("cannot read {}: {}".format(path, problem), file=sys.stderr)
             status = 2
             continue
@@ -6436,6 +6464,9 @@ def main(argv):
     try:
         with open(args[0], "r", encoding="utf-8") as handle:
             return run_source(handle.read(), args[0], script_args=args[1:])
+    except UnicodeDecodeError as problem:
+        print("FileError: {}: {}".format(args[0], problem), file=sys.stderr)
+        return 1
     except (IOError, OSError):
         pass
 

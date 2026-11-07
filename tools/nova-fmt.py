@@ -700,7 +700,7 @@ def main(argv):
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 source = handle.read()
-        except OSError as problem:
+        except (OSError, UnicodeDecodeError) as problem:
             print("nova-fmt: cannot read {}: {}".format(path, problem), file=sys.stderr)
             status = 2
             continue

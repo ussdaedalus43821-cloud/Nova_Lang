@@ -417,8 +417,11 @@ def read_lock(project_dir):
     path = os.path.join(project_dir, LOCKFILE)
     if not os.path.isfile(path):
         return None, None
-    with open(path, "r", encoding="utf-8") as handle:
-        text = handle.read()
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeDecodeError) as problem:
+        raise PkgError("cannot read {}: {}".format(path, problem)) from None
     try:
         lock = json.loads(text)
     except ValueError as problem:
@@ -427,6 +430,26 @@ def read_lock(project_dir):
     if not isinstance(lock, dict) or lock.get("lockfile_version") != LOCK_VERSION:
         raise PkgError("{} is not a version-{} lockfile - delete it and run install".format(
             LOCKFILE, LOCK_VERSION))
+    packages = lock.get("packages")
+    if not isinstance(packages, dict):
+        raise PkgError('{}: "packages" must be an object'.format(LOCKFILE))
+    for name, entry in packages.items():
+        if not NAME.fullmatch(name):
+            raise PkgError("{}: invalid package name {!r}".format(LOCKFILE, name))
+        where = "{} entry {!r}".format(LOCKFILE, name)
+        if not isinstance(entry, dict):
+            raise PkgError("{} must be an object".format(where))
+        source = entry.get("source")
+        if not isinstance(source, dict):
+            raise PkgError('{}: "source" must be an object'.format(where))
+        # Validate the same source fields the installer will use.
+        for fields in (("registry",), ("path",), ("git", "commit")):
+            if fields[0] in source:
+                if not all(isinstance(source.get(field), str) for field in fields):
+                    raise PkgError("{}: invalid source fields".format(where))
+                break
+        else:
+            raise PkgError("{} has no source".format(where))
     return lock, text
 
 

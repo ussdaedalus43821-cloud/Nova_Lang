@@ -405,9 +405,16 @@ class Server:
                     length = None
         if length is None:
             return ResponseError(PARSE_ERROR, "a message arrived with no Content-Length")
-        body = self.reader.read(length)
-        if len(body) < length:
-            return None
+        if not 0 <= length <= sys.maxsize:
+            return ResponseError(PARSE_ERROR, "a message arrived with an invalid Content-Length")
+        # Read incrementally so a truncated message cannot force allocation
+        # of the entire declared body before any bytes arrive.
+        body = bytearray()
+        while len(body) < length:
+            chunk = self.reader.read(min(length - len(body), 65536))
+            if not chunk:
+                return None
+            body.extend(chunk)
         try:
             return json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as problem:
