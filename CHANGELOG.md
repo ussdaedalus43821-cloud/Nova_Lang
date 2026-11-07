@@ -27,6 +27,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ## [Unreleased] - Baseline continuation
 
 ### Fixed
+- Windows portability, found by the first full CI run: the language server now
+  builds canonical `file:///C:/...` URIs (it built `file://///C:/...`); the
+  self-hosted interpreter names modules from native Windows paths, as the host
+  does with `os.sep` (it looked for `/.nova_modules/` only, so a package
+  circular-import error could not be reported); `nova-fmt --write` writes LF on
+  every platform (it wrote CRLF on Windows); and the differential tests' time
+  limit no longer needs `signal.SIGALRM`.
 - The package manager reports unreadable lockfiles and malformed package
   entries before installation. The language server rejects negative and
   out-of-range frame lengths and reads message bodies in bounded chunks.
@@ -47,6 +54,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   when a check fails.
 
 ### Added
+- A `portability` station of ten tests that simulate Windows on any platform
+  (a patched `platform.system()`, a forced non-`SIGALRM` time limit, a text
+  mode that translates newlines, pathlib's pure Windows paths) and one language-
+  server check that definition URIs are canonical, bringing the full suite to
+  1,921 parent checks. Linux, Python 3.7-3.10 and macOS are now
+  required rows of the CI matrix; Windows stays a probe until a run confirms
+  the fixes above.
 - Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
   fast tier (`run_all.py --quick`) on every pull request and the full suite
   across a Python/OS matrix on the default branch, weekly and on demand. Rows

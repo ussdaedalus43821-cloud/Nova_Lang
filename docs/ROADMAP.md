@@ -29,7 +29,7 @@ use NovaLang as an embedded policy and scripting layer:
 
 ## Where we are
 
-Established, with evidence (the full suite is 1,919 checks, all passing):
+Established, with evidence (the full suite is 1,921 checks, passing locally and, as of its last run, on Linux and macOS in CI):
 
 - One language implemented three ways that must agree: the Python bytecode VM
   (default), the Python tree-walker (reference), and `novalang.nova`
@@ -116,15 +116,18 @@ Without CI, each change is re-verified by hand on whatever machine is at hand.
 - Branch protection requiring the fast tier.
 - The known REPL gaps closed or ticketed: a `{` inside a quoted string in a
   draft, `help` transcript, Ctrl-C.
-- Windows-specific fixes the matrix exposes (paths, newlines, `chmod`).
+- Windows-specific fixes the matrix exposes (paths, file URIs, newlines, the
+  time limit; `chmod` was a guess that the first run disproved).
 
 **Status (2026-11-07).** Done: the workflow (a fast tier and a full matrix with
 required rows and probe rows), SHA-pinned actions with Dependabot updates,
-[`CI.md`](CI.md), and local reproduction of each job. Static evidence puts the
-Python floor at 3.7 (syntax and stdlib use) and the suite is green on 3.11,
-3.12 and 3.13. The `fast` job has passed on GitHub (1,846 checks, 80 s; PR #14). Remaining: the first
-`full` matrix run and whatever it exposes, branch protection (a repository setting), promoting or dropping each probe
-row, the Windows fixes the matrix exposes, and the REPL gaps below.
+[`CI.md`](CI.md), and the first full run. `fast` passed on GitHub three times
+(80-102 s). The full matrix passed on Linux for Python 3.7 through 3.13 and on
+macOS for 3.12, which is the first run-based evidence for "3.7+" (Linux only).
+Windows failed on four portability bugs; fixes and a `portability` station
+that pins them on every platform are in the next change, pending a run.
+Remaining: confirming the Windows fixes by a run, branch protection (a
+repository setting), and the REPL gaps below.
 
 **Exit criteria**
 

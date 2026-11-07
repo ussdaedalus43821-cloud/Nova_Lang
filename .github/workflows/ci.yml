@@ -77,19 +77,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Required: versions and platform this suite has been seen passing on.
+          # Required: seen passing on GitHub (docs/CI.md has the run).
           - { os: ubuntu-24.04, python: "3.13", probe: false }
           - { os: ubuntu-24.04, python: "3.12", probe: false }
           - { os: ubuntu-24.04, python: "3.11", probe: false }
-          # Probes: the README says 3.7+, which is evidenced statically (syntax
-          # and stdlib use) but not yet by a run. Promote each to required once
-          # it passes, or raise the stated minimum (docs/CI.md).
-          - { os: ubuntu-22.04, python: "3.10", probe: true }
-          - { os: ubuntu-22.04, python: "3.9", probe: true }
-          - { os: ubuntu-22.04, python: "3.8", probe: true }
-          - { os: ubuntu-22.04, python: "3.7", probe: true }
-          # Probes: platforms the suite has never run on.
-          - { os: macos-latest, python: "3.12", probe: true }
+          - { os: ubuntu-22.04, python: "3.10", probe: false }
+          - { os: ubuntu-22.04, python: "3.9", probe: false }
+          - { os: ubuntu-22.04, python: "3.8", probe: false }
+          - { os: ubuntu-22.04, python: "3.7", probe: false }
+          - { os: macos-latest, python: "3.12", probe: false }
+          # Probes: Windows failed its first run on four portability bugs that
+          # this suite now pins (tests/portability). It stays a probe until a
+          # run confirms the fixes, then each row is promoted or its remaining
+          # failures are read as code or plumbing (docs/CI.md).
           - { os: windows-latest, python: "3.12", probe: true }
           - { os: windows-latest, python: "3.7", probe: true }
     steps:

@@ -46,6 +46,8 @@ full history, from the 14 build stages of 1.x to the bytecode VM.
 ## Quick start
 
 Requires Python 3.7+. Nothing else — no `pip install`, no build step.
+CI runs the full suite on Linux for Python 3.7 through 3.13 and on macOS for
+3.12; Windows is being brought up (see [`docs/CI.md`](docs/CI.md)).
 
 ```bash
 git clone <this repository>
@@ -310,9 +312,10 @@ python3 tests/run_all.py --station input-errors # formatter refusal and malforme
 python3 tests/run_all.py --report checks.jsonl # flush each result for long audit runs
 ```
 
-The complete suite records 1,919 parent checks. The REPL station contributes
-one check for 26 tests, and the input-errors station contributes one check
-for six tests with parameterized cases.
+The complete suite records 1,921 parent checks. The REPL station contributes
+one check for 26 tests, the input-errors station one for six tests with
+parameterized cases, and the portability station one for ten tests that
+simulate Windows on any platform.
 
 Statement and branch coverage, including Python subprocesses, can be measured
 with `python3 tests/run_coverage.py` after installing the optional coverage tool.

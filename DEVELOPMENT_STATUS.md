@@ -5,8 +5,8 @@ Baseline: NovaLang v2.0.1 (assignment fast paths and dispatch reorder).
 ## What the verification work added
 
 The work after 2.0.1 closes gaps in how the language is verified, and fixes the
-defects the new tests exposed. The full suite now records 1,919 parent checks;
-all pass.
+defects the new tests exposed. The full suite now records 1,921 parent checks;
+all pass locally.
 
 New stations (run one with `python3 tests/run_all.py --station NAME`):
 
@@ -17,6 +17,7 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | `embedding` | 53 | callbacks into Python, value conversion, live-object reads and writes, host errors, import allowlist, bootstrap error-boundary parity |
 | `repl` | 26 | multiline drafts, error recovery, EOF, session state, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
+| `portability` | 10 | Windows paths, file URIs, newlines and the time limit, simulated on any platform |
 
 The `cli`, `embedding`, `repl` and `input-errors` suites fail against the 2.0.1
 source and pass with the fixes, which are listed under "Unreleased" in the
@@ -41,5 +42,8 @@ was still produced by running the suite by hand.
 - The REPL `help` command and Ctrl-C handling have no transcript tests.
 - NovaLang-source and JavaScript (VS Code extension) coverage are not
   measured; Python coverage is.
-- Full-suite passes were recorded on Python 3.9, 3.12 and 3.13 only, not across
-  the advertised 3.7+ range or on other operating systems.
+- CI has shown the full suite passing on Linux for Python 3.7 through 3.13 and
+  on macOS for 3.12. Windows failed its first run on four portability bugs,
+  now fixed and pinned by the `portability` station but not yet confirmed by a
+  run (see [`docs/CI.md`](docs/CI.md)); the 300 generated-program comparisons
+  have never run there.
