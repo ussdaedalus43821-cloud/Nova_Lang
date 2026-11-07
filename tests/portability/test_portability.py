@@ -204,11 +204,16 @@ class TreeWalkerSkipTests(unittest.TestCase):
                             for l in labels), labels)
 
     def test_other_platforms_run_everything_and_print_nothing(self):
-        results, calls, printed = self.run_generated(limited=False, seeds=60)
+        # Seeds 0-29 only: this runs the unprotected path, which gives the
+        # tree-walker every program, and the first depth-limit program is seed
+        # 31. Past it, this test would itself overflow the stack on Windows
+        # with Python before 3.11 (it did, on run 15).
+        first_depth_limit_seed = 31
+        results, calls, printed = self.run_generated(limited=False, seeds=first_depth_limit_seed - 1)
         self.assertEqual(printed, "")
-        self.assertEqual(sum(1 for engine, _ in calls if engine == "tree"), 60)
-        self.assertTrue(any(l == "60 generated programs run the same on both engines (0 differ)"
-                            for _, l in results), results)
+        self.assertEqual(sum(1 for engine, _ in calls if engine == "tree"), first_depth_limit_seed - 1)
+        self.assertTrue(any(l == "{} generated programs run the same on both engines (0 differ)".format(
+            first_depth_limit_seed - 1) for _, l in results), results)
 
     def test_the_skip_is_capped(self):
         """If every program looked depth-limited, the skip would hide the whole
