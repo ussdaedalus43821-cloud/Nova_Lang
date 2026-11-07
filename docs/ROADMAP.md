@@ -7,7 +7,7 @@ numbering already used in the history (M0 toolchain through M6 fast paths; see
 
 It is a plan, not a promise. Milestones are ordered by dependency, not by date,
 and carry no calendar commitments. Anything that needs a decision from the
-project owner is marked **Decision** and has a proposed record in
+project owner is marked **Decision** and has a record in
 [`decisions/`](decisions/README.md).
 
 Last reviewed against NovaLang v2.0.1 plus the "Unreleased" changelog entry.
@@ -61,7 +61,7 @@ Not established:
 | M7 | Continuous verification | Planned | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
 | M9 | Language specification and conformance corpus | Planned | M7 | L |
-| M10 | One language: dialects become profiles | Planned, **Decision** | M8, M9 | L |
+| M10 | One language: dialects become profiles | Planned | M8, M9 | L |
 | M11 | Security model and sandbox | Planned, **Decision** | M9 | XL |
 | M12 | Runtime: bytecode format and performance | Planned | M9 | L |
 | M13 | Platform libraries, registry and API stability | Planned | M9, M11 | L |
@@ -196,9 +196,9 @@ checked against, instead of "whatever `novalang.py` does".
 - Someone who has not read `novalang.py` could implement a conforming host from
   the spec and corpus (reviewed by actually attempting a small one).
 
-**Decision.** Which is normative when they disagree: the spec or the reference
-implementation. Proposed in
-[ADR 0001](decisions/0001-specification-is-normative.md).
+**Decided.** The specification and corpus are normative; the reference
+implementation is the first conforming host
+([ADR 0001](decisions/0001-specification-is-normative.md), accepted).
 
 **Risks.** Writing the spec will expose undocumented behavior and inconsistent
 error text. That cost is the value of the milestone.
@@ -209,12 +209,13 @@ error text. That cost is the value of the milestone.
 `for`, `try`, f-strings) and the game dialect (`func`, a rule engine, a small
 builtin set, division by zero yields 0, no `for` or `try`).
 
-**Why a decision.** The options are mutually exclusive and each has a cost to
-existing code and to the parity harness. See
-[ADR 0002](decisions/0002-game-dialect-and-profiles.md) for the options and a
-recommendation; nothing is built until that is accepted.
+**Decided.** [ADR 0002](decisions/0002-game-dialect-and-profiles.md) (accepted)
+makes the game dialect a "policy" profile of NovaLang, defined as a small
+enumerated list of individually tested switches. The ADR's tables are the
+starting inventory of switches; if that list outgrows what can be tested
+exhaustively, the ADR says to revisit.
 
-**Deliverables (once decided)**
+**Deliverables**
 
 - The chosen mechanism implemented in the Python engine (for example a named
   profile selecting syntax aliases and the rule-engine declarations), with the
@@ -342,9 +343,9 @@ in this roadmap commits to building them.
 
 | # | Decision | Needed by | Record |
 | --- | --- | --- | --- |
-| 1 | Is the written specification or the reference implementation normative? | Start of M9 | [ADR 0001](decisions/0001-specification-is-normative.md) |
-| 2 | How the game dialect relates to NovaLang | Start of M10 | [ADR 0002](decisions/0002-game-dialect-and-profiles.md) |
-| 3 | What NovaLang claims about security | Start of M11 | [ADR 0003](decisions/0003-security-stance.md) |
+| 1 | Is the written specification or the reference implementation normative? | Start of M9 | [ADR 0001](decisions/0001-specification-is-normative.md): **accepted**, the specification |
+| 2 | How the game dialect relates to NovaLang | Start of M10 | [ADR 0002](decisions/0002-game-dialect-and-profiles.md): **accepted**, a profile |
+| 3 | What NovaLang claims about security | Start of M11 | [ADR 0003](decisions/0003-security-stance.md): proposed |
 | 4 | Python support floor | M7 | Decided in M7 by what CI shows |
 
 ## Maintaining this document

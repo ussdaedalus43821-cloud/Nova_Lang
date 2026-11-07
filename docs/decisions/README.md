@@ -15,8 +15,8 @@ A decision is changed by writing a new record, not by editing an accepted one.
 
 | # | Title | Status | Needed by |
 | --- | --- | --- | --- |
-| [0001](0001-specification-is-normative.md) | The specification is normative | Proposed | M9 |
-| [0002](0002-game-dialect-and-profiles.md) | How the game dialect relates to NovaLang | Proposed | M10 |
+| [0001](0001-specification-is-normative.md) | The specification is normative | Accepted | M9 |
+| [0002](0002-game-dialect-and-profiles.md) | How the game dialect relates to NovaLang | Accepted | M10 |
 | [0003](0003-security-stance.md) | What NovaLang claims about security | Proposed | M11 |
 
 See [`../ROADMAP.md`](../ROADMAP.md) for the milestones these gate.

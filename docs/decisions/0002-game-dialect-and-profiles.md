@@ -1,6 +1,6 @@
 # 0002: How the game dialect relates to NovaLang
 
-Status: **Proposed**. Needed by the start of M10.
+Status: **Accepted** on 2026-11-07. Needed by the start of M10.
 
 ## Context
 
@@ -71,4 +71,14 @@ behavior.
 
 ## Decision
 
-_Not yet decided._
+Accepted as recommended, by the project owner, on 2026-11-07: Option A. The game
+dialect becomes a "policy" profile of NovaLang, defined as a small enumerated
+list of switches (keyword aliases, total division, truthiness, string
+coercion, the rule-engine declarations as an extension). Each switch is named
+and individually tested, and the list in the Context tables is the dialect's
+entire surface.
+
+The reconsideration triggers in the Recommendation stand: revisit toward
+Option C if the switch list grows beyond what can be tested exhaustively, or
+if a switch would change the meaning of existing official programs. A change
+of course is a new record that supersedes this one.

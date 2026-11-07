@@ -1,6 +1,6 @@
 # 0001: The specification is normative
 
-Status: **Proposed**. Needed by the start of M9.
+Status: **Accepted** on 2026-11-07. Needed by the start of M9.
 
 ## Context
 
@@ -40,4 +40,9 @@ corpus is a spec bug.
 
 ## Decision
 
-_Not yet decided._
+Accepted as recommended, by the project owner, on 2026-11-07: Option 2. The written
+specification plus the conformance corpus is the definition of NovaLang. The
+Python implementation is the first conforming host, not the authority. A
+disagreement between a host and the specification is triaged as a spec bug or
+an implementation bug and fixed in the same pull request as the corpus case
+that shows it.
