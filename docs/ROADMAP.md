@@ -122,8 +122,8 @@ Without CI, each change is re-verified by hand on whatever machine is at hand.
 required rows and probe rows), SHA-pinned actions with Dependabot updates,
 [`CI.md`](CI.md), and local reproduction of each job. Static evidence puts the
 Python floor at 3.7 (syntax and stdlib use) and the suite is green on 3.11,
-3.12 and 3.13. Remaining: the first run on GitHub and whatever it exposes,
-branch protection (a repository setting), promoting or dropping each probe
+3.12 and 3.13. The `fast` job has passed on GitHub (1,846 checks, 80 s; PR #14). Remaining: the first
+`full` matrix run and whatever it exposes, branch protection (a repository setting), promoting or dropping each probe
 row, the Windows fixes the matrix exposes, and the REPL gaps below.
 
 **Exit criteria**

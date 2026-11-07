@@ -3,17 +3,20 @@
 `.github/workflows/ci.yml` runs `tests/run_all.py`, the project's stop-the-line
 suite, on GitHub Actions. This is milestone M7 in [`ROADMAP.md`](ROADMAP.md).
 
-**Status of this workflow:** it has been validated against GitHub's workflow
-schema and every step has been reproduced locally, but it had not yet run on
-GitHub when it was written. Expect the first run to turn up something. Fix it
-the way any failing check is fixed: in the workflow or the code, not by
-loosening the check.
+**Status of this workflow:** the `fast` job has run once on GitHub (pull request
+#14, 2026-11-07) and passed: all 1,846 checks, in 80 seconds for the test step
+(89 seconds for the whole job), against 82 seconds for the same tier locally.
+That run included the editor station finding `node` with no install step (the
+`extension.js runs under node` check passed). The `full` matrix has not run
+yet; it starts on the first push to the default branch. Expect it to turn up
+something. Fix what it finds the way any failing check is fixed: in the
+workflow or the code, not by loosening the check.
 
 ## What runs
 
 | Job | When | What | Blocks a merge |
 | --- | --- | --- | --- |
-| `fast` | every pull request; pushes to the default branch; on demand | `run_all.py --quick` on Linux, Python 3.12 (about 1.5 minutes) | Yes, once branch protection is set (below) |
+| `fast` | every pull request; pushes to the default branch; on demand | `run_all.py --quick` on Linux, Python 3.12 (80 s measured on GitHub) | Yes, once branch protection is set (below) |
 | `full` | pushes to the default branch; weekly (Mondays 05:17 UTC); on demand | the whole suite across the matrix | The required rows, after merge |
 
 `--quick` skips only the two slow bootstrap-parity stations (4 and 5). Everything
@@ -47,12 +50,28 @@ Python 3.7 evidence so far, as of 2026-11-07:
 
 The static checks make 3.7 plausible, and only a run proves it.
 
+**Reading a failed probe.** First decide which of two things failed, because
+only one of them says anything about the supported versions:
+
+- **The code does not support that version** (a syntax error, a missing
+  standard-library function, a failing check on that interpreter). This is a
+  real signal about the floor.
+- **The runner or action setup failed** (no build of that Python for that
+  image, a dependency that will not install there, a setup step that errors
+  before any test runs). This is workflow plumbing: fix the workflow or move
+  the row to an image that has the version. It says nothing about the floor,
+  and the `checks.jsonl` artifact will be missing or empty.
+
+The test step's own output separates them: a row whose `Full suite` step never
+started, or whose artifact has no checks, is plumbing.
+
 **Promoting a probe.** When a probe row passes, change its `probe` to `false`
-in the same pull request that records the result here. **If a probe fails and
-the fix is not worth making,** raise the minimum stated in `README.md` to the
-oldest version that passes, rather than leaving the claim and the evidence
-apart. Either way the README and this table must end up agreeing with the
-required rows; that is an exit criterion of M7.
+in the same pull request that records the result here. **If a probe fails for
+the first reason and the fix is not worth making,** raise the minimum stated
+in `README.md` to the oldest version that passes, rather than leaving the claim
+and the evidence apart. The second kind of failure never justifies changing
+the stated minimum. Either way the README and this table must end up agreeing
+with the required rows; that is an exit criterion of M7.
 
 ## Reproducing a job locally
 
