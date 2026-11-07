@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 import unittest
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -140,8 +140,12 @@ class LanguageServerUriTests(unittest.TestCase):
         self.assertEqual(uri, "file:///C:/Users/runner/Temp/ws/a%20b.nova")
 
     def test_posix_paths_are_unchanged(self):
+        # Simulated like the Windows case: on a real Windows host abspath() would
+        # prefix a drive letter, so the real functions cannot be used here.
         server = load_tool("nova-lsp")
-        self.assertEqual(server.path_to_uri("/tmp/with space/é.nova"), "file:///tmp/with%20space/%C3%A9.nova")
+        with mock.patch("pathlib.Path", PurePosixPath), mock.patch("os.path.abspath", lambda p: p):
+            uri = server.path_to_uri("/tmp/with space/é.nova")
+        self.assertEqual(uri, "file:///tmp/with%20space/%C3%A9.nova")
 
 
 if __name__ == "__main__":

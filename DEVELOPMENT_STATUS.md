@@ -44,6 +44,7 @@ was still produced by running the suite by hand.
   measured; Python coverage is.
 - CI has shown the full suite passing on Linux for Python 3.7 through 3.13 and
   on macOS for 3.12. Windows failed its first run on four portability bugs,
-  now fixed and pinned by the `portability` station but not yet confirmed by a
-  run (see [`docs/CI.md`](docs/CI.md)); the 300 generated-program comparisons
-  have never run there.
+  now fixed and pinned by the `portability` station. A later run confirmed the
+  fixes on Windows 3.12, including the 300 generated-program comparisons; on
+  Windows 3.7 the process ends silently as those comparisons start, cause
+  unknown (see [`docs/CI.md`](docs/CI.md)).

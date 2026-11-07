@@ -9,8 +9,14 @@ the same tier locally), including the editor station finding `node` with no
 install step. The first `full` matrix run (2026-11-07, merge `d49a4bb`, run
 #5) passed on Linux for Python 3.7 through 3.13 and on macOS for 3.12, and
 failed on both Windows rows for four portability reasons, listed under
-[The first Windows run](#the-first-windows-run). The fixes are in the same
-change as this text and have not yet been confirmed by a run.
+[The first Windows run](#the-first-windows-run). A dispatched run of the fixes
+(run #7, 2026-11-07, `d9c2de5`) passed every required row, and on Windows 3.12
+none of the four recurred and all 300 generated-program comparisons passed.
+It also showed a mistake in the new `portability` station (a POSIX-path test
+that ran the real functions on Windows), fixed since, and that the Windows
+Python 3.7 process ends silently at the start of the generated-program
+comparisons, before recording seven checks. The cause is not yet known;
+`PYTHONFAULTHANDLER` is now set so that a native crash would print itself.
 
 ## What runs
 

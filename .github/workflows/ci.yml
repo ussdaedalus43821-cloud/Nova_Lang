@@ -27,6 +27,7 @@ concurrency:
 
 env:
   PYTHONUTF8: "1"          # the suite's own output and fixtures are UTF-8
+  PYTHONFAULTHANDLER: "1"  # a native crash (stack overflow, access violation) prints a traceback
 
 jobs:
   fast:
