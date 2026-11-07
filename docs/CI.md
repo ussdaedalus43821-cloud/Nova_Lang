@@ -14,9 +14,10 @@ failed on both Windows rows for four portability reasons, listed under
 none of the four recurred and all 300 generated-program comparisons passed.
 It also showed a mistake in the new `portability` station (a POSIX-path test
 that ran the real functions on Windows), fixed since, and that the Windows
-Python 3.7 process ends silently at the start of the generated-program
-comparisons, before recording seven checks. The cause is not yet known;
-`PYTHONFAULTHANDLER` is now set so that a native crash would print itself.
+Python 3.7 process dies at the start of the generated-program comparisons,
+before recording seven checks. A single-row dispatch with `PYTHONFAULTHANDLER`
+set found the cause: a native stack overflow, described under
+[Windows Python 3.7: stack overflow](#windows-python-37-stack-overflow).
 
 ## What runs
 
@@ -115,6 +116,40 @@ platform by simulating the Windows condition: a patched `platform.system()`, a
 forced non-`SIGALRM` time limit, a text mode that translates newlines, and
 pathlib's pure Windows paths. Run against the previous source it fails as the
 Windows run did.
+
+## Windows Python 3.7: stack overflow
+
+The first Windows 3.7 run ended with exit code 1 and no output, which looked
+like a watchdog rather than a crash. Re-running that one row with
+`PYTHONFAULTHANDLER=1` (run #10, single-row dispatch) printed
+`Windows fatal exception: stack overflow` and the Python stack: the
+tree-walker, repeating `visit_CallNode`, `call_value`, `execute_block`,
+`visit_ReturnNode`, `visit_BinOpNode` and `evaluate` (about nine Python frames
+per NovaLang call). The same step reported exit code 127 once it ran under
+`bash`, and 1 under PowerShell before: the shell's number for a killed process
+is not evidence about the cause.
+
+What is known:
+
+- 16 of the 300 generated programs recurse until the call-depth limit
+  (`MAX_CALL_DEPTH`, 1200). Each level costs about nine Python frames, so the
+  tree-walker needs on the order of 10,000 nested Python calls to produce the
+  friendly "call depth of 1200 exceeded" error.
+- Before Python 3.11, a Python-to-Python call also uses native stack. The
+  limit in `novalang.py` (`sys.setrecursionlimit(20000)`) was chosen
+  empirically on POSIX; Windows' stack is far smaller than Linux's 8 MB, and
+  that is the combination that overflows. Python 3.12 on Windows does not.
+- The default engine is the VM, which keeps NovaLang calls on its own stack, so
+  this affects `--tree-walk` and `Interpreter("tree")`. The tree-walker is the
+  reference the differential tests compare against.
+
+What is not known: the exact seed (the dump shows only the innermost 100
+frames), whether Windows 3.8 to 3.10 are also affected (no such rows exist),
+and whether the checks after the crash would pass. Possible remedies, none made
+yet: run the tree-walker on a thread with a larger stack, lower the depth limit
+for the tree-walker where the native stack is small, or document the
+tree-walker's limit on those platforms. Each changes behavior, so it needs a
+decision. The Windows rows stay probes meanwhile.
 
 ## Reproducing a job locally
 
