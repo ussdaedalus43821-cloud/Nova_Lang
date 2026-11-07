@@ -4,8 +4,19 @@ tests/run_all.py - the Andon cord. Any failure stops the line (exit 1).
 
     python3 tests/run_all.py            everything
     python3 tests/run_all.py --quick    skip the slow bootstrap stations (4-5)
+    python3 tests/run_all.py --station compiler --station types
+    python3 tests/run_all.py --report checks.jsonl    save each completed check
 
 Stations, in order:
+
+  0. harness        timeout handling, segmented reports and timezone regressions.
+  0b. cli           formatter/linter modes, disassembly and bootstrap launchers;
+                    real subprocess output, exit codes and filesystem effects.
+  0c. embedding     callbacks, conversions, property errors and import permissions
+                    on both engines, plus bootstrap error-boundary parity.
+  0d. repl          multiline input, error recovery, EOF and session state
+                    through the real interactive entry points.
+  0e. input-errors  formatter refusal and malformed package/LSP input.
 
   1. fmt golden     tests/fmt/X.nova formats to exactly X.expected.nova,
                     and every expected file is already a fixed point.
@@ -86,6 +97,7 @@ on stderr are the only thing masked, and only stdout is compared, because
 the two engines word their error messages (stderr) differently on purpose.
 """
 
+import argparse
 import concurrent.futures
 import glob
 import json
@@ -154,11 +166,16 @@ TIMESTAMP = re.compile(r"\[\d{4}-\d\d-\d\dT[0-9:.+-]+\]")
 
 
 class Line:
-    def __init__(self):
+    def __init__(self, report=None):
         self.failures = []
         self.passed = 0
+        self.report = report
 
     def check(self, ok, label, detail=""):
+        if self.report is not None:
+            self.report.write(json.dumps({"passed": bool(ok), "label": label,
+                                          "detail": detail}, default=str) + "\n")
+            self.report.flush()
         if ok:
             self.passed += 1
         else:
@@ -369,6 +386,8 @@ def bootstrap(example, base, engine):
 
 
 def same(a, b, example):
+    if a[0] == "timeout" or b[0] == "timeout":
+        return False
     if example in NONDETERMINISTIC:
         return a[0] == b[0]
     return a == b
@@ -742,21 +761,94 @@ def station_differential(line):
         ok, "vm: " + label, "" if detail is None else str(detail)[:4000]))
 
 
+def station_harness(line):
+    print("0. test harness regressions")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "harness")],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    line.check(done.returncode == 0, "test harness regressions pass",
+               done.stdout + done.stderr)
+
+
+def station_cli(line):
+    print("0b. command-line regression tests")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "cli"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=180)
+    line.check(done.returncode == 0, "command-line regressions pass",
+               done.stdout + done.stderr)
+
+
+def station_embedding(line):
+    print("0c. embedding boundary regressions")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "embedding"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    line.check(done.returncode == 0, "embedding boundary regressions pass",
+               done.stdout + done.stderr)
+
+
+def station_repl(line):
+    print("0d. interactive REPL regressions")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "repl"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    line.check(done.returncode == 0, "interactive REPL regressions pass",
+               done.stdout + done.stderr)
+
+
+def station_input_errors(line):
+    print("0e. formatter refusal and malformed input regressions")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "input_errors"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    line.check(done.returncode == 0, "malformed input regressions pass",
+               done.stdout + done.stderr)
+
+
+STATIONS = [
+    ("harness", station_harness),
+    ("cli", station_cli),
+    ("embedding", station_embedding),
+    ("repl", station_repl),
+    ("input-errors", station_input_errors),
+    ("fmt-golden", station_fmt_golden),
+    ("lint-golden", station_lint_golden),
+    ("fmt-repo", station_fmt_repo),
+    ("line-breaks", station_line_breaks),
+    ("parity", station_parity),
+    ("python", station_python),
+    ("types", station_types),
+    ("packages", station_packages),
+    ("editor", station_editor),
+    ("compiler", station_compiler),
+    ("differential", station_differential),
+]
+
+
 def main(argv):
-    quick = "--quick" in argv[1:]
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--quick", action="store_true", help="skip parity stations 4-5")
+    parser.add_argument("--station", action="append", choices=[name for name, _ in STATIONS],
+                        help="run only this station; repeat to select several")
+    parser.add_argument("--report", help="write and flush each check to a JSON Lines file")
+    args = parser.parse_args(argv[1:])
+    if args.quick and args.station and "parity" in args.station:
+        parser.error("--quick cannot be combined with --station parity")
     line = Line()
-    station_fmt_golden(line)
-    station_lint_golden(line)
-    station_fmt_repo(line)
-    station_line_breaks(line)
-    if not quick:
-        station_parity(line)
-    station_python(line)
-    station_types(line)
-    station_packages(line)
-    station_editor(line)
-    station_compiler(line)
-    station_differential(line)
+    try:
+        if args.report:
+            line.report = open(args.report, "w", encoding="utf-8")
+        for name, station in STATIONS:
+            if args.station and name not in args.station:
+                continue
+            if args.quick and name == "parity":
+                continue
+            station(line)
+    finally:
+        if line.report is not None:
+            line.report.close()
     print()
     if line.failures:
         print("ANDON: {} failed, {} passed - the line is stopped.".format(
