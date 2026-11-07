@@ -54,13 +54,18 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   when a check fails.
 
 ### Added
-- A `portability` station of ten tests that simulate Windows on any platform
+- A `portability` station of fourteen tests that simulate Windows on any platform
   (a patched `platform.system()`, a forced non-`SIGALRM` time limit, a text
-  mode that translates newlines, pathlib's pure Windows paths) and one language-
+  mode that translates newlines, pathlib's pure Windows paths, the tree-walker skip) and one language-
   server check that definition URIs are canonical, bringing the full suite to
   1,921 parent checks. Linux, Python 3.7-3.10 and macOS are now
   required rows of the CI matrix; Windows stays a probe until a run confirms
   the fixes above.
+- On Windows with Python before 3.11, the generated-program comparisons do not
+  give the tree-walker the 16 of 300 programs that recurse to the 1200-call
+  limit, because it overflows the native stack there and kills the process. The
+  VM decides them; the skip is printed, recorded as a check, capped at a tenth
+  and tested on every platform (`docs/CI.md`). Other platforms compare all 300.
 - Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
   fast tier (`run_all.py --quick`) on every pull request and the full suite
   across a Python/OS matrix on the default branch, weekly and on demand. Rows
