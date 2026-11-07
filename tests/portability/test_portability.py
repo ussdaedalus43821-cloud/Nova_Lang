@@ -148,5 +148,84 @@ class LanguageServerUriTests(unittest.TestCase):
         self.assertEqual(uri, "file:///tmp/with%20space/%C3%A9.nova")
 
 
+class TreeWalkerSkipTests(unittest.TestCase):
+    """The tree-walker overflows the native stack on programs that recurse to
+    the call-depth limit, on Windows with Python before 3.11; the generated
+    comparisons then decide those programs on the VM alone. The skip is scoped
+    to exactly that, visible and recorded (docs/CI.md)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import test_differential
+        cls.t = test_differential
+
+    def detect(self, platform, version):
+        with mock.patch.object(sys, "platform", platform), mock.patch.object(sys, "version_info", version):
+            return self.t.tree_walker_stack_limited()
+
+    def test_scope_is_windows_and_python_before_3_11(self):
+        self.assertTrue(self.detect("win32", (3, 7, 9, "final", 0)))
+        self.assertTrue(self.detect("win32", (3, 10, 14, "final", 0)))
+        self.assertFalse(self.detect("win32", (3, 11, 0, "final", 0)))
+        self.assertFalse(self.detect("win32", (3, 12, 3, "final", 0)))
+        self.assertFalse(self.detect("linux", (3, 7, 9, "final", 0)))
+        self.assertFalse(self.detect("darwin", (3, 9, 6, "final", 0)))
+
+    def run_generated(self, limited, seeds=200):
+        results, calls = [], []
+        real = self.t.differential.outcome
+
+        def spy(source, engine, *args, **kwargs):
+            calls.append((engine, source))
+            return real(source, engine, *args, **kwargs)
+
+        printed = io.StringIO()
+        with mock.patch.object(self.t, "SEEDS", seeds), \
+                mock.patch.object(self.t.differential, "outcome", spy), \
+                contextlib.redirect_stdout(printed):
+            self.t.test_generated(lambda ok, label, detail=None: results.append((ok, label)), limited=limited)
+        return results, calls, printed.getvalue()
+
+    def test_limited_platforms_skip_visibly_and_the_tree_walker_never_sees_them(self):
+        results, calls, printed = self.run_generated(limited=True)
+        self.assertTrue(all(ok for ok, _ in results), results)
+        skipped = [s for s in (self.t.generator.generate(n) for n in range(200))
+                   if self.t.DEPTH_ERROR in self.t.differential.outcome(s, "vm")[1]]
+        self.assertGreaterEqual(len(skipped), 2)  # seeds 150 and 193 are in the first 200
+        tree_sources = {source for engine, source in calls if engine == "tree"}
+        for source in skipped:
+            self.assertNotIn(source, tree_sources)
+        self.assertIn("SKIPPED: the tree-walker did not run {} of 200".format(len(skipped)), printed)
+        self.assertIn("Compared on both engines: {}/200".format(200 - len(skipped)), printed)
+        labels = [label for _, label in results]
+        self.assertTrue(any("tree-walker skipped on {} depth-limit programs".format(len(skipped)) in l
+                            for l in labels), labels)
+        self.assertTrue(any("{} of 200 generated programs run the same".format(200 - len(skipped)) in l
+                            for l in labels), labels)
+
+    def test_other_platforms_run_everything_and_print_nothing(self):
+        results, calls, printed = self.run_generated(limited=False, seeds=60)
+        self.assertEqual(printed, "")
+        self.assertEqual(sum(1 for engine, _ in calls if engine == "tree"), 60)
+        self.assertTrue(any(l == "60 generated programs run the same on both engines (0 differ)"
+                            for _, l in results), results)
+
+    def test_the_skip_is_capped(self):
+        """If every program looked depth-limited, the skip would hide the whole
+        comparison; the cap turns that into a failed check."""
+        results = []
+
+        def every_program_hits_the_limit(source, engine, *args, **kwargs):
+            return "", "NovaError: " + self.t.DEPTH_ERROR, 1
+
+        with mock.patch.object(self.t, "SEEDS", 20), \
+                mock.patch.object(self.t.differential, "outcome", every_program_hits_the_limit), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.t.test_generated(lambda ok, label, detail=None: results.append((ok, label)), limited=True)
+        failed = [label for ok, label in results if not ok]
+        self.assertEqual(len(failed), 1, results)
+        self.assertIn("skipped on 20 depth-limit programs", failed[0])
+
+
 if __name__ == "__main__":
     unittest.main()

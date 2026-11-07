@@ -165,12 +165,45 @@ def test_files(check):
     check(len(results) > 70, "every .nova file was compared ({})".format(len(results)))
 
 
-def test_generated(check):
+def tree_walker_stack_limited():
+    """True where the tree-walker cannot be trusted to reach MAX_CALL_DEPTH.
+
+    It spends about nine Python frames per NovaLang call, and before Python
+    3.11 each of those also uses native stack. On Windows, whose stack is much
+    smaller than Linux's or macOS's, a program that recurses to the 1200-call
+    limit overflows it and kills the whole process (docs/CI.md, "Windows
+    Python 3.7: stack overflow"). Python 3.11 and later do not have the
+    problem, and neither does the VM, which keeps NovaLang calls on its own
+    stack. Nothing here is detected by trying it: a native overflow cannot be
+    caught."""
+    return sys.platform == "win32" and sys.version_info < (3, 11)
+
+
+DEPTH_ERROR = "call depth of {} exceeded".format(nl.MAX_CALL_DEPTH)
+
+
+def test_generated(check, limited=None):
+    """Seeded programs on both engines. Where the tree-walker is
+    stack-limited (see above), the programs that end in the call-depth error
+    are decided on the VM alone: it runs first, and a program that ends in
+    that error is not given to the tree-walker. The skip is printed and
+    recorded, so it is never silent, and capped, so it cannot grow into
+    hiding programs."""
+    limited = tree_walker_stack_limited() if limited is None else limited
     mismatches = []
     unfinished = []
+    skipped = []
     for seed in range(SEEDS):
         source = generator.generate(seed)
-        same, tree, vm = differential.compare(source)
+        if limited:
+            vm = differential.outcome(source, "vm")
+            if DEPTH_ERROR in vm[1] and vm[2] == 1:
+                skipped.append(seed)
+                continue
+            tree = differential.outcome(source, "tree")
+            same = tree == vm and tree[2] != -1
+        else:
+            same, tree, vm = differential.compare(source)
         if tree[2] == -1 or vm[2] == -1:
             unfinished.append(seed)
         elif not same:
@@ -182,8 +215,23 @@ def test_generated(check):
         seed, source, tree, vm = mismatches[0]
         detail = "first mismatch, seed {}:\n{}\n-- tree-walker: {!r}\n-- vm: {!r}".format(
             seed, source, tree, vm)
-    check(not mismatches, "{} generated programs run the same on both engines ({} differ)".format(
-        SEEDS, len(mismatches)), detail)
+    if not limited:
+        check(not mismatches, "{} generated programs run the same on both engines ({} differ)".format(
+            SEEDS, len(mismatches)), detail)
+        return
+    compared = SEEDS - len(skipped)
+    print("  SKIPPED: the tree-walker did not run {} of {} generated programs (seeds {}): "
+          "each recurses to the call-depth limit, which overflows the native stack on "
+          "Windows with Python {}.{}. The VM ran them all and ended each in the "
+          "depth-limit error. Compared on both engines: {}/{}.".format(
+              len(skipped), SEEDS, ", ".join(map(str, skipped)),
+              sys.version_info[0], sys.version_info[1], compared, SEEDS))
+    check(len(skipped) <= max(1, SEEDS // 10),
+          "tree-walker skipped on {} depth-limit programs ({} compared of {}; Windows, "
+          "Python 3.10 or older)".format(len(skipped), compared, SEEDS),
+          "more than a tenth of the programs skipped: {}".format(skipped[:20]))
+    check(not mismatches, "{} of {} generated programs run the same on both engines ({} differ)".format(
+        compared, SEEDS, len(mismatches)), detail)
 
 
 EMBEDDING = '''

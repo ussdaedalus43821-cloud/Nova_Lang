@@ -144,12 +144,46 @@ What is known:
   reference the differential tests compare against.
 
 What is not known: the exact seed (the dump shows only the innermost 100
-frames), whether Windows 3.8 to 3.10 are also affected (no such rows exist),
-and whether the checks after the crash would pass. Possible remedies, none made
-yet: run the tree-walker on a thread with a larger stack, lower the depth limit
-for the tree-walker where the native stack is small, or document the
-tree-walker's limit on those platforms. Each changes behavior, so it needs a
-decision. The Windows rows stay probes meanwhile.
+frames), whether Windows 3.8 to 3.10 are also affected (no such rows exist; the
+scope below assumes they are), and whether the checks after the crash pass.
+
+### The decision: skip, visibly, where the tree-walker cannot run them
+
+Three remedies were weighed (a larger-stack thread, a lower depth limit for the
+tree-walker, or documenting and exempting). The third was chosen because the
+other two change behavior to fix a test problem. `tests/vm/test_differential.py`
+now does this, and only this:
+
+- **Scope:** `tree_walker_stack_limited()` is true only when
+  `sys.platform == "win32"` and Python is older than 3.11. Linux, macOS and
+  Windows with 3.11 or later run exactly the comparisons they ran before, with
+  the same check labels.
+- **How a program is chosen:** on a limited platform the VM runs each generated
+  program first (it keeps NovaLang calls on its own stack, so it cannot
+  overflow). A program that ends in `call depth of 1200 exceeded` with exit
+  status 1 is not given to the tree-walker. Nothing is detected by trying the
+  tree-walker, because a native overflow cannot be caught.
+- **Coverage:** 16 of the 300 seeds (31, 32, 38, 39, 41, 54, 56, 65, 92, 109,
+  150, 193, 259, 262, 267, 290) end in that error on both engines; the next
+  deepest program reaches 135 calls. So **284 of 300 generated programs are
+  compared on both engines** on those platforms, and 16 are decided on the VM
+  alone. The other platforms compare all 300.
+- **Visible:** the station prints a `SKIPPED:` line with the count, the seeds and
+  the coverage (`Compared on both engines: 284/300`) and records two checks:
+  the skip itself, with its counts, and `284 of 300 generated programs run the
+  same on both engines`. A Windows row on Python 3.10 or older therefore records
+  one more check than the others.
+- **Capped:** the skip check fails if more than a tenth of the programs are
+  skipped, so it cannot grow into hiding the comparison.
+- **Tested everywhere:** `tests/portability` forces the limited path on any
+  platform and checks the scope, that the tree-walker never receives a skipped
+  program, the printed line, the labels, the unchanged behavior elsewhere and
+  the cap.
+
+What this does not do: it does not make `--tree-walk` safe on deep recursion on
+Windows with older Pythons. A user program that recurses to the limit there
+still kills the process; the larger-stack thread remains the fix for that, and
+is a separate decision. The Windows rows stay probes.
 
 ## Reproducing a job locally
 
