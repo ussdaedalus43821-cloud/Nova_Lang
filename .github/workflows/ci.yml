@@ -3,8 +3,9 @@
 #   fast  the --quick tier of tests/run_all.py. Runs on every pull request and
 #         on pushes to the default branch. This is the required check.
 #   full  the whole suite across a Python/OS matrix. Runs on pushes to the
-#         default branch, weekly, and on demand. Entries marked `probe` report
-#         but cannot fail the run, until they have passed once (docs/CI.md).
+#         default branch, weekly, and on demand (a dispatch may pick rows and a
+#         station). Rows marked `probe` report but cannot fail the run, until
+#         they have passed once (docs/CI.md). The matrix is in the `plan` job.
 #
 # Actions are pinned to commit SHAs (the tag is in the trailing comment);
 # Dependabot keeps them current.
@@ -17,6 +18,15 @@ on:
   schedule:
     - cron: "17 5 * * 1"   # Mondays, 05:17 UTC
   workflow_dispatch:
+    inputs:
+      rows:
+        description: "Matrix rows to run, comma-separated os/python (e.g. windows-latest/3.7). Empty runs them all."
+        required: false
+        default: ""
+      station:
+        description: "Run only this run_all.py station (e.g. differential). Empty runs the whole suite."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -65,8 +75,64 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The matrix lives here, not in the full job, so a dispatch can pick rows
+  # (`rows`) and a station (`station`): a single row's traceback should not
+  # cost a whole matrix run. Inputs reach the script through the environment,
+  # never through string interpolation into it.
+  plan:
+    name: plan
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      args: ${{ steps.plan.outputs.args }}
+    steps:
+      - id: plan
+        env:
+          ROWS: ${{ inputs.rows }}
+          STATION: ${{ inputs.station }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys
+
+          # Required: seen passing on GitHub (docs/CI.md has the run).
+          # Probes report but cannot fail the run: Windows, until a run
+          # confirms the portability fixes (docs/CI.md).
+          rows = [
+              ("ubuntu-24.04", "3.13", False),
+              ("ubuntu-24.04", "3.12", False),
+              ("ubuntu-24.04", "3.11", False),
+              ("ubuntu-22.04", "3.10", False),
+              ("ubuntu-22.04", "3.9", False),
+              ("ubuntu-22.04", "3.8", False),
+              ("ubuntu-22.04", "3.7", False),
+              ("macos-latest", "3.12", False),
+              ("windows-latest", "3.12", True),
+              ("windows-latest", "3.7", True),
+          ]
+          wanted = [r.strip() for r in os.environ.get("ROWS", "").split(",") if r.strip()]
+          known = {os_ + "/" + py for os_, py, _ in rows}
+          unknown = [r for r in wanted if r not in known]
+          if unknown:
+              sys.exit("unknown row(s): {}; known: {}".format(unknown, sorted(known)))
+          chosen = [r for r in rows if not wanted or r[0] + "/" + r[1] in wanted]
+          station = os.environ.get("STATION", "").strip()
+          if station and not re.fullmatch(r"[a-z0-9-]+", station):
+              sys.exit("bad station name: {!r}".format(station))
+          matrix = {"include": [{"os": o, "python": p, "probe": probe} for o, p, probe in chosen]}
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("matrix=" + json.dumps(matrix) + "\n")
+              out.write("args=" + ("--station " + station if station else "") + "\n")
+          print(json.dumps(matrix, indent=1), "args:", station or "(whole suite)")
+          PY
+
   full:
     name: full (${{ matrix.os }}, py${{ matrix.python }})
+    needs: plan
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
@@ -76,23 +142,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # Required: seen passing on GitHub (docs/CI.md has the run).
-          - { os: ubuntu-24.04, python: "3.13", probe: false }
-          - { os: ubuntu-24.04, python: "3.12", probe: false }
-          - { os: ubuntu-24.04, python: "3.11", probe: false }
-          - { os: ubuntu-22.04, python: "3.10", probe: false }
-          - { os: ubuntu-22.04, python: "3.9", probe: false }
-          - { os: ubuntu-22.04, python: "3.8", probe: false }
-          - { os: ubuntu-22.04, python: "3.7", probe: false }
-          - { os: macos-latest, python: "3.12", probe: false }
-          # Probes: Windows failed its first run on four portability bugs that
-          # this suite now pins (tests/portability). It stays a probe until a
-          # run confirms the fixes, then each row is promoted or its remaining
-          # failures are read as code or plumbing (docs/CI.md).
-          - { os: windows-latest, python: "3.12", probe: true }
-          - { os: windows-latest, python: "3.7", probe: true }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,7 +161,10 @@ jobs:
           node --version
           git --version
       - name: Full suite
-        run: python -u tests/run_all.py --report checks.jsonl
+        shell: bash
+        env:
+          RUN_ARGS: ${{ needs.plan.outputs.args }}   # a validated --station NAME, or empty
+        run: python -u tests/run_all.py --report checks.jsonl $RUN_ARGS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

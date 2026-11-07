@@ -29,6 +29,14 @@ comparisons, before recording seven checks. The cause is not yet known;
 else runs, including the differential station that holds the VM to the
 tree-walker.
 
+A manual dispatch can narrow the `full` job instead of running all ten rows:
+the `rows` input takes `os/python` pairs (for example `windows-latest/3.7`) and
+`station` takes one `run_all.py` station name (for example `differential`).
+Both empty is the whole matrix. The matrix itself is defined in the `plan` job
+of the workflow; inputs reach its script through the environment, and an
+unknown row or malformed station name fails the plan rather than running
+something unintended.
+
 Each job uploads `checks.jsonl` (one JSON line per completed check) as an
 artifact, so a failure can be read without re-running.
 
