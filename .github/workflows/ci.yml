@@ -100,8 +100,9 @@ jobs:
           import json, os, re, sys
 
           # Required: seen passing on GitHub (docs/CI.md has the run).
-          # Probes report but cannot fail the run: Windows, until a run
-          # confirms the portability fixes (docs/CI.md).
+          # Probes report but cannot fail the run. Windows 3.12 passed run 15
+          # and is required; Windows 3.7 stays a probe because its generated-
+          # program comparison skips 16 of 300 programs (docs/CI.md).
           rows = [
               ("ubuntu-24.04", "3.13", False),
               ("ubuntu-24.04", "3.12", False),
@@ -111,7 +112,7 @@ jobs:
               ("ubuntu-22.04", "3.8", False),
               ("ubuntu-22.04", "3.7", False),
               ("macos-latest", "3.12", False),
-              ("windows-latest", "3.12", True),
+              ("windows-latest", "3.12", False),
               ("windows-latest", "3.7", True),
           ]
           wanted = [r.strip() for r in os.environ.get("ROWS", "").split(",") if r.strip()]

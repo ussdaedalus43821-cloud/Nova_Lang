@@ -59,8 +59,8 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   mode that translates newlines, pathlib's pure Windows paths, the tree-walker skip) and one language-
   server check that definition URIs are canonical, bringing the full suite to
   1,921 parent checks. Linux, Python 3.7-3.10 and macOS are now
-  required rows of the CI matrix; Windows stays a probe until a run confirms
-  the fixes above.
+  required rows of the CI matrix, and so is Windows with Python 3.12 once a run
+  confirmed the fixes above; Windows with 3.7 stays a probe.
 - On Windows with Python before 3.11, the generated-program comparisons do not
   give the tree-walker the 16 of 300 programs that recurse to the 1200-call
   limit, because it overflows the native stack there and kills the process. The
@@ -69,7 +69,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 - Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
   fast tier (`run_all.py --quick`) on every pull request and the full suite
   across a Python/OS matrix on the default branch, weekly and on demand. Rows
-  not yet seen passing (Python 3.7-3.10, macOS, Windows) are probes that cannot
+  not yet seen passing (Python 3.7-3.10, macOS, Windows) were probes that cannot
   fail the run. Actions are pinned to commit SHAs and kept current by
   Dependabot. `docs/CI.md` explains the jobs, the Python-support evidence and
   the one-time branch-protection step.

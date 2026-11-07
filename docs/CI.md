@@ -18,6 +18,10 @@ Python 3.7 process dies at the start of the generated-program comparisons,
 before recording seven checks. A single-row dispatch with `PYTHONFAULTHANDLER`
 set found the cause: a native stack overflow, described under
 [Windows Python 3.7: stack overflow](#windows-python-37-stack-overflow).
+A dispatch of both Windows rows after the skip was added (run 15, `8936ed1`)
+recorded 1,921 checks with none failing on Windows 3.12, which is now a required
+row, and 1,922 on Windows 3.7 with one failing check, a test of mine that gave
+the tree-walker depth-limit programs (fixed in `3b2edc6`).
 
 ## What runs
 
@@ -50,7 +54,9 @@ The `full` matrix has two kinds of row, set by `probe` in the workflow.
   required row marks the default branch red; it blocks nothing, and nothing
   can block a merge until branch protection is set (below).
 - **Probes** report but cannot fail the workflow. They are for combinations the
-  suite has not yet been seen passing on. Today that is Windows only.
+  suite has not yet been seen passing on, or that pass only with a documented
+  exception. Today that is Windows on Python 3.7 only: it passes with the
+  generated-program skip described below, and Windows 3.12 is required.
 
 Evidence for the README's "Python 3.7+", as of 2026-11-07:
 
@@ -64,8 +70,10 @@ Evidence for the README's "Python 3.7+", as of 2026-11-07:
 | Full suite, Windows, Python 3.7 and 3.12 | fail, the same 8 checks on both: a platform problem, not a version one |
 | Full suite, Python 3.9.6, macOS | reported passing by the author of the verification work; not reproduced here |
 
-What this supports: Python 3.7 and later on Linux, and 3.12 on macOS. It does
-not yet support any claim about Windows, or about 3.7 anywhere but Linux.
+What this supports: Python 3.7 and later on Linux, 3.12 on macOS and 3.12 on
+Windows. It does not support a claim that 3.7 works on Windows without
+qualification: there the suite passes only with the tree-walker skipped on 16
+of the 300 generated programs (see below).
 
 **Reading a failed probe.** First decide which of two things failed, because
 only one of them says anything about the supported versions:
@@ -183,7 +191,7 @@ now does this, and only this:
 What this does not do: it does not make `--tree-walk` safe on deep recursion on
 Windows with older Pythons. A user program that recurses to the limit there
 still kills the process; the larger-stack thread remains the fix for that, and
-is a separate decision. The Windows rows stay probes.
+is a separate decision. Windows 3.7 stays a probe.
 
 ## Reproducing a job locally
 

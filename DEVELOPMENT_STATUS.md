@@ -43,9 +43,10 @@ was still produced by running the suite by hand.
 - NovaLang-source and JavaScript (VS Code extension) coverage are not
   measured; Python coverage is.
 - CI has shown the full suite passing on Linux for Python 3.7 through 3.13 and
-  on macOS for 3.12. Windows failed its first run on four portability bugs,
-  now fixed and pinned by the `portability` station. A later run confirmed the
-  fixes on Windows 3.12, including the 300 generated-program comparisons; on
+  on macOS for 3.12 and Windows for 3.12. Windows failed its first run on four
+  portability bugs, now fixed and pinned by the `portability` station. A later
+  run confirmed the fixes on Windows 3.12, including the 300 generated-program
+  comparisons (1,921 checks, none failing); on
   Windows 3.7 the tree-walker overflows the native stack on a program that
   reaches the 1200-call depth limit, and the process dies instead of printing
   the call-depth error. The VM, the default engine, is not involved. The
