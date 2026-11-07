@@ -39,6 +39,7 @@ full history, from the 14 build stages of 1.x to the bytecode VM.
 - [Examples](#examples)
 - [Performance](#performance)
 - [Security](#security)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -692,6 +693,14 @@ This design was a deliberate departure from an earlier, broader spec
 If your embedding program needs more, opt it in explicitly with
 `expose()` / `expose_module()` / `expose_global()`; don't loosen the
 allowlist itself without deciding that's actually what you want.
+
+## Roadmap
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) sets out the milestones after M6, from
+continuous verification and a written language specification through a security
+model, runtime work and a package registry, and what each product in the wider
+Nova ecosystem needs before it can start. Decisions that need the project
+owner are recorded in [`docs/decisions/`](docs/decisions/README.md).
 
 ## Contributing
 

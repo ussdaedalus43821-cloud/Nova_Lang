@@ -47,6 +47,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   when a check fails.
 
 ### Added
+- `docs/ROADMAP.md`: the plan for milestones M7-M14 (continuous verification,
+  the GDScript VM, a language specification and conformance corpus, dialect
+  profiles, a security model, runtime work, a package registry, product pilots),
+  with exit criteria per milestone. `docs/decisions/` holds three proposed
+  decision records (specification authority, the game dialect, the security
+  stance) awaiting the project owner.
 - An `input-errors` station exercises all four formatter refusal checks,
   malformed package input and language server framing. It contributes one
   parent check for six tests, bringing the full suite to 1,919 parent checks.

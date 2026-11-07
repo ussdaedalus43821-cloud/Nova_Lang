@@ -141,6 +141,15 @@ runs a longer soak of random programs. Before sending a change:
   new language feature or built-in, rather than only testing it by hand
   at the REPL.
 
+## Milestones
+
+Larger changes are planned as numbered milestones in
+[`docs/ROADMAP.md`](docs/ROADMAP.md). A milestone gets its own branch and a
+pull request titled `Mn: <title>`, a test station that fails without the work,
+a `### Mn:` changelog section, and an updated `DEVELOPMENT_STATUS.md`. A
+decision that changes the language's direction is written up in
+[`docs/decisions/`](docs/decisions/README.md) before work depends on it.
+
 ## Style
 
 - No comments explaining *what* code does — name things so the code reads

@@ -27,6 +27,12 @@ timing out used to compare equal), the standard-library example no longer
 assumes a UTC epoch date, and `tests/run_coverage.py` measures statement and
 branch coverage including Python subprocesses (see `docs/COVERAGE.md`).
 
+## Roadmap
+
+The milestones after M6 are in [`docs/ROADMAP.md`](docs/ROADMAP.md). The first,
+M7, adds continuous verification: there is no CI today, and every result above
+was produced by running the suite by hand.
+
 ## Known gaps
 
 - The REPL's blank-line check looks for a raw `{` in the draft, so a brace
