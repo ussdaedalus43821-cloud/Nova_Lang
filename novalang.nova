@@ -1752,7 +1752,16 @@ def call_builtin(name, call_args, pos) {
         return assert(call_args[0], call_args[1])
     }
     if name == "log" {
-        return log(call_args[0])
+        let text = ""
+        let i = 0
+        while i < len(call_args) {
+            if i > 0 {
+                text = text + " "
+            }
+            text = text + target_str(call_args[i])
+            i = i + 1
+        }
+        return log(text)
     }
     if name == "map" {
         return target_map(call_args[0], call_args[1], pos)

@@ -65,27 +65,45 @@ def write_files(folder, source, files):
         path.write_bytes(text.encode("utf-8"))
 
 
-def run_in_process(source, engine, files=None):
-    if files is None:
-        return run_in_process_in(source, engine, None)
-    with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
-        write_files(folder, source, files)
-        here = os.getcwd()
-        os.chdir(folder)
-        try:
-            return run_in_process_in(source, engine, os.path.realpath(folder))
-        finally:
-            os.chdir(here)
+@contextlib.contextmanager
+def patched_environment(env):
+    """The case's `env` variables set for the run, and put back after it."""
+    saved = {name: os.environ.get(name) for name in (env or {})}
+    try:
+        for name, value in (env or {}).items():
+            os.environ[name] = value
+        yield
+    finally:
+        for name, old in saved.items():
+            if old is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = old
 
 
-def run_in_process_in(source, engine, folder):
+def run_in_process(source, engine, files=None, env=None, stdin="", args=None):
+    with patched_environment(env):
+        if files is None:
+            return run_in_process_in(source, engine, None, stdin, args)
+        with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
+            write_files(folder, source, files)
+            here = os.getcwd()
+            os.chdir(folder)
+            try:
+                return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args)
+            finally:
+                os.chdir(here)
+
+
+def run_in_process_in(source, engine, folder, stdin="", args=None):
     out = io.StringIO()
     error, line, status = "", None, 0
     interpreter = novalang.Interpreter(engine)
     if folder is not None:
         interpreter.file_stack.append(folder)       # as run_source does for a file
-    real_stdin = sys.stdin
-    sys.stdin = io.StringIO("")
+    real_stdin, real_args = sys.stdin, novalang.SCRIPT_ARGS
+    sys.stdin = io.StringIO(stdin or "")
+    novalang.SCRIPT_ARGS = list(args or [])
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             try:
@@ -107,11 +125,11 @@ def run_in_process_in(source, engine, folder):
                 error = "InternalError: {}: {}".format(type(problem).__name__, problem)
                 status = 70
     finally:
-        sys.stdin = real_stdin
+        sys.stdin, novalang.SCRIPT_ARGS = real_stdin, real_args
     return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status}
 
 
-def run_bootstrap(source, files=None, timeout=120):
+def run_bootstrap(source, files=None, env=None, stdin="", args=None, timeout=120):
     with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
         path = Path(folder) / "case.nova"
         if files is None:
@@ -121,9 +139,9 @@ def run_bootstrap(source, files=None, timeout=120):
             write_files(folder, source, files)
         try:
             done = subprocess.run(
-                [sys.executable, str(ROOT / "novalang.py"), "--bootstrap", str(path)],
-                cwd=folder, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout,
-                env=dict(os.environ, PYTHONUTF8="1"),
+                [sys.executable, str(ROOT / "novalang.py"), "--bootstrap", str(path)] + list(args or []),
+                cwd=folder, input=(stdin or "").encode("utf-8"), capture_output=True, timeout=timeout,
+                env=dict(os.environ, PYTHONUTF8="1", **(env or {})),
             )
         except subprocess.TimeoutExpired:
             return {"output": [], "error": "InternalError: timed out", "error_line": None, "exit": 70}
@@ -140,9 +158,19 @@ def run_bootstrap(source, files=None, timeout=120):
             "error": error, "error_line": None, "exit": done.returncode}
 
 
-def run(source, engine, files=None):
+def run(source, engine, files=None, env=None, stdin="", args=None):
     """`files` maps relative paths (with `/`) to text: the modules the program
-    imports, written beside it (as main.nova) in a folder of their own."""
+    imports, or any file it reads, written beside it (as main.nova) in a folder
+    of their own that is the working directory. `env` sets environment
+    variables, `stdin` is what `input()` reads, `args` is what `args()` returns."""
     if engine == "bootstrap":
-        return run_bootstrap(source, files)
-    return run_in_process(source, engine, files)
+        return run_bootstrap(source, files, env, stdin, args)
+    return run_in_process(source, engine, files, env, stdin, args)
+
+
+def run_case(case, engine):
+    files = case.get("files")
+    if files is None and case.get("profile") in ("host", "modules"):
+        files = {}      # these cases touch the file system: a folder of their own
+    return run(case["source"], engine, files, case.get("env"),
+               case.get("stdin", ""), case.get("args"))

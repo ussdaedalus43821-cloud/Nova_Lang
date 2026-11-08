@@ -215,9 +215,9 @@ def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
     if engine == "bootstrap":
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {case["name"]: pool.submit(engines.run, case["source"], engine, case.get("files")) for case in cases}
+            futures = {case["name"]: pool.submit(engines.run_case, case, engine) for case in cases}
             return {name: future.result() for name, future in futures.items()}
-    return {case["name"]: engines.run(case["source"], engine, case.get("files")) for case in cases}
+    return {case["name"]: engines.run_case(case, engine) for case in cases}
 
 
 def check_all(check, selected=engines.ENGINES, verbose=False):
