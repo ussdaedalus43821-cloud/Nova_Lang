@@ -137,17 +137,7 @@
    "error": "NovaError: undefined name 'y'",
    "error_line": 2,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-008",
-     "output": [
-      "5"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-let-in-block-ends-with-block",
@@ -472,17 +462,7 @@
    "error": "NovaError: parameter 'a' is listed twice",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-009",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-parameters-are-passed-by-value-for-numbers",
@@ -621,15 +601,7 @@
    "error": "NovaError: 'print' is a built-in function and cannot be used as a variable name",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-010",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-builtin-names-cannot-be-assigned",
@@ -643,15 +615,7 @@
    "error": "NovaError: 'print' is a built-in function and cannot be used as a variable name",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-010",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-builtin-names-cannot-be-function-names",
@@ -665,15 +629,7 @@
    "error": "NovaError: 'len' is a built-in function and cannot be used as a function name",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-010",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-builtin-names-cannot-be-parameters",
@@ -688,15 +644,7 @@
    "error": "NovaError: 'len' is a built-in function and cannot be used as a parameter name",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-010",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-return-at-top-level-error",
@@ -710,15 +658,7 @@
    "error": "NovaError: 'return' only makes sense inside a function",
    "error_line": null,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-011",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-break-outside-loop-error",
@@ -732,15 +672,7 @@
    "error": "NovaError: 'break' is not inside a loop",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-011",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-continue-outside-loop-error",
@@ -754,15 +686,7 @@
    "error": "NovaError: 'continue' is not inside a loop",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-011",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-break-inside-function-but-outside-loop-error",
@@ -791,15 +715,7 @@
    "error": "NovaError: 'return' only makes sense inside a function",
    "error_line": null,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-011",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "scope-break-and-continue-in-loops",

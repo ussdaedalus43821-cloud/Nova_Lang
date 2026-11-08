@@ -278,15 +278,7 @@
    "error": "NovaError: unexpected 'catch'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected catch",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-errors-cross-function-boundaries",
@@ -426,15 +418,7 @@
    "error": "NovaError: expected a closing ')', found ','",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a closing ')', found ,",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-lexical-catalogue-unclosed-string",
@@ -501,15 +485,7 @@
    "error": "NovaError: unexpected ')'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected )",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-syntax-expression-ends-too-early",
@@ -561,15 +537,7 @@
    "error": "NovaError: unexpected '}'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected }",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-syntax-unmatched-close-paren",
@@ -582,15 +550,7 @@
    "error": "NovaError: expected a new line between statements, found ')'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a new line between statements, found )",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-syntax-assignment-target",
@@ -804,15 +764,7 @@
    "error": "NovaError: len() takes 1 argument(s) but got 0",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-006",
-     "output": [],
-     "error": "NovaError: this list is empty, so it has no item to index",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "err-call-undefined-function",

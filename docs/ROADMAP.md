@@ -223,15 +223,18 @@ implementation is the first conforming host
 **Status (2026-11-08).** First slice written: [`spec/`](spec/README.md) has 68
 sections covering lexical structure, values, expressions, scoping, the error
 catalogue, the security properties of the language and the rules a portable host
-must follow, and [`tests/conformance/`](../tests/conformance/README.md) has 338
+must follow, and [`tests/conformance/`](../tests/conformance/README.md) has 340
 cases citing them, run by the `conformance` station on the VM, the tree-walker
 and the self-hosted interpreter. The station enforces that every section is
 cited and every divergence is logged. The log
-([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) has 13 entries from this slice, 12
-open: two the host's and for the owner to decide (non-ASCII letters and digits;
-whether integer-to-text limits are the language's or Python's) and ten the
-self-hosted interpreter's, plus its error headlines handled by a documented
-normalization. Host failures the spec work exposed are fixed: `print(²)`,
+([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) had 13 entries from this slice;
+11 are closed. Non-ASCII names and digits are now refused by the host (decided
+2026-11-08), and the self-hosted interpreter was brought into line on all nine
+of its implementation bugs (scoping, reserved names, duplicate parameters,
+top-level control flow, function equality, argument counts, message wording).
+Open: whether the integer-to-text limit is the language's or Python's (D-012,
+D-013, untested because it depends on the Python release), and the self-hosted
+error headlines, handled by a documented normalization (D-001). Host failures the spec work exposed are fixed: `print(²)`,
 `num("²")`, integers too large for a float, and numbers with thousands of digits
 leaked a raw Python exception. Not yet
 written: statements beyond `let`/assignment/blocks/loops/functions/`try`,

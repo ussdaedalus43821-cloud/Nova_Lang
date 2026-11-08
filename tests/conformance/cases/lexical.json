@@ -153,15 +153,7 @@
    "error": "NovaError: expected a new line between statements, found 'print'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a new line between statements, found print",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-semicolon-inside-string-is-text",
@@ -332,27 +324,7 @@
    "error": "NovaError: unexpected character 'é'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "vm": {
-     "id": "D-002",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "error_line": null,
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-002",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "error_line": null,
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-non-ascii-digit-is-not-a-number",
@@ -366,27 +338,7 @@
    "error": "NovaError: unexpected character '١'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "vm": {
-     "id": "D-002",
-     "output": [
-      "123"
-     ],
-     "error": "",
-     "error_line": null,
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-002",
-     "output": [
-      "123"
-     ],
-     "error": "",
-     "error_line": null,
-     "exit": 0
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-superscript-digit-is-an-error-not-a-crash",
@@ -414,15 +366,7 @@
    "error": "NovaError: expected a name after 'let', found 'if'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a name after 'let', found if",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-true-and-false-are-keywords",
@@ -437,15 +381,7 @@
    "error": "NovaError: expected a name after 'let', found 'true'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a name after 'let', found true",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-keywords-as-dictionary-keys",
@@ -550,15 +486,7 @@
    "error": "NovaError: a number cannot have two decimal points",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-004",
-     "output": [],
-     "error": "NovaError: expected a ')' to close the argument list, found 0.3",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-no-underscore-separators",
@@ -572,15 +500,7 @@
    "error": "NovaError: expected a ')' to close the argument list, found '_000'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a ')' to close the argument list, found _000",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-no-hex-literals",
@@ -594,15 +514,7 @@
    "error": "NovaError: expected a ')' to close the argument list, found 'x10'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a ')' to close the argument list, found x10",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-no-exponent-literals",
@@ -616,15 +528,7 @@
    "error": "NovaError: expected a ')' to close the argument list, found 'e3'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a ')' to close the argument list, found e3",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-space-splits-a-number",
@@ -817,15 +721,7 @@
    "error": "NovaError: expected a ')' to close the argument list, found the string 's'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a ')' to close the argument list, found the string s",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-fstring-placeholder",
@@ -1029,15 +925,7 @@
    "error": "NovaError: unexpected '>'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected >",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "lex-no-power-operator",
@@ -1051,15 +939,35 @@
    "error": "NovaError: unexpected '*'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected *",
-     "exit": 1
-    }
-   }
+   "host_calls": []
+  },
+  {
+   "name": "lex-homoglyph-in-a-name-is-an-error",
+   "spec": [
+    "lex.identifiers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "let a = 1\nprint(а)",
+   "output": [],
+   "error": "NovaError: unexpected character 'а'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-non-ascii-name-in-a-declaration",
+   "spec": [
+    "lex.identifiers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "let naïve = 1",
+   "output": [],
+   "error": "NovaError: unexpected character 'ï'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
   }
  ]
 }

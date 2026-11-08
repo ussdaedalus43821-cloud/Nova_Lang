@@ -37,7 +37,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   hosts that do not exist yet (browsers, microcontrollers): an ambiguity is
   written down and tested, not left to what Python did. A versioning rule says
   what a major, minor and patch release may change in the language.
-- `tests/conformance/`: a host-neutral corpus of 338 cases (source, expected
+- `tests/conformance/`: a host-neutral corpus of 340 cases (source, expected
   output, error, line and exit status, the spec sections tested, a profile),
   in the shape the game port already uses, and a `conformance` station that
   runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
@@ -45,19 +45,43 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   section that does not exist, or a divergence is not in the log. The full
   suite is now 1,925 parent checks; the quick tier 1,852.
 - `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
-  follow the text. 13 entries from this slice. The bytecode VM and the
-  tree-walker agree with the spec and each other on every case but one
-  decision (D-002, non-ASCII letters and digits in names and numbers, which the
-  spec forbids and `novalang.py` accepts). The self-hosted interpreter has nine
-  open implementation bugs (D-003 to D-011), among them scoping that leaks a
-  name out of a block, built-in names that can be redefined, duplicate
-  parameters accepted, top-level `return`/`break`/`continue` ignored, and
-  function equality that overflows its stack, plus a systematic difference in
-  how it words error headlines (D-001, normalized in the station).
+  follow the text. 13 entries came out of this slice; 11 are closed in the same
+  slice. Open: D-012 and D-013, the thousands-digit integer limit that differs
+  between Python releases, which needs the language to define its own. Normalized:
+  D-001, how the self-hosted interpreter words error headlines.
 - ADR 0003 (security stance) is accepted: capability gating and resource
   limits, not isolation.
 
+### Changed
+- **Names and numbers are ASCII only (breaking, D-002).** The host lexer used
+  Python's `isalpha`, `isalnum` and `isdecimal`, so `let é = 1`, a Cyrillic
+  `а` in place of a Latin `a`, and `print(١٢٣)` all ran. Identifiers are now
+  `[A-Za-z_][A-Za-z0-9_]*` and digits are `0-9`, as `[lex.identifiers]` and
+  `[lex.numbers]` say and as the self-hosted interpreter already did. Look-alike
+  letters are how a reviewer is shown one name and the machine runs another; for
+  a language meant for financial and hardware systems that door is shut. Text in
+  strings and comments is unaffected. `num()`, dictionary-key printing and the
+  formatter follow the same rule. Programs with non-ASCII names fail with
+  `unexpected character`; rename them.
+
 ### Fixed
+- **The self-hosted interpreter (`--bootstrap`) now behaves like the host on the
+  nine points the conformance corpus found (D-003 to D-011).** The two had been
+  disagreeing silently:
+  - a name first assigned inside an `if`, `while` or `for` block leaked into the
+    enclosing scope; it now stays in the block, as on the host;
+  - a top-level `return`, `break` or `continue` was ignored; each is now the
+    host's error;
+  - built-in names could be redefined (`let print = 5`, `def len()`, a
+    parameter, loop variable, `catch` name, import alias or assignment); each is
+    now an error, and `abspath` and `dirname`, which the host has, are available;
+  - `def f(a, a)` was accepted; it is now `parameter 'a' is listed twice`;
+  - `f == f` for a function overflowed the stack; functions now compare by
+    identity;
+  - a built-in called with the wrong number of arguments read past its
+    arguments; it is now `len() takes 1 argument(s) but got 0`;
+  - syntax errors quote the offending token (`found 'print'`), `1.2.3` is a
+    lexical error, and "a number is not a function" keeps its article.
 - Four more ways a Python failure reached a program as a host exception that
   `try`/`catch` could not catch (the class of issue 3), found by writing the
   security and portability chapters of the specification:

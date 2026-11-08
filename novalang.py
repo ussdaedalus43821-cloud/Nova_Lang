@@ -341,6 +341,27 @@ class Token:
         return "Token({}, {!r})".format(self.type, self.value)
 
 
+def is_digit(char):
+    """An ASCII decimal digit. Not str.isdigit() or str.isdecimal(), which accept
+    the digits of other scripts: a name or a number written with look-alike
+    characters must be an error, not a different program (docs/spec/01-lexical.md)."""
+    return "0" <= char <= "9"
+
+
+def is_name_start(char):
+    """An ASCII letter or an underscore: the start of a name."""
+    return "a" <= char <= "z" or "A" <= char <= "Z" or char == "_"
+
+
+def is_name_char(char):
+    return is_name_start(char) or is_digit(char)
+
+
+def is_bare_name(text):
+    """Is `text` a name, so that a dictionary key can print without quotes?"""
+    return bool(text) and is_name_start(text[0]) and all(is_name_char(char) for char in text)
+
+
 class Lexer:
     """Turns source text into a flat list of tokens."""
 
@@ -389,7 +410,7 @@ class Lexer:
                     self.advance()
                 continue
 
-            if char.isdecimal() or (char == "." and (self.peek(1) or "").isdecimal()):
+            if is_digit(char) or (char == "." and is_digit(self.peek(1) or "")):
                 tokens.append(self.read_number())
                 continue
 
@@ -399,7 +420,7 @@ class Lexer:
                 tokens.append(self.read_fstring())
                 continue
 
-            if char.isalpha() or char == "_":
+            if is_name_start(char):
                 tokens.append(self.read_identifier())
                 continue
 
@@ -463,7 +484,7 @@ class Lexer:
         digits = ""
         seen_dot = False
 
-        while self.peek() is not None and (self.peek().isdecimal() or self.peek() == "."):
+        while self.peek() is not None and (is_digit(self.peek()) or self.peek() == "."):
             char = self.advance()
             if char == ".":
                 if seen_dot:
@@ -481,7 +502,7 @@ class Lexer:
         """Read a name, then promote it if it is a keyword."""
         start = self.index
         name = ""
-        while self.peek() is not None and (self.peek().isalnum() or self.peek() == "_"):
+        while self.peek() is not None and is_name_char(self.peek()):
             name += self.advance()
 
         if name in KEYWORDS:
@@ -1909,8 +1930,8 @@ def builtin_num(args, position):
     readable = (
         digits
         and digits.count(".") <= 1
-        and any(char.isdecimal() for char in digits)
-        and all(char.isdecimal() or char == "." for char in digits)
+        and any(is_digit(char) for char in digits)
+        and all(is_digit(char) or char == "." for char in digits)
     )
     if not readable:
         raise NovaError('num() cannot read a number from "{}"'.format(value), position)
@@ -2975,10 +2996,7 @@ def format_value(value, seen=None):
 
 def format_key(key):
     """Print a key bare when it could be typed bare, quoted otherwise."""
-    plain = key and (key[0].isalpha() or key[0] == "_") and all(
-        char.isalnum() or char == "_" for char in key
-    )
-    return key if plain else format_repr(key)
+    return key if is_bare_name(key) else format_repr(key)
 
 
 def format_repr(value, seen=None):
@@ -4076,10 +4094,7 @@ def default_module_name(raw_path, position):
         stem = raw_path.replace("-", "_").replace(".", "_")
     else:
         stem = os.path.splitext(os.path.basename(raw_path))[0]
-    valid = stem and (stem[0].isalpha() or stem[0] == "_") and all(
-        char.isalnum() or char == "_" for char in stem
-    )
-    if not valid:
+    if not is_bare_name(stem):
         raise NovaError(
             '"{}" does not make a valid module name - import it with \'as\' and choose one'
             .format(raw_path),

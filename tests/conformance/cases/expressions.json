@@ -231,16 +231,7 @@
    "error": "",
    "error_line": null,
    "exit": 0,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-007",
-     "output": [],
-     "error": "NovaError: the self-hosted interpreter ran out of stack (it supports shallower recursion than the host)",
-     "exit": 1,
-     "unstable": true
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "val-equality-dictionary-order-does-not-matter",
@@ -388,15 +379,7 @@
    "error": "NovaError: unexpected ']'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: unexpected ]",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "expr-no-trailing-comma-in-dict",
@@ -410,15 +393,7 @@
    "error": "NovaError: expected a key name, found '}'",
    "error_line": 1,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-003",
-     "output": [],
-     "error": "NovaError: expected a key name, found }",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "expr-list-needs-commas",
@@ -1707,15 +1682,7 @@
    "error": "NovaError: a number is not a function, so it cannot be called",
    "error_line": 2,
    "exit": 1,
-   "host_calls": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-005",
-     "output": [],
-     "error": "NovaError: number is not a function, so it cannot be called",
-     "exit": 1
-    }
-   }
+   "host_calls": []
   },
   {
    "name": "expr-call-the-result-of-a-call-error",
@@ -1832,6 +1799,37 @@
    "source": "print(\"ab\" * 2.0, [1] * 2.0)",
    "output": [
     "abab [1, 1]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-num-reads-ascii-digits-only",
+   "spec": [
+    "val.types",
+    "err.value",
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(num(\"٣\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"٣\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "val-display-keys-that-are-not-ascii-names-are-quoted",
+   "spec": [
+    "val.display",
+    "lex.identifiers"
+   ],
+   "profile": "core",
+   "source": "print({\"é\": 1, \"a_1\": 2, \"1a\": 3, \"b c\": 4})",
+   "output": [
+    "{\"é\": 1, a_1: 2, \"1a\": 3, \"b c\": 4}"
    ],
    "error": "",
    "error_line": null,

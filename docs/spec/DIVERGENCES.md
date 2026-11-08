@@ -23,7 +23,7 @@ change would break existing programs).
 The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
-accounts for every entry but D-002 and D-013, which are the host's.
+accounted for every entry but D-002, D-012 and D-013 (the host's own); D-003 to D-011 are fixed, so only D-001 (normalized) remains.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -47,82 +47,90 @@ message and a line, as the host's do.
 
 ### D-002 — Non-ASCII letters and digits in the host lexer
 
-Status: open
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: ASCII only)
 Engines: bytecode VM, tree-walker
 Spec: `[lex.identifiers]`, `[lex.numbers]`
-Cases: `lex-non-ascii-letter-in-identifier`, `lex-non-ascii-digit-is-not-a-number`
 
-`novalang.py` uses Python's `isalpha` and `isdecimal` to read names and numbers,
-so `let é = 1` and `print(١٢٣)` (Arabic-Indic digits) run. The specification, and
-the self-hosted interpreter, allow ASCII only and report
-`unexpected character 'é'`. Tightening the host is the simplest way to agree
-but would break any program that uses an accented name; widening the
-specification would mean choosing which Unicode categories count and teaching
-the self-hosted interpreter (which has no way to ask for a character's class)
-the same answer. The specification states the ASCII rule until the owner decides.
+`novalang.py` used Python's `isalpha`, `isalnum` and `isdecimal`, so `let é = 1`
+and `print(١٢٣)` ran. The specification, and the self-hosted interpreter,
+allow ASCII letters, digits and `_` only. For a language meant for financial and
+hardware systems, look-alike characters (a Cyrillic `а` for a Latin `a`) must
+be an error, not a second program; the project owner decided to enforce the
+specification on the host. A breaking change, made in 2.1.0.
 
-A related crash is fixed: a superscript digit such as `²` passed `isdigit` but
-not `int()`, so `print(²)` and `num("²")` ended in a raw Python `ValueError`
-instead of a NovaLang error. Both now report `unexpected character '²'` and
-`num() cannot read a number from "²"`, and have corpus cases.
+Names, number literals, `num()`, the printing of dictionary keys (`{"é": 1}`
+prints with its quotes) and the formatter now use ASCII-only tests
+(`is_digit`, `is_name_start`, `is_bare_name` in `novalang.py`).
+
+A related crash was fixed earlier: a superscript digit such as `²` passed
+`isdigit` but not `int()`, so `print(²)` and `num("²")` ended in a raw Python
+`ValueError` instead of a NovaLang error.
 
 ### D-003 — Offending tokens in syntax errors are not quoted
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[err.syntax]`
-Cases: 16, for example `lex-two-statements-on-one-line-error`
+Cases (now passing, unmodified): 16, for example `lex-two-statements-on-one-line-error`
 
 The host writes `expected a new line between statements, found 'print'`,
 `unexpected ')'` and `found the string 's'`. The self-hosted interpreter writes
 `found print`, `unexpected )` and `found the string s`: the same message
 without the quotation marks around the token.
 
+Fixed 2026-11-08: `p_describe` quotes tokens the way the host's `describe` does (`quote_text`).
+
 ### D-004 — `1.2.3` is a parse error, not a lexical one
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[lex.numbers]`
-Cases: `lex-two-decimal-points-error`
+Cases (now passing, unmodified): `lex-two-decimal-points-error`
 
 The host reports `a number cannot have two decimal points`. The self-hosted
 lexer reads `1.2` and then `.3`, so the program fails later with
 `expected a ')' to close the argument list, found 0.3`.
 
+Fixed 2026-11-08: `lex_number` raises the lexical error on a second decimal point.
+
 ### D-005 — "a number is not a function" loses its article
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[expr.call]`
-Cases: `expr-call-a-number-error`
+Cases (now passing, unmodified): `expr-call-a-number-error`
 
 `a number is not a function, so it cannot be called` (host) against
 `number is not a function, so it cannot be called` (self-hosted).
 
+Fixed 2026-11-08: `type_phrase` names the value with its article.
+
 ### D-006 — Wrong built-in argument count crashes the wrong way
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[expr.call]`, `[err.call]`
-Cases: `err-call-builtin-wrong-argument-count`
+Cases (now passing, unmodified): `err-call-builtin-wrong-argument-count`
 
 `len()` is `len() takes 1 argument(s) but got 0` on the host. The self-hosted
 interpreter does not check the count for its built-ins and reads a missing
 argument, so the program fails with `this list is empty, so it has no item to
 index`, which says nothing about the call.
 
+Fixed 2026-11-08: `call_target_value` checks a built-in's argument count against `BUILTIN_ARITY`.
+
 ### D-007 — Comparing functions overflows the self-hosted stack
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[val.equality]`
-Cases: `val-equality-of-functions-is-identity`
+Cases (now passing, unmodified): `val-equality-of-functions-is-identity`
 
 `f == f` is `true` on the host. In the self-hosted interpreter a function is a
 dictionary that refers to its own scope, and `==` compares dictionaries by
@@ -133,36 +141,42 @@ recursion overflows the C stack and the interpreter's process is killed (exit
 status -11 on Linux) instead of printing a message, so the corpus accepts either
 (`"unstable": true`).
 
+Fixed 2026-11-08: Every function value carries an `id`; `target_equal` compares functions by identity.
+
 ### D-008 — A new name assigned inside a block leaks out of it
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[scope.assign]`, `[scope.blocks]`
-Cases: `scope-new-name-in-block-is-local`
+Cases (now passing, unmodified): `scope-new-name-in-block-is-local`
 
 `if true { y = 5 }` then `print(y)` is `undefined name 'y'` on the host. The
 self-hosted interpreter creates `y` in the enclosing scope, so the program
 prints `5`. (`let` inside a block is scoped correctly by both.)
 
+Fixed 2026-11-08: `env_assign` creates a new name in the innermost scope.
+
 ### D-009 — Duplicate parameter names are accepted
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[scope.param]`
-Cases: `scope-duplicate-parameter-error`
+Cases (now passing, unmodified): `scope-duplicate-parameter-error`
 
 `def f(a, a)` is `parameter 'a' is listed twice` on the host and runs on the
 self-hosted interpreter, where the second `a` wins.
 
+Fixed 2026-11-08: `parse_function_def` refuses a repeated parameter name.
+
 ### D-010 — Built-in names can be redefined
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[scope.reserved]`
-Cases: `scope-builtin-names-cannot-be-variables`,
+Cases (now passing, unmodified): `scope-builtin-names-cannot-be-variables`,
 `scope-builtin-names-cannot-be-assigned`, `scope-builtin-names-cannot-be-function-names`,
 `scope-builtin-names-cannot-be-parameters`
 
@@ -170,29 +184,38 @@ Cases: `scope-builtin-names-cannot-be-variables`,
 host (`'print' is a built-in function and cannot be used as a variable name`)
 and are accepted by the self-hosted interpreter.
 
+Fixed 2026-11-08: `p_guard_name` is applied at every site the host guards, and `abspath` and `dirname` were added to the self-hosted built-ins.
+
 ### D-011 — Top-level `return`, `break` and `continue` are ignored
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[scope.toplevel]`
-Cases: `scope-return-at-top-level-error`, `scope-break-outside-loop-error`,
+Cases (now passing, unmodified): `scope-return-at-top-level-error`, `scope-break-outside-loop-error`,
 `scope-continue-outside-loop-error`, `scope-return-inside-loop-at-top-level-error`
 
 On the host each is an error. The self-hosted interpreter accepts them and
 the program ends normally with status 0.
 
-### D-012 — A literal with too many digits is reported by `num()`
+Fixed 2026-11-08: `run_program` turns a `return`, `break` or `continue` that reaches the top level into the host's errors.
+
+### D-012 — A number with thousands of digits
 
 Status: open
-Class: implementation bug
-Engines: self-hosted
+Untested: it depends on Python's own limit on turning text into an integer, which
+differs between releases (see D-013)
+Class: decision needed
+Engines: all three Python engines
 Spec: `[port.integers]`, `[sec.error-boundary]`
-Cases: `sec-host-failures-are-nova-errors-huge-literal`
+Cases: none
 
-A number literal of more than 4300 digits is `this number has too many digits`
-on the host. The self-hosted lexer builds the number with `num()`, so the same
-program reports `num(): that number has too many digits`.
+A number literal or a `num()` argument of more than 4300 digits is
+`this number has too many digits` (literal) or `num(): that number has too many
+digits` on the Python releases that refuse it, and an ordinary number on those
+that do not. The self-hosted lexer builds numbers with `num()`, so the two
+messages differ. Like D-013 this needs the language to define its own digit
+limit.
 
 ### D-013 — Integer-to-text limits depend on the Python release
 
