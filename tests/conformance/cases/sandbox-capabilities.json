@@ -102,7 +102,7 @@
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "try { write(\"data/o.txt\", \"x\") } catch e { print(e) }\ntry { mkdir(\"data/d\") } catch e { print(e) }\ntry { remove(\"data/in.txt\") } catch e { print(e) }\ntry { rename(\"data/in.txt\", \"data/b.txt\") } catch e { print(e) }\ntry { copy(\"data/in.txt\", \"data/c.txt\") } catch e { print(e) }",
+   "source": "try { write(\"data/o.txt\", \"x\") } catch e { print(e) }\ntry { mkdir(\"data/d\") } catch e { print(e) }\ntry { remove(\"data/in.txt\") } catch e { print(e) }\ntry { rename(\"data/a.txt\", \"data/b.txt\") } catch e { print(e) }\ntry { copy(\"data/c.txt\", \"data/d.txt\") } catch e { print(e) }",
    "output": [
     "undefined name 'write'",
     "undefined name 'mkdir'",
@@ -123,33 +123,26 @@
    "files": {
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
-    "secret.txt": "top secret"
+    "secret.txt": "top secret",
+    "data/a.txt": "a",
+    "data/c.txt": "c"
    },
    "divergences": {
     "vm": {
      "id": "D-040",
-     "output": [
-      "FileError: rename(): No such file or directory",
-      "FileError: copy(): No such file or directory"
-     ],
+     "output": [],
      "error": "",
      "exit": 0
     },
     "tree": {
      "id": "D-040",
-     "output": [
-      "FileError: rename(): No such file or directory",
-      "FileError: copy(): No such file or directory"
-     ],
+     "output": [],
      "error": "",
      "exit": 0
     },
     "bootstrap": {
      "id": "D-040",
-     "output": [
-      "FileError: rename(): No such file or directory",
-      "FileError: copy(): No such file or directory"
-     ],
+     "output": [],
      "error": "",
      "exit": 0
     }
