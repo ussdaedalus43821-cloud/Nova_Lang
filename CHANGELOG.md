@@ -27,6 +27,21 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ## [Unreleased] - Baseline continuation
 
 ### Fixed
+- `floor()`, `ceil()` and `round()` of NaN or infinity leaked a raw Python
+  `ValueError` or `OverflowError` that `try`/`catch` could not intercept
+  (issue 3). NaN and infinity reach a program through `json.loads("NaN")` and
+  `json.loads("1e999")`, through `num()` of a decimal string too long for a
+  float, and through float overflow. They now raise a catchable `NovaError`
+  labelled `TypeError` (`floor() needs a finite number, but got nan`), as
+  `sqrt(-1)` does. The same crash is fixed in `sleep()`, in `sin()`, `cos()`
+  and `tan()` of infinity, and in `for` headers: a NaN or infinite start, end
+  or step is refused ("the end of a 'for' range must be a finite number")
+  instead of reaching `int()`. `round(x, digits)` is unchanged: Python returns
+  NaN and infinity from it without raising, and `sin(nan)` is still NaN. The
+  self-hosted interpreter inherits the built-in fixes by calling the host's
+  functions, and `novalang.nova` carries the matching `for` check, so all four
+  ways of running a program (VM, tree-walker, each with `--bootstrap`) give the
+  same message.
 - The README said `for i = 0 to 10` counts 0..9. The runtime has always
   included the upper bound (0..10), on both engines; `downto` is likewise
   inclusive, and `range(n)` is the exclusive one. The README now says so, the

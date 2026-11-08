@@ -258,6 +258,26 @@ class EmbeddingContract:
         self.assertEqual(caught.exception.code, 7)
         self.assertEqual(self.nova.interpreter.call_stack, [])
 
+    def test_nan_and_infinity_reach_the_host_as_nova_errors(self):
+        """floor/ceil/round/sleep/sin of NaN or infinity once leaked a raw
+        ValueError or OverflowError to the host (issue 3)."""
+        nan, inf = 'json.loads("NaN")', 'json.loads("1e999")'
+        for call in ("floor", "ceil", "round", "sleep"):
+            for value, shown in ((nan, "nan"), (inf, "inf")):
+                with self.subTest(call=call, value=shown):
+                    self.assert_nova_error(lambda: self.nova.eval("{}({})".format(call, value)),
+                                           "{}() needs a finite number, but got {}".format(call, shown),
+                                           "TypeError")
+        for call in ("sin", "cos", "tan"):
+            with self.subTest(call=call):
+                self.assert_nova_error(lambda: self.nova.eval("{}({})".format(call, inf)),
+                                       "{}() needs a finite number, but got inf".format(call), "TypeError")
+        for header in ("0 to " + inf, nan + " to 3", "0 to 3 step " + nan):
+            with self.subTest(header=header):
+                self.assert_nova_error(lambda: self.nova.exec("for i = {} {{ break }}".format(header)),
+                                       "must be a finite number")
+        self.assertEqual(self.nova.eval("floor(2.5) + ceil(2.5) + round(2.6)"), 8)
+
     def test_allowlist_and_explicit_module_exposure_are_preserved(self):
         for name in ("os", "subprocess", "nova_test_service"):
             with self.subTest(name=name):
