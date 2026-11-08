@@ -26,6 +26,12 @@ Stations, in order:
                     tree-walker and the self-hosted interpreter; every spec
                     section must be cited, every divergence logged.
 
+  13. security-matrix  the sandbox coverage matrix (tests/security/matrix.py):
+                    one cell per capability, limit and path rule of
+                    docs/spec/16-sandbox.md per engine; every case claim must
+                    be a real cell and every hole explained. Strict mode
+                    (all cells covered) is M11's exit criterion.
+
   1. fmt golden     tests/fmt/X.nova formats to exactly X.expected.nova,
                     and every expected file is already a fixed point.
   2. lint golden    tests/lint/X.nova lints to exactly X.expected.
@@ -830,6 +836,13 @@ def station_conformance(line):
     conformance.check_all(line.check)
 
 
+def station_security_matrix(line):
+    print("13. security matrix (which capability and limit is proved on which engine)")
+    sys.path.insert(0, os.path.join(HERE, "security"))
+    import matrix
+    matrix.check_all(line.check)
+
+
 STATIONS = [
     ("harness", station_harness),
     ("cli", station_cli),
@@ -849,6 +862,7 @@ STATIONS = [
     ("compiler", station_compiler),
     ("differential", station_differential),
     ("conformance", station_conformance),
+    ("security-matrix", station_security_matrix),
 ]
 
 

@@ -26,6 +26,23 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 1: the threat model, the sandbox specification and the coverage matrix (drafts)
+- `docs/design/m11-threat-model.md`: assets, actors, the threats the `restricted` profile defends and, first,
+  what it does not (ten items, N1 to N10). Draft: owner review and independent audit pending.
+- `docs/spec/16-sandbox.md`: 6 sections (`sbx.*`): the `trusted` and `restricted` profiles, ten capabilities
+  (`files.read`, `files.write`, `import`, `env`, `clock`, `random`, `stdin`, `process`, `regex`, `python`),
+  path rules, 18 limits with the error of each (steps, time and output are fatal and cannot be caught), the shape
+  of the errors and the only wording the project may use about it. Decisions in it beyond the plan: `regex` is a
+  capability of its own (no engine can interrupt a pattern that backtracks), and a Python grant replaces the
+  default import list of `[py.import]`, which holds `re`, `random` and `datetime`.
+- 58 cases (`sandbox-capabilities`, `-paths`, `-limits`; profile `sandbox`, new `sandbox` and `matrix` fields).
+  Nothing is implemented, so five divergences are logged (D-040 to D-044) and the engines are pinned to what they
+  do today, including that `Nova().eval('read("/etc/hostname")')` works and that `s = s + s` ends in a Python
+  `MemoryError`.
+- `tests/security/matrix.py` and the station `security-matrix`: 150 cells derived from the specification, per
+  engine; 36 are covered, the rest pending until slices 2 and 3. `--strict` is M11's exit criterion.
+- The policy corpus and every NovaLang case are unchanged.
+
 ### M10 slice 4: the reactor host and the 900-step trace
 - `docs/spec/15-policy-reactor.md`: 5 sections (`pol.*`) on the reactor game's host: the inputs a policy
   is given and what it hands back, the eight host functions (`log`, `alarm`, `scram`, `reset_trip`,

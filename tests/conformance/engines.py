@@ -371,12 +371,15 @@ def run_case(case, engine):
     if engine == "policy":
         return run_policy_engine(case) if "engine" in case else run_policy(case)
     files = case.get("files")
-    if files is None and case.get("profile") in ("host", "modules"):
+    if files is None and case.get("profile") in ("host", "modules", "sandbox"):
         files = {}      # these cases touch the file system: a folder of their own
     if "embedding" in case:
         return run_embedding(case, engine)
+    # The `sandbox` object is not enforced yet (D-040 to D-044), except that a grant of Python
+    # modules turns the bridge on, which is what the engines can do today.
+    allow_python = bool(case.get("allow_python")) or bool(case.get("sandbox", {}).get("python"))
     return run(case["source"], engine, files, case.get("env"),
-               case.get("stdin", ""), case.get("args"), bool(case.get("allow_python")))
+               case.get("stdin", ""), case.get("args"), allow_python)
 
 
 def render_argument(value):

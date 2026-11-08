@@ -4,7 +4,7 @@ NovaLang is meant to run programs written by someone other than the person
 running them, in devices, vehicles and homes where a mistake costs more than a
 wrong answer. This chapter states what the *language* guarantees. What a *host*
 adds on top (sandboxes, permissions, limits on time and memory, process
-isolation) is the subject of milestone M11 and [ADR 0003](../decisions/0003-security-stance.md),
+isolation) is the subject of milestone M11, [`16-sandbox.md`](16-sandbox.md) and [ADR 0003](../decisions/0003-security-stance.md),
 which says plainly that capability gating and limits are claimed and isolation
 is not.
 
@@ -110,7 +110,7 @@ nesting of calls, the length of a list or string built by repetition, and the
 size of a list built by `range` (`[port.limits]`). It does **not** yet promise a
 limit on the number of steps a program takes, on the total memory it uses, on
 the size of integers it builds, or on the time it runs. A `while true { }` runs
-forever. Those limits are a host's to impose (ADR 0003 names them for M11), and a
+forever. Those limits are a host's to impose (ADR 0003 names them for M11, and [`16-sandbox.md`](16-sandbox.md) `[sbx.limits]` specifies them for the `restricted` profile), and a
 host that sets one MUST report it as an error in the way `[err.model]`
 describes. Until they exist, running code you did not write needs a process or
 container around it as well.

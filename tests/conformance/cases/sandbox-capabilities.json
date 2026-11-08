@@ -1,0 +1,1063 @@
+{
+ "area": "sandbox-capabilities",
+ "version": 1,
+ "cases": [
+  {
+   "name": "sbx-files-read-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"data/in.txt\")) } catch e { print(e) }\ntry { print(exists(\"data/in.txt\")) } catch e { print(e) }\ntry { print(listdir(\"data\")) } catch e { print(e) }",
+   "output": [
+    "undefined name 'read'",
+    "undefined name 'exists'",
+    "undefined name 'listdir'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "files.read:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "hello",
+      "true",
+      "[\"in.txt\", \"sub\"]"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "hello",
+      "true",
+      "[\"in.txt\", \"sub\"]"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "hello",
+      "true",
+      "[\"in.txt\", \"sub\"]"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-files-read-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(read(\"data/in.txt\"))\nprint(exists(\"data/in.txt\"))\nprint(listdir(\"data\"))",
+   "output": [
+    "hello",
+    "true",
+    "[\"in.txt\", \"sub\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "files.read:grant"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   }
+  },
+  {
+   "name": "sbx-files-write-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { write(\"data/o.txt\", \"x\") } catch e { print(e) }\ntry { mkdir(\"data/d\") } catch e { print(e) }\ntry { remove(\"data/in.txt\") } catch e { print(e) }\ntry { rename(\"data/in.txt\", \"data/b.txt\") } catch e { print(e) }\ntry { copy(\"data/in.txt\", \"data/c.txt\") } catch e { print(e) }",
+   "output": [
+    "undefined name 'write'",
+    "undefined name 'mkdir'",
+    "undefined name 'remove'",
+    "undefined name 'rename'",
+    "undefined name 'copy'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "files.write:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "FileError: rename(): No such file or directory",
+      "FileError: copy(): No such file or directory"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "FileError: rename(): No such file or directory",
+      "FileError: copy(): No such file or directory"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "FileError: rename(): No such file or directory",
+      "FileError: copy(): No such file or directory"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-files-write-denied-forms",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { append(\"data/in.txt\", \"x\") } catch e { print(e) }\ntry { delete(\"data/in.txt\") } catch e { print(e) }\nlet l = [1]\nappend(l, 2)\nprint(l)",
+   "output": [
+    "the 'files.write' capability is not granted",
+    "the 'files.write' capability is not granted",
+    "[1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "files.write:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "[1, 2]"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "[1, 2]"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "[1, 2]"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-files-write-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "write(\"data/o.txt\", \"hi\")\nappend(\"data/o.txt\", \"!\")\nprint(read(\"data/o.txt\"))\nmkdir(\"data/made\")\ncopy(\"data/o.txt\", \"data/c.txt\")\nrename(\"data/c.txt\", \"data/d.txt\")\nprint(exists(\"data/d.txt\"))\nremove(\"data/d.txt\")\ndelete(\"data/o.txt\")\nprint(exists(\"data/o.txt\"))",
+   "output": [
+    "hi!",
+    "true",
+    "false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "write": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "files.write:grant"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   }
+  },
+  {
+   "name": "sbx-files-copy-needs-read-for-the-source",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles",
+    "sbx.paths"
+   ],
+   "profile": "sandbox",
+   "source": "try { copy(\"data/in.txt\", \"data/out.txt\") } catch e { print(e) }",
+   "output": [
+    "FileError: data/in.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "write": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "files.write:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-import-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib/m.nova\" as m\nprint(m.x)",
+   "output": [],
+   "error": "ImportError: the 'import' capability is not granted",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "import:deny"
+   ],
+   "files": {
+    "lib/m.nova": "export let x = 1"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "1"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "1"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "1"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-import-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib/m.nova\" as m\nprint(m.x)",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "lib"
+    ]
+   },
+   "matrix": [
+    "import:grant"
+   ],
+   "files": {
+    "lib/m.nova": "export let x = 1"
+   }
+  },
+  {
+   "name": "sbx-env-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(env(\"NOVA_SECRET\")) } catch e { print(e) }",
+   "output": [
+    "undefined name 'env'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "env:deny"
+   ],
+   "env": {
+    "NOVA_SECRET": "s3cret",
+    "NOVA_OTHER": "other"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "s3cret"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "s3cret"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "s3cret"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-env-granted-names-only",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(env(\"NOVA_SECRET\"))\nprint(env(\"NOVA_OTHER\"))\nprint(env(\"NOVA_NOT_SET\"))",
+   "output": [
+    "s3cret",
+    "nothing",
+    "nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "env": [
+     "NOVA_SECRET"
+    ]
+   },
+   "matrix": [
+    "env:grant"
+   ],
+   "env": {
+    "NOVA_SECRET": "s3cret",
+    "NOVA_OTHER": "other"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "s3cret",
+      "other",
+      "nothing"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "s3cret",
+      "other",
+      "nothing"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "s3cret",
+      "other",
+      "nothing"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-clock-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(type(time())) } catch e { print(e) }\ntry { print(type(now())) } catch e { print(e) }\ntry { sleep(1) } catch e { print(e) }\ntry { print(len(format_time(0, \"%Y\"))) } catch e { print(e) }",
+   "output": [
+    "undefined name 'time'",
+    "undefined name 'now'",
+    "undefined name 'sleep'",
+    "undefined name 'format_time'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "clock:deny"
+   ],
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "string",
+      "4"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "string",
+      "4"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "string",
+      "4"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-clock-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(time() > 0)\nprint(type(now()))\nprint(sleep(1))\nprint(len(format_time(0, \"%Y\")))",
+   "output": [
+    "true",
+    "string",
+    "nothing",
+    "4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "clock": true
+   },
+   "matrix": [
+    "clock:grant"
+   ]
+  },
+  {
+   "name": "sbx-random-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(type(random())) } catch e { print(e) }\ntry { print(type(randint(1, 2))) } catch e { print(e) }\ntry { print(choice([1])) } catch e { print(e) }\ntry { shuffle([1]) } catch e { print(e) }",
+   "output": [
+    "undefined name 'random'",
+    "undefined name 'randint'",
+    "undefined name 'choice'",
+    "undefined name 'shuffle'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "random:deny"
+   ],
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "number",
+      "1"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "number",
+      "1"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "number",
+      "number",
+      "1"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-random-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "let r = random()\nprint(r >= 0 and r < 1)\nlet n = randint(3, 3)\nprint(n)\nprint(choice([7]))",
+   "output": [
+    "true",
+    "3",
+    "7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true
+   },
+   "matrix": [
+    "random:grant"
+   ]
+  },
+  {
+   "name": "sbx-stdin-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(input()) } catch e { print(e) }",
+   "output": [
+    "undefined name 'input'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "stdin:deny"
+   ],
+   "stdin": "line\n",
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "line"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "line"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "line"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-stdin-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(input())",
+   "output": [
+    "line"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "stdin": true
+   },
+   "matrix": [
+    "stdin:grant"
+   ],
+   "stdin": "line\n"
+  },
+  {
+   "name": "sbx-process-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { exit(3) } catch e { print(e) }\ntry { print(args()) } catch e { print(e) }\ntry { print(platform()) } catch e { print(e) }\ntry { print(cwd()) } catch e { print(e) }\ntry { print(abspath(\"x\")) } catch e { print(e) }",
+   "output": [
+    "undefined name 'exit'",
+    "undefined name 'args'",
+    "undefined name 'platform'",
+    "undefined name 'cwd'",
+    "undefined name 'abspath'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "process:deny"
+   ],
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [],
+     "error": "",
+     "exit": 3
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [],
+     "error": "",
+     "exit": 3
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [],
+     "error": "",
+     "exit": 3
+    }
+   }
+  },
+  {
+   "name": "sbx-process-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(type(platform()))\nprint(args())\nprint(type(cwd()))\nprint(type(abspath(\"x\")))\nexit(3)",
+   "output": [
+    "string",
+    "[]",
+    "string",
+    "string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "process": true
+   },
+   "matrix": [
+    "process:grant"
+   ],
+   "args": []
+  },
+  {
+   "name": "sbx-regex-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(regex(\"a+\", \"caat\")) } catch e { print(e) }\ntry { print(replace_all(\"aXb\", \"X\", \"-\")) } catch e { print(e) }",
+   "output": [
+    "undefined name 'regex'",
+    "undefined name 'replace_all'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "regex:deny"
+   ],
+   "divergences": {
+    "vm": {
+     "id": "D-040",
+     "output": [
+      "true",
+      "a-b"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-040",
+     "output": [
+      "true",
+      "a-b"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-040",
+     "output": [
+      "true",
+      "a-b"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-regex-granted",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(replace_all(\"aXbXc\", \"X\", \"-\"))\nprint(regex(\"a+\", \"caat\"))",
+   "output": [
+    "a-b-c",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "regex": true
+   },
+   "matrix": [
+    "regex:grant"
+   ]
+  },
+  {
+   "name": "sbx-python-denied",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "python.import(\"math\")",
+   "output": [],
+   "error": "PythonError: python.* is disabled: run novalang.py with --allow-python",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^PythonError: python\\.\\* is disabled.*$",
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "matrix": [
+    "python:deny"
+   ]
+  },
+  {
+   "name": "sbx-python-granted-module",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "python.import(\"math\")\nprint(python.call(\"math.sqrt\", 16))",
+   "output": [
+    "4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "python": [
+     "math"
+    ]
+   },
+   "matrix": [
+    "python:grant"
+   ]
+  },
+  {
+   "name": "sbx-python-grant-replaces-the-default-list",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles",
+    "py.import"
+   ],
+   "profile": "sandbox",
+   "source": "python.import(\"re\")",
+   "output": [],
+   "error": "PythonError: \"re\" is not on the list of modules python.import() allows",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^PythonError: \"re\" is not .*$",
+   "sandbox": {
+    "profile": "restricted",
+    "python": [
+     "math"
+    ]
+   },
+   "matrix": [
+    "python:deny"
+   ],
+   "divergences": {
+    "vm": {
+     "id": "D-044",
+     "output": [],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "tree": {
+     "id": "D-044",
+     "output": [],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "bootstrap": {
+     "id": "D-044",
+     "output": [],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-no-network-name-exists",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(connect(\"example.org\", 80)) } catch e { print(e) }\ntry { print(fetch(\"http://example.org\")) } catch e { print(e) }\ntry { print(socket()) } catch e { print(e) }",
+   "output": [
+    "undefined name 'connect'",
+    "undefined name 'fetch'",
+    "undefined name 'socket'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "clock": true,
+    "process": true
+   }
+  },
+  {
+   "name": "sbx-pure-names-stay-available",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "print(len([1, 2]), upper(\"a\"), sum([1, 2]), dirname(\"a/b\"))\nprint(sorted([3, 1, 2]))",
+   "output": [
+    "2 A 3 a",
+    "[1, 2, 3]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "sbx-trusted-keeps-every-host-function",
+   "spec": [
+    "sbx.profiles",
+    "sbx.claims"
+   ],
+   "profile": "sandbox",
+   "source": "write(\"x.txt\", \"hi\")\nprint(read(\"x.txt\"))\nprint(time() > 0)\nlet i = 0\nwhile i < 20000 {\n  i = i + 1\n}\nprint(i)\ndelete(\"x.txt\")",
+   "output": [
+    "hi",
+    "true",
+    "20000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "trusted"
+   },
+   "files": {}
+  },
+  {
+   "name": "sbx-restricted-changes-nothing-within-the-limits",
+   "spec": [
+    "sbx.errors",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "def double(n) { return n * 2 }\nprint(double(21))\nlet l = []\nlet i = 0\nwhile i < 5 {\n  append(l, i)\n  i = i + 1\n}\nprint(l)",
+   "output": [
+    "42",
+    "[0, 1, 2, 3, 4]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  }
+ ]
+}
