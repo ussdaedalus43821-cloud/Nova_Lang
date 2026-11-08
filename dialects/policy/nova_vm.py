@@ -58,12 +58,12 @@ class NovaVM:
         if path in self._modules:
             return self._modules[path]
         if path in self._loading:
-            self.error = "circular import of %r" % path
+            self.error = "circular import of '%s'" % path
             return {}
 
         source = self.module_reader(path)
         if source is None:
-            self.error = "cannot read module %r" % path
+            self.error = "cannot read module '%s'" % path
             return {}
 
         self._loading.append(path)
@@ -103,7 +103,7 @@ class NovaVM:
     def load_file(self, path: str) -> bool:
         source = self.module_reader(path)
         if source is None:
-            self.error = "cannot read %r" % path
+            self.error = "cannot read '%s'" % path
             return False
         return self.eval(source, path)
 
@@ -128,11 +128,11 @@ class NovaVM:
         """
         args = args or []
         if not self.globals.has(name):
-            self.error = "no such function %r" % name
+            self.error = "no such function '%s'" % name
             return None
         fn = self.globals.get(name)
         if not isinstance(fn, NovaFunction):
-            self.error = "%r is not a function" % name
+            self.error = "'%s' is not a function" % name
             return None
         self.evaluator.begin_run()
         result = self.evaluator.call_function(fn, args, 0)
@@ -268,7 +268,7 @@ class NovaVM:
     def inject_fault(self, name: str) -> bool:
         fault = self._fault_by_name(name)
         if fault is None:
-            self.error = "no such fault %r" % name
+            self.error = "no such fault '%s'" % name
             return False
         self._activate_fault(fault)
         return True
@@ -327,7 +327,7 @@ class NovaVM:
                 continue
             cond = truthy(ev.eval(rule["cond"], ev.globals))
             if ev.error:
-                self.error = "rule %r: %s" % (rule["name"], ev.error)
+                self.error = "rule '%s': %s" % (rule["name"], ev.error)
                 return False
             should_fire = cond and (not rule["edge"] or not rule["was_true"])
             rule["was_true"] = cond
@@ -335,7 +335,7 @@ class NovaVM:
                 rule["fired"] = True
                 ev.exec_block(rule["body"], Env(ev.globals))
                 if ev.error:
-                    self.error = "rule %r: %s" % (rule["name"], ev.error)
+                    self.error = "rule '%s': %s" % (rule["name"], ev.error)
                     return False
         return True
 

@@ -6,7 +6,8 @@ control-policy runtime: the lexer, parser, tree-walking evaluator and VM façade
 (with the rule engine).
 
 Origin: `reference/nova_{lexer,parser,evaluator,vm}.py` of the Reactor-Game repository
-at commit `fae228deb55c318d65089df34bfe1c549917c170`, copied unchanged. The file
+at commit `fae228deb55c318d65089df34bfe1c549917c170`, copied unchanged and then changed
+only where the specification required it (below). The file
 names and the flat imports (`from nova_lexer import ...`) are kept so the
 Reactor-Game copy and this one can be diffed.
 
@@ -22,3 +23,15 @@ Rules:
 - It is not NovaLang. `novalang.py` does not import it, and nothing in
   `dialects/policy/` imports NovaLang. The conformance station runs it for the
   `policy` profile only.
+
+## Changes from the origin
+
+Each is a divergence the specification found (`docs/spec/DIVERGENCES.md`), fixed here
+first. **The same changes have to reach Reactor-Game's `reference/` and the GDScript
+port**, which the corpus will then check (`docs/design/m10-gdscript-gaps.md`).
+
+| Divergence | Change |
+| --- | --- |
+| D-030 | Messages quote names, keys and module paths as `'` text `'`, not with Python's `repr` (`nova_evaluator.py`, `nova_vm.py`). |
+| D-031 | `floor`, `round`, `int` return infinity and NaN unchanged; `pow` is C `pow` (`c_pow`); index, `slice`, `remove_at` and `range` arguments go through `_int`, which refuses infinity and NaN with `expected a finite number, got inf`. |
+| D-032 | `num("text")` reads the one grammar of `[pol.lib-convert]` (`read_number`). |
