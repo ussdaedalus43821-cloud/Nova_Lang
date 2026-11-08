@@ -87,9 +87,9 @@ Every "core" cell below was checked by running it on `novalang.py` 2.1.0.
 | V14 | Builtin arity is a minimum; extra arguments are ignored | Exact |
 | V15 | A variable and a host function of the same name coexist (`scram`) | One namespace |
 
-### Builtins (38 defined by the dialect)
+### Builtins (33 defined by the dialect)
 
-NovaLang has **19** of the 38 names and lacks **14**: `clamp exp ramp lerp pick
+NovaLang has **19** of the 33 names and lacks **14**: `clamp exp ramp lerp pick
 rand held bool int has get remove_at slice contains`. Of the 19 it has, these
 differ when called the same way: `round` (half away from zero; core is
 half-even: `round(2.5)` is `2` there, `3` in the dialect), `sqrt(-1)` (`0`;
@@ -98,7 +98,7 @@ core: error), `pow` overflow (infinity; core: a 4,000-digit integer), `upper`,
 unreadable text; core refuses: `upper(5)`, `num("bad")`), `split(s, "")`
 (characters; core: error), `min` / `max` (numbers only; core also takes a list),
 `type` (see V9), `print` (writes to a buffer the host drains rather than to
-standard output). That is **about 25 of 38** needing a new or overriding
+standard output). That is **about 25 of 33** needing a new or overriding
 definition, each a spec section's worth of cases.
 
 ### Limits and errors (4)

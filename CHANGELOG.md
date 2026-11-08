@@ -32,6 +32,8 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   anything. This closes a memory exhaustion (`range(1000000000)`, or `l = l + l` in a loop) that
   neither the step budget nor the call depth limit could stop. Spec: `[pol.limits]`,
   `[pol.lib-collections]`, `[pol.concat]`; 15 cases. Strings are still unbounded (`s + s`).
+- Correction: the policy dialect has **33** built-in functions, not 38 as the inventory, chapter 13
+  and earlier changelog entries said (NovaLang has 19 of the 33 names and lacks 14).
 
 ### M10 slice 3: the policy dialect's rule engine
 - `docs/spec/14-policy-engine.md`: 15 sections (`pol.*`) on `reactor`, `params`, `effects`,
@@ -52,7 +54,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ### M10 slice 2: policy dialect values, operators and built-ins
 - `docs/spec/13-policy-values.md`: 18 sections (`pol.*`) on the dialect's values, how a
   number is written, truthiness, equality, arithmetic (division by zero is zero),
-  `+` with strings, ordering, `and`/`or`/`not`, indexing, dictionary keys, and all 38
+  `+` with strings, ordering, `and`/`or`/`not`, indexing, dictionary keys, and all 33
   built-in functions. Operator errors have no line number; that is now stated.
 - `tests/conformance/cases/policy-values.json`: 296 cases. With slice 1 the policy corpus
   is 542 cases, and **all 51 of the game's recorded oracle programs** are in it, source

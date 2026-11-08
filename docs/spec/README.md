@@ -78,7 +78,7 @@ the corpus carries one. The profiles so far:
 | [`11-embedding.md`](11-embedding.md) | `emb.*`: engines, values across the boundary, binding host values, calling in, errors; `py.*`: the Python bridge and what it can reach |
 | [`12-policy-syntax.md`](12-policy-syntax.md) | `pol.*`: the policy dialect's source text, syntax, statements, scopes, calls, modules, limits and error text (the `policy` profile) |
 | [`14-policy-engine.md`](14-policy-engine.md) | `pol.*`: the rule engine: `reactor`, `params`, `effects`, `signals`, `rule`, `fault`, `held`, reset, one tick, the fault scheduler and the host's operations |
-| [`13-policy-values.md`](13-policy-values.md) | `pol.*`: the policy dialect's values, number text, truthiness, equality, operators, indexing and its 38 built-in functions |
+| [`13-policy-values.md`](13-policy-values.md) | `pol.*`: the policy dialect's values, number text, truthiness, equality, operators, indexing and its 33 built-in functions |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

@@ -2,7 +2,7 @@
 
 Source text, syntax and statements are `12-policy-syntax.md`; this chapter says
 what the values of the policy dialect are, what the operators do to them, and what
-the 38 built-in functions do. The rule engine and its functions (`held`, and the
+the 33 built-in functions do. The rule engine and its functions (`held`, and the
 host functions a game registers) are `14-policy-engine.md`.
 
 **Errors in this chapter.** An error stops the program (`[pol.errors]`). Its text is
@@ -170,7 +170,7 @@ first position and the later value; a new key goes last.
 
 ## [pol.lib] Built-in functions: calling them
 
-The built-in functions are a fixed set of 38 names:
+The built-in functions are a fixed set of 33 names:
 
 ```
 abs min max clamp exp sqrt floor round pow ramp lerp pick rand held
