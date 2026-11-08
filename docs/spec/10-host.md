@@ -11,7 +11,8 @@ follow `[lib.calls]`; every name here is reserved (`[scope.reserved]`).
 
 A path is a string in the host's own syntax; the chapter's examples use relative
 paths made of ASCII letters, digits, `.`, `_` and `/` (which every host accepts),
-resolved against the working directory.
+resolved against the working directory. Whether two names that differ only in case
+(`a.txt`, `A.txt`) are one file is the host's: Windows and macOS usually say yes.
 
 - `read(path)` is the text of a file, decoded as UTF-8, with every `\r\n` and every
   lone `\r` turned into `\n`. `write(path, text)` replaces the file's contents with the

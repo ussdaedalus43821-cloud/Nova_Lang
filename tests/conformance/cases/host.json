@@ -80,29 +80,6 @@
    }
   },
   {
-   "name": "host-files-listdir-is-sorted",
-   "spec": [
-    "host.files",
-    "port.order"
-   ],
-   "profile": "host",
-   "source": "mkdir(\"d\")\nprint(exists(\"d\"), listdir(\"d\"))\nwrite(\"d/b.txt\", \"1\")\nwrite(\"d/a.txt\", \"2\")\nwrite(\"d/B.txt\", \"3\")\nmkdir(\"d/zdir\")\nprint(listdir(\"d\"))\nprint(listdir(\"tree\"), len(listdir(\"tree/inner\")))",
-   "output": [
-    "true []",
-    "[\"B.txt\", \"a.txt\", \"b.txt\", \"zdir\"]",
-    "[\"inner\", \"x.txt\", \"y.txt\"] 1"
-   ],
-   "error": "",
-   "error_line": null,
-   "exit": 0,
-   "host_calls": [],
-   "files": {
-    "tree/y.txt": "1",
-    "tree/x.txt": "2",
-    "tree/inner/c.txt": "3"
-   }
-  },
-  {
    "name": "host-files-mkdir-makes-parents-and-is-repeatable",
    "spec": [
     "host.files"
@@ -659,6 +636,29 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "host-files-listdir-is-sorted",
+   "spec": [
+    "host.files",
+    "port.order"
+   ],
+   "profile": "host",
+   "source": "mkdir(\"d\")\nprint(exists(\"d\"), listdir(\"d\"))\nwrite(\"d/b.txt\", \"1\")\nwrite(\"d/a.txt\", \"2\")\nwrite(\"d/Z.txt\", \"3\")\nmkdir(\"d/zdir\")\nprint(listdir(\"d\"))\nprint(listdir(\"tree\"), len(listdir(\"tree/inner\")))",
+   "output": [
+    "true []",
+    "[\"Z.txt\", \"a.txt\", \"b.txt\", \"zdir\"]",
+    "[\"inner\", \"x.txt\", \"y.txt\"] 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "tree/y.txt": "1",
+    "tree/x.txt": "2",
+    "tree/inner/c.txt": "3"
+   }
   }
  ]
 }
