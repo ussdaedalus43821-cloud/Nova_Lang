@@ -173,6 +173,7 @@ The kind is right, the value is not:
 | `<fn>() needs a finite number, but got inf` (or `-inf`, `nan`) | `[port.floats]` |
 | `the <start, end or step> of a 'for' range must be a finite number, but this is inf` | `[port.floats]` |
 | `num(): that number has too many digits` | `[port.integers]` |
+| `TypeError: json.loads(): that number has too many digits` | `[port.integers]` |
 | `repeating that list <n> times would exceed 1000000 items` / `repeating that string <n> times would be too long` / `range() would build a list of <n> items, which is too large` | `[port.limits]` |
 | `call depth of <N> exceeded - is the recursion missing a base case?` | `[port.limits]` |
 | `TypeError: pow(): 0.0 cannot be raised to a negative power` | built-ins |
@@ -186,6 +187,9 @@ float, used with a float or divided, is
 `a number is too large for this operation - an integer beyond the range of a
 float cannot be divided or mixed with a float` (`[port.integers]`); a built-in
 given one reports `TypeError: <fn>(): a number is too large for this function`.
+An integer result of 4,000 digits or more is
+`the result has too many digits - an integer cannot have more than 4000 digits`
+(`[port.integers]`).
 
 ## [err.call] Call errors
 

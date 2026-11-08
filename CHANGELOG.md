@@ -37,7 +37,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   hosts that do not exist yet (browsers, microcontrollers): an ambiguity is
   written down and tested, not left to what Python did. A versioning rule says
   what a major, minor and patch release may change in the language.
-- `tests/conformance/`: a host-neutral corpus of 340 cases (source, expected
+- `tests/conformance/`: a host-neutral corpus of 358 cases (source, expected
   output, error, line and exit status, the spec sections tested, a profile),
   in the shape the game port already uses, and a `conformance` station that
   runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
@@ -45,14 +45,35 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   section that does not exist, or a divergence is not in the log. The full
   suite is now 1,925 parent checks; the quick tier 1,852.
 - `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
-  follow the text. 13 entries came out of this slice; 11 are closed in the same
-  slice. Open: D-012 and D-013, the thousands-digit integer limit that differs
-  between Python releases, which needs the language to define its own. Normalized:
-  D-001, how the self-hosted interpreter words error headlines.
+  follow the text. 14 entries came out of this slice and 13 are closed in the
+  same slice. Only D-001 remains, a normalization: how the self-hosted
+  interpreter words error headlines.
 - ADR 0003 (security stance) is accepted: capability gating and resource
   limits, not isolation.
 
 ### Changed
+- **Integers have at most 4,000 digits, on every host (breaking for programs
+  that built larger ones; D-012, D-013).** Integers were unbounded in the
+  reference host and bounded by the Python release when turned into text, so
+  `print(big)` worked on one Python and failed on another, and a program could
+  build a number a microcontroller or a browser could not hold. The bound is now
+  part of the language: an operation (`+`, `-`, `*`, `pow()`, `sum()`, `round()`,
+  or an integer arriving from `json.loads()` or the embedding bridge) that would
+  reach 10^4000 is `the result has too many digits - an integer cannot have more
+  than 4000 digits`, a literal or `num()` argument of more than 4,000 digits is
+  `this number has too many digits`, and `pow(2, 1000000000)` is refused before
+  it is computed instead of exhausting memory. A program that stays under 4,000
+  digits (factorials past 1000! are 2,568 digits) is unaffected. The VM's
+  arithmetic got about 2% slower for the check.
+- **How a float prints is a written rule, not Python's (D-014).** The
+  specification now defines the digits (the shortest that read back as the same
+  float, the nearest to the true value among those, ties to even) and the layout
+  (positional from `0.0001`, `e` form below, whole values in full). The engines
+  compute it with exact decimal arithmetic and no longer call `repr`, so a
+  port to C or WebAssembly can reproduce it. Output is unchanged for every float;
+  `tests/portability/test_numbers.py` checks that against `repr` over every
+  power of two and a large random sample. (A first version that tried only the
+  nearest decimal of each length printed 92 powers of two wrongly.)
 - **Names and numbers are ASCII only (breaking, D-002).** The host lexer used
   Python's `isalpha`, `isalnum` and `isdecimal`, so `let é = 1`, a Cyrillic
   `а` in place of a Latin `a`, and `print(١٢٣)` all ran. Identifiers are now
@@ -94,13 +115,11 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
     a float cannot be divided or mixed with a float`. A built-in given one
     (`sqrt(big)`) reports `TypeError: sqrt(): a number is too large for this
     function`.
-  - A number literal, or a `num()` argument, of thousands of digits (Python
-    refuses above 4300): now `this number has too many digits` and
-    `num(): that number has too many digits`.
-  - Printing or converting an integer of more than 4300 digits (on the Python
-    releases that limit it): now `an integer with more than 4300 digits cannot
-    be converted to text`, and catchable. Releases without the limit still print
-    it (D-013 in the divergence log).
+  - A number literal, or a `num()` argument, of thousands of digits, and an
+    integer of more than 4300 digits printed or converted to text (Python
+    refuses both on 3.11 and the security releases of earlier versions, and
+    not at all on the others). Both are now governed by the language's own
+    integer bound, below, so they no longer depend on the Python release.
 
 ## [2.1.0] - 2026-11-08 — Verification, portability, and a closed `python.*` bridge
 

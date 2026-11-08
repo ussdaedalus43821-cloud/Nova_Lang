@@ -81,6 +81,7 @@ No eval(). No exec(). Everything is still built by hand.
 """
 
 import bisect
+import decimal
 import importlib
 import json as json_module
 import math
@@ -492,6 +493,8 @@ class Lexer:
                 seen_dot = True
             digits += char
 
+        if len(digits) - seen_dot > MAX_INTEGER_DIGITS:
+            raise NovaError("this number has too many digits", start)
         try:
             value = float(digits) if seen_dot else int(digits)
         except ValueError:
@@ -1701,6 +1704,31 @@ class BuiltinFunction:
 # repetition cannot eat all the memory in the machine.
 MAX_LIST_LENGTH = 1000000
 
+# The language's own bound on an integer ([port.integers]): at most 4000
+# decimal digits, whatever Python release is underneath. Python's own limit on
+# turning text into an integer (4300 digits, and absent from older releases)
+# is therefore never reached, and every host agrees on where programs stop.
+MAX_INTEGER_DIGITS = 4000
+INTEGER_LIMIT = 10 ** MAX_INTEGER_DIGITS        # an integer is below this in size
+# 2 ** INTEGER_BITS is already beyond INTEGER_LIMIT; pow() uses it to refuse a
+# power before computing it.
+INTEGER_BITS = 13288
+
+
+def too_many_digits_error(position):
+    return NovaError(
+        "the result has too many digits - an integer cannot have more than {} digits".format(
+            MAX_INTEGER_DIGITS),
+        position,
+    )
+
+
+def bounded_integer(value, position):
+    """`value` if it is within the language's integer bound, else the error."""
+    if type(value) is int and not -INTEGER_LIMIT < value < INTEGER_LIMIT:
+        raise too_many_digits_error(position)
+    return value
+
 
 def builtin_print(args, position):
     print(" ".join(format_value(arg) for arg in args))
@@ -1935,6 +1963,8 @@ def builtin_num(args, position):
     )
     if not readable:
         raise NovaError('num() cannot read a number from "{}"'.format(value), position)
+    if len(digits) - digits.count(".") > MAX_INTEGER_DIGITS:
+        raise NovaError("num(): that number has too many digits", position)
     try:
         return float(text) if "." in digits else int(text)
     except ValueError:
@@ -2075,6 +2105,9 @@ def builtin_sqrt(args, position):
 def builtin_pow(args, position):
     base = numeric_argument(args[0], "pow()", position)
     exponent = numeric_argument(args[1], "pow()", position)
+    if (type(base) is int and type(exponent) is int and exponent > 0 and abs(base) > 1
+            and (abs(base).bit_length() - 1) * exponent > INTEGER_BITS):
+        raise too_many_digits_error(position)       # refused before it is computed
     try:
         result = base ** exponent
     except (ValueError, OverflowError, ZeroDivisionError) as problem:
@@ -2198,8 +2231,14 @@ def builtin_json_dumps(args, position):
 
 def builtin_json_loads(args, position):
     text = text_argument(args[0], "json.loads()", position)
+    def read_integer(digits):
+        if len(digits.lstrip("-")) > MAX_INTEGER_DIGITS:
+            raise NovaError("json.loads(): that number has too many digits", position,
+                            label="TypeError")
+        return int(digits)
+
     try:
-        return from_jsonable(json_module.loads(text))
+        return from_jsonable(json_module.loads(text, parse_int=read_integer))
     except json_module.JSONDecodeError as problem:
         raise NovaError("json.loads(): {}".format(problem), position, label="TypeError")
 
@@ -2372,7 +2411,7 @@ def to_nova_value(value, interpreter=None):
     if value is None:
         return NOTHING
     if isinstance(value, (bool, int, float, str)):
-        return value
+        return bounded_integer(value, None) if type(value) is int else value
     if isinstance(value, ModuleType) and not python_granted(value, interpreter):
         # The attribute gate hides these; this catches one that arrives inside
         # a dict or list, or as the result of a call.
@@ -2982,16 +3021,75 @@ def format_value(value, seen=None):
             "{}: {}".format(format_key(key), format_repr(item, seen))
             for key, item in value.items()
         ) + "}"
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
+    if isinstance(value, float):
+        return format_float(value)
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return repr(value)
     try:
         return str(value)
     except ValueError:
-        # Python refuses to turn an integer of more than 4300 digits into
-        # text (3.11 and later, and security releases of earlier versions).
-        raise NovaError("an integer with more than 4300 digits cannot be converted to text") from None
+        # Only if the Python underneath was configured to refuse long integers
+        # as text (PYTHONINTMAXSTRDIGITS, set below the language's own bound).
+        raise NovaError("this Python is set to refuse converting an integer of this size "
+                        "to text (PYTHONINTMAXSTRDIGITS)") from None
+
+
+# Exact decimal contexts for shortest_digits: one per number of digits, rounding
+# to nearest (ties to even) and upwards.
+_NEAREST = [decimal.Context(prec=places, rounding=decimal.ROUND_HALF_EVEN) for places in range(1, 18)]
+_UPWARDS = [decimal.Context(prec=places, rounding=decimal.ROUND_CEILING) for places in range(1, 18)]
+
+
+def shortest_digits(value):
+    """The decimal digits that spell a finite, positive float, and the
+    exponent of the first one: (digits, x) means d.ddd * 10 ** x.
+
+    [port.floats]: the fewest digits that read back as exactly this float,
+    and of those the one nearest its true value. For 1, 2, 3 ... digits it
+    tries the true value rounded to nearest and, failing that, rounded up,
+    and stops at the first that reads back. (Rounding down never helps: a
+    float's rounding interval is as wide above it as below, except just above a
+    power of two, where it is wider above.) Exact decimal arithmetic and a
+    correctly rounded read are all it needs, and neither is repr()'s."""
+    exact = decimal.Decimal(value)
+    for places in range(1, 18):
+        for context in (_NEAREST[places - 1], _UPWARDS[places - 1]):
+            candidate = context.create_decimal(exact)
+            if float(candidate) == value:
+                _, digits, exponent = candidate.as_tuple()
+                text = "".join(map(str, digits))
+                return text.rstrip("0") or "0", len(digits) - 1 + exponent
+    raise AssertionError("17 digits always spell a float")
+
+
+def float_text(value):
+    """A finite float's shortest spelling: positional from 0.0001 up to 1e16,
+    exponent form (`1e-05`, `1.5e+16`) outside it. Whole numbers are
+    displayed by format_float instead; this is their layout rule too."""
+    if value == 0:
+        return "-0.0" if math.copysign(1.0, value) < 0 else "0.0"
+    sign = "-" if value < 0 else ""
+    digits, x = shortest_digits(abs(value))
+    if -4 <= x < 16:
+        if x >= 0:
+            whole = digits[:x + 1].ljust(x + 1, "0")
+            return "{}{}.{}".format(sign, whole, digits[x + 1:] or "0")
+        return "{}0.{}{}".format(sign, "0" * (-x - 1), digits)
+    mantissa = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
+    return "{}{}e{}{:02d}".format(sign, mantissa, "-" if x < 0 else "+", abs(x))
+
+
+def format_float(value):
+    """How a float prints ([port.floats]): `inf`, `-inf`, `nan`; a whole value
+    as its exact decimal expansion (negative zero as `0`); anything else as
+    its shortest spelling."""
+    if value != value:
+        return "nan"
+    if value in (float("inf"), float("-inf")):
+        return "inf" if value > 0 else "-inf"
+    if value.is_integer():
+        return str(int(value))
+    return float_text(value)
 
 
 def format_key(key):
@@ -3144,7 +3242,7 @@ def binary_operation(op, left, right, position):
         )
 
     try:
-        return numeric_operation(op, left, right, position)
+        return bounded_integer(numeric_operation(op, left, right, position), position)
     except OverflowError:
         # An integer beyond the range of a float, mixed with a float or divided
         # into a quotient too large to be one. (Float arithmetic itself
@@ -3904,8 +4002,10 @@ class Interpreter:
                 )
             try:
                 if callee.needs_interpreter:
-                    return callee.implementation(args, position, self)
-                return callee.implementation(args, position)
+                    result = callee.implementation(args, position, self)
+                else:
+                    result = callee.implementation(args, position)
+                return bounded_integer(result, position)
             except OverflowError:
                 # math.sqrt(10 ** 400) and friends: an integer beyond a float.
                 raise NovaError("{}(): a number is too large for this function".format(callee.name),
@@ -5548,6 +5648,7 @@ def execute(interpreter, entry):
     LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
     STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
     LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
+    limit = INTEGER_LIMIT; negative_limit = -INTEGER_LIMIT      # locals: faster than globals
     RESET_SLOTS_ = OP["RESET_SLOTS"]; ADD_ = OP["ADD"]; SUB_ = OP["SUB"]
     MUL_ = OP["MUL"]; DIV_ = OP["DIV"]; FLOOR_DIV_ = OP["FLOOR_DIV"]
     MOD_ = OP["MOD"]; NEG_ = OP["NEG"]; POS_ = OP["POS"]
@@ -5664,7 +5765,10 @@ def execute(interpreter, entry):
                     left = stack[-1]
                     kind = type(left)
                     if type(right) is kind and (kind is int or kind is float or kind is str):
-                        stack[-1] = left + right
+                        result = left + right
+                        if kind is int and not negative_limit < result < limit:
+                            raise too_many_digits_error(positions[ip - 1])
+                        stack[-1] = result
                     else:
                         stack[-1] = binary_operation("+", left, right, positions[ip - 1])
                 elif op == SUB_:
@@ -5672,7 +5776,10 @@ def execute(interpreter, entry):
                     left = stack[-1]
                     kind = type(left)
                     if type(right) is kind and (kind is int or kind is float):
-                        stack[-1] = left - right
+                        result = left - right
+                        if kind is int and not negative_limit < result < limit:
+                            raise too_many_digits_error(positions[ip - 1])
+                        stack[-1] = result
                     else:
                         stack[-1] = binary_operation("-", left, right, positions[ip - 1])
                 elif op == INDEX_:
@@ -5753,7 +5860,10 @@ def execute(interpreter, entry):
                     left = stack[-1]
                     kind = type(left)
                     if type(right) is kind and (kind is int or kind is float):
-                        stack[-1] = left * right
+                        result = left * right
+                        if kind is int and not negative_limit < result < limit:
+                            raise too_many_digits_error(positions[ip - 1])
+                        stack[-1] = result
                     else:
                         stack[-1] = binary_operation("*", left, right, positions[ip - 1])
                 elif op == INDEX_ASSIGN_TARGET_:

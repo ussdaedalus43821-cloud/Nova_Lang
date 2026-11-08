@@ -97,7 +97,8 @@ errors, and so is a number split by a space (`1 .5`).
 A second decimal point is a lexical error: `a number cannot have two decimal
 points`.
 
-Integers have no maximum (`[val.numbers]`).
+A literal has at most 4,000 digits, counting both sides of the point and any
+leading zeros: `this number has too many digits` (`[port.integers]`).
 
 ## [lex.strings] Strings
 

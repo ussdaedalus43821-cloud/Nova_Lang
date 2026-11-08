@@ -14,11 +14,26 @@ a different answer.
 
 ## [port.integers] Integers
 
-An integer has no maximum in the reference host and arithmetic on integers is
-exact (`[val.numbers]`). A host MAY bound the size of its integers (a
-microcontroller will), provided it reports `a number is too large for this
-operation` rather than a wrong answer, and documents the bound. The corpus does
-not test a bound, only that the reference's exactness holds.
+An integer has at most **4,000 decimal digits**: its magnitude is below
+10<sup>4000</sup>. The bound belongs to the language, not to a host, so that a
+program that runs on one host runs on every host, from a server to a browser to
+a microcontroller (4,000 digits is about 1.7 KB of storage). Arithmetic on
+integers inside the bound is exact.
+
+An operation whose integer result would reach 10<sup>4000</sup> in magnitude is
+an error, never a wrong answer, a wrapped value or infinity:
+`the result has too many digits - an integer cannot have more than 4000 digits`.
+It applies to `+`, `-` and `*`; to `pow()` (refused before it is computed, so
+`pow(2, 1000000000)` answers at once); to `sum()` and to `round()` with a
+negative digit count; and to an integer handed in from outside the language
+(`TypeError: json.loads(): that number has too many digits`, or the embedding
+bridge). `//`, `%`, unary `-`, `abs`, `min` and `max` cannot leave the bound.
+
+A number literal, and the text `num()` reads, may contain at most 4,000 digits,
+counted on both sides of the point and including leading zeros:
+`this number has too many digits` and `num(): that number has too many digits`.
+A decimal of fewer digits whose value is too large for a float is not an error
+but infinity (`[port.floats]`).
 
 Where an integer meets a float the integer is converted to a float first. An
 integer too large to be one (beyond about `1.8e308`) cannot be, so these are
@@ -31,13 +46,6 @@ errors and not infinity:
 
 Comparisons are exact and never convert: `9007199254740993 > 9007199254740992.0`
 is `true`. `//` and `%` of two integers are exact however large.
-
-Converting a very large integer to text, and reading a very long run of digits
-(a literal, or `num()`), MAY be refused beyond a host-defined size of at least 4,300
-digits, with `an integer with more than 4300 digits cannot be converted to text`,
-`this number has too many digits` or `num(): that number has too many digits`.
-This is not in the corpus for text conversion because the Python releases that
-are hosts differ in whether they limit it (see D-013).
 
 ## [port.floats] Floating-point numbers
 
@@ -59,22 +67,35 @@ with `TypeError: floor() needs a finite number, but got inf`; `sin`, `cos` and
 `round(x, digits)` and `sin(nan)` do not raise and return NaN or infinity unchanged.
 
 **How a float prints** (`[val.display]`) is part of the contract, because a
-program's output must be the same on every host:
+program's output must be the same on every host. The rule does not depend on any
+language's or library's own formatting:
 
 - `inf`, `-inf` and `nan` print as those words.
 - A float with a whole value prints as the exact decimal expansion of that value,
   with no point and no exponent: `1000000000000 * 1000000000000 * 1.0` prints
-  `999999999999999983222784`, the value the float really holds.
-- Any other float prints as the shortest decimal text that reads back as the same
-  float. It uses ordinary notation when the magnitude is at least `0.0001`
-  (`0.5`, `100.25`, `0.0001`, `3.3000000000000003`) and exponent notation below
-  that, as a mantissa, `e`, a sign and at least two exponent digits (`1e-05`,
-  `1e-07`, `1.23456e-05`).
+  `999999999999999983222784`, the value the float really holds. Negative zero
+  prints `0`.
+- Any other float prints in two steps, **digits** and then **layout**.
 
-This is exactly what Python's `repr` produces, which is where it came from; a
-host written in another language has to reproduce it. Choosing a form that is
-easier to reproduce is a decision for the project owner and would be a
-change to this section, to the corpus, and a minor version.
+  *Digits.* Of all decimal digit strings that read back as exactly this float
+  (read as the nearest float, ties to even), take the shortest. If more than one
+  has that length, take the one closest to the float's exact value; if two are
+  equally close, the one whose last digit is even. Drop trailing zeros. Write the
+  result as `d.ddd` times 10<sup>x</sup>, `d` being its first digit.
+
+  *Layout.* If `x` is from -4 to 15, print it positionally: `0.0001`, `0.5`,
+  `100.25`, `3.3000000000000003`. If `x` is below -4 print the digits as `d` or
+  `d.ddd`, then `e`, a sign and at least two exponent digits: `1e-05`,
+  `1.23456e-05`, `5e-324`, `2.2250738585072014e-308`. (A float that is not whole
+  is below 2<sup>52</sup>, so `x` above 15 does not occur.)
+
+To compute the digits, try 1, 2, 3 ... digits and for each take the exact value
+rounded to nearest and, failing that, rounded up; the first that reads back is
+the answer. The rounding up matters: the floats just above a power of two are twice as far
+apart as those just below, so the nearest short decimal can fall outside what
+rounds to the float while the next one up is inside. 2<sup>-1017</sup> prints
+`7.120236347223045e-307`; the nearest 16-digit decimal, `7.120236347223044e-307`,
+does not read back as it.
 
 ## [port.text] Text
 

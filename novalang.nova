@@ -101,6 +101,9 @@ def push_token(state, kind, value, pos) {
     append(state["tokens"], {kind: kind, value: value, pos: pos})
 }
 
+# The language's bound on a number's digits ([port.integers]).
+let MAX_NUMBER_DIGITS = 4000
+
 def lex_number(state) {
     let start = state["index"]
     let text = ""
@@ -120,6 +123,13 @@ def lex_number(state) {
         } else {
             break
         }
+    }
+    let digit_count = len(text)
+    if seen_dot {
+        digit_count = digit_count - 1
+    }
+    if digit_count > MAX_NUMBER_DIGITS {
+        lex_error("this number has too many digits", start)
     }
     push_token(state, "NUMBER", num(text), start)
 }

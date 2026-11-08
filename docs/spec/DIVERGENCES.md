@@ -23,7 +23,8 @@ change would break existing programs).
 The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
-accounted for every entry but D-002, D-012 and D-013 (the host's own); D-003 to D-011 are fixed, so only D-001 (normalized) remains.
+accounted for D-001 and D-003 to D-011; D-002 and D-012 to D-014 are the host's
+own. Every entry but D-001 (normalized) is now resolved.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -202,40 +203,78 @@ Fixed 2026-11-08: `run_program` turns a `return`, `break` or `continue` that rea
 
 ### D-012 — A number with thousands of digits
 
-Status: open
-Untested: it depends on Python's own limit on turning text into an integer, which
-differs between releases (see D-013)
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: the language's own limit, 4,000 digits)
 Engines: all three Python engines
 Spec: `[port.integers]`, `[sec.error-boundary]`
-Cases: none
+Cases: `port-number-literal-of-four-thousand-digits`,
+`port-number-literal-past-four-thousand-digits-is-an-error`,
+`port-number-literal-digits-count-on-both-sides-of-the-point`,
+`port-num-reads-four-thousand-digits`, `port-num-past-four-thousand-digits-is-an-error`
 
-A number literal or a `num()` argument of more than 4300 digits is
-`this number has too many digits` (literal) or `num(): that number has too many
-digits` on the Python releases that refuse it, and an ordinary number on those
-that do not. The self-hosted lexer builds numbers with `num()`, so the two
-messages differ. Like D-013 this needs the language to define its own digit
-limit.
+A literal or a `num()` argument of more than 4300 digits was an error on the
+Python releases that refuse it and an ordinary number on those that do not, and
+the self-hosted interpreter worded the error differently. A literal and a
+`num()` argument now have at most 4,000 digits on every engine, counted in the
+text (both sides of a point, leading zeros included), so Python's own limit is
+never reached.
+
+Fixed 2026-11-08: `Lexer.read_number` and `builtin_num` count digits first;
+`lex_number` in `novalang.nova` does the same.
 
 ### D-013 — Integer-to-text limits depend on the Python release
 
-Status: open
-Untested: the behaviour differs between Python releases, so no case can pin it on
-every host
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: the language's own limit, 4,000 digits)
 Engines: all three Python engines
 Spec: `[port.integers]`
-Cases: none
+Cases: `port-integer-bound-is-four-thousand-digits`,
+`port-integer-addition-past-the-bound-is-an-error`,
+`port-integer-subtraction-past-the-bound-is-an-error`,
+`port-integer-multiplication-past-the-bound-is-an-error`,
+`port-integer-bound-error-can-be-caught`,
+`port-pow-past-the-bound-is-refused-before-it-is-computed`,
+`port-sum-past-the-bound-is-an-error`, `port-round-past-the-bound-is-an-error`,
+`port-json-loads-past-the-bound-is-an-error`
 
 Python 3.11 and the security releases of 3.7 to 3.10 refuse to turn an integer of
-more than 4300 digits into text, and the three engines turn that refusal into
-`an integer with more than 4300 digits cannot be converted to text`. Earlier
-releases of those versions have no limit, so `print(big)` succeeds there. The
-specification says a host MAY refuse beyond a host-defined size of at least 4,300
-digits; it does not say a host MUST. To make the engines agree on every Python the
-reference would have to enforce its own limit (and decide it: 4,300 digits, or
-a size in bits) instead of inheriting Python's, and the same question applies
-to integers built by arithmetic, which are unbounded. That is a language decision.
+more than 4300 digits into text, earlier releases do not, and integers built by
+arithmetic had no bound at all. `print(big)` therefore worked on one Python and
+failed on another, and a program could build an integer a microcontroller or a
+browser could not hold.
+
+An integer now has at most 4,000 digits: any operation that would pass it, on
+every engine, is `the result has too many digits - an integer cannot have more
+than 4000 digits`, and `pow()` refuses a result that large before computing it.
+Every integer inside the bound converts to text, so Python's limit is never
+reached.
+
+Fixed 2026-11-08: `bounded_integer` and `INTEGER_LIMIT` in `novalang.py`, checked
+in `binary_operation`, in the VM's inline `+`, `-` and `*`, after every built-in
+call, in `to_nova_value` and in `json.loads()`. The self-hosted interpreter does
+its arithmetic with the host's operators, so it inherits the check.
+
+### D-014 — How a float prints depended on Python's `repr`
+
+Status: resolved
+Class: decision needed (decided 2026-11-08: a written rule, not a library's)
+Engines: all three Python engines
+Spec: `[port.floats]`, `[val.display]`
+Cases: `port-float-display-just-above-a-power-of-two-needs-the-upper-neighbour`,
+`port-float-display-extremes`, `port-float-display-limits-of-positional-form`,
+`port-float-display-large-whole-values-are-exact`
+
+The text of a float was whatever Python's `str` gave, which a host in another
+language would have had to copy. The specification now states the rule (the
+shortest digits that read back, the one nearest the true value among them,
+positional from `0.0001` to `1e16` and `e` form below) and the engines compute it
+with exact decimal arithmetic (`shortest_digits`, `float_text`, `format_float`
+in `novalang.py`) and no longer call `repr`. The output is the same as before for
+every float: `tests/portability/test_numbers.py` checks it against `repr` over
+every power of two with its neighbours (subnormals included) and a large sample
+of random bit patterns. A shortcut that tries only the nearest decimal of each
+length is wrong for some powers of two (the first draft of the implementation
+was), which is why the rule and the test name the upper neighbour.
 
 ## Not divergences, but worth knowing
 

@@ -30,10 +30,11 @@ is not a number is an error: `num() cannot read a number from "x"`.
 
 ## [val.numbers] Numbers
 
-A number is an integer of unlimited size or a float (an IEEE 754 double).
-`type` does not tell them apart, and they compare equal when their values are
-equal: `1 == 1.0`. Integer arithmetic is exact: `99999999999999999999 + 1` is
-`100000000000000000000`.
+A number is an integer of at most 4,000 decimal digits or a float (an IEEE 754
+double). `type` does not tell them apart, and they compare equal when their
+values are equal: `1 == 1.0`. Integer arithmetic is exact: `99999999999999999999
++ 1` is `100000000000000000000`. An integer that would pass 4,000 digits is an
+error, not a rounded or wrapped value (`[port.integers]`).
 
 An operation on two integers gives an integer, except `/`, which gives an
 integer when the quotient is whole (`10 / 2` is `5`) and a float otherwise. If
