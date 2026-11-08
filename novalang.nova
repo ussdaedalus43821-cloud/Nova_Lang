@@ -101,6 +101,9 @@ def push_token(state, kind, value, pos) {
     append(state["tokens"], {kind: kind, value: value, pos: pos})
 }
 
+# The language's bound on a number's digits ([port.integers]).
+let MAX_NUMBER_DIGITS = 4000
+
 def lex_number(state) {
     let start = state["index"]
     let text = ""
@@ -110,13 +113,23 @@ def lex_number(state) {
         if is_digit(ch) {
             text = text + ch
             state["index"] = state["index"] + 1
-        } else if ch == "." and not seen_dot {
+        } else if ch == "." {
+            if seen_dot {
+                lex_error("a number cannot have two decimal points", state["index"] - 1)
+            }
             seen_dot = true
             text = text + ch
             state["index"] = state["index"] + 1
         } else {
             break
         }
+    }
+    let digit_count = len(text)
+    if seen_dot {
+        digit_count = digit_count - 1
+    }
+    if digit_count > MAX_NUMBER_DIGITS {
+        lex_error("this number has too many digits", start)
     }
     push_token(state, "NUMBER", num(text), start)
 }
@@ -388,13 +401,53 @@ def p_describe(token) {
         return "the end of the line"
     }
     if token["kind"] == "STRING" {
-        return "the string " + str(token["value"])
+        return "the string " + quote_text(token["value"])
     }
-    return str(token["value"])
+    if token["kind"] == "FSTRING" {
+        return "an f-string"
+    }
+    if token["kind"] == "NUMBER" {
+        return str(token["value"])
+    }
+    return quote_text(str(token["value"]))
+}
+
+# Quotes text the way the host's repr does: single quotes unless the text
+# holds a single quote and no double quote; backslash and control characters
+# are escaped.
+def quote_text(text) {
+    let quote = "'"
+    if "'" in text and not ("\"" in text) {
+        quote = "\""
+    }
+    let out = quote
+    for ch in text {
+        if ch == "\\" {
+            out = out + "\\\\"
+        } else if ch == quote {
+            out = out + "\\" + quote
+        } else if ch == "\n" {
+            out = out + "\\n"
+        } else if ch == "\t" {
+            out = out + "\\t"
+        } else if ch == "\r" {
+            out = out + "\\r"
+        } else {
+            out = out + ch
+        }
+    }
+    return out + quote
 }
 
 def p_error(message, pos) {
     throw("ParseError@" + str(pos) + ": " + message)
+}
+
+# Built-ins are reserved: `print = 3` and `def print()` are both errors.
+def p_guard_name(name, pos, role) {
+    if name in BUILTIN_NAMES {
+        p_error("'" + name + "' is a built-in function and cannot be used as " + role + " name", pos)
+    }
 }
 
 def p_expect(p, kind, desc) {
@@ -569,12 +622,17 @@ def parse_optional_annotation(p) {
 def parse_function_def(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a function name after 'def'")
+    p_guard_name(name["value"], name["pos"], "a function")
     p_expect(p, "LPAREN", "a '(' after the function name")
     let params = []
     let param_types = []
     if p_current(p)["kind"] != "RPAREN" {
         while true {
             let param = p_expect(p, "IDENT", "a parameter name")
+            p_guard_name(param["value"], param["pos"], "a parameter")
+            if param["value"] in params {
+                p_error("parameter '" + param["value"] + "' is listed twice", param["pos"])
+            }
             append(params, param["value"])
             append(param_types, parse_optional_annotation(p))
             if p_current(p)["kind"] != "COMMA" {
@@ -663,10 +721,15 @@ def parse_while(p) {
 def parse_for(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a loop variable after 'for'")
+    p_guard_name(name["value"], name["pos"], "a loop variable")
 
     if p_current(p)["kind"] == "COMMA" {
         p_advance(p)
         let second = p_expect(p, "IDENT", "a second loop variable after the comma")
+        p_guard_name(second["value"], second["pos"], "a loop variable")
+        if second["value"] == name["value"] {
+            p_error("both loop variables are called '" + second["value"] + "'", second["pos"])
+        }
         p_expect(p, "IN", "'in' after the loop variables")
         let iterable = parse_expression(p)
         let body = parse_block(p)
@@ -766,6 +829,7 @@ def parse_for(p) {
 def parse_let(p) {
     let keyword = p_advance(p)
     let name = p_expect(p, "IDENT", "a name after 'let'")
+    p_guard_name(name["value"], name["pos"], "a variable")
     let type_name = parse_optional_annotation(p)
     p_expect(p, "EQUALS", "a '=' after the name in a 'let'")
     return {
@@ -788,7 +852,9 @@ def parse_try(p) {
         has_catch = true
         if p_current(p)["kind"] == "IDENT" {
             catch_has_name = true
-            catch_name = p_advance(p)["value"]
+            let caught = p_advance(p)
+            p_guard_name(caught["value"], caught["pos"], "a caught error")
+            catch_name = caught["value"]
         }
         catch_block = parse_block(p)
     }
@@ -852,6 +918,7 @@ def parse_import(p) {
     if p_current(p)["kind"] == "AS" {
         p_advance(p)
         let alias = p_expect(p, "IDENT", "a name after 'as'")
+        p_guard_name(alias["value"], alias["pos"], "a module alias")
         return {
             kind: "Import",
             path: path["value"],
@@ -865,6 +932,7 @@ def parse_import(p) {
         let names = []
         while true {
             let name = p_expect(p, "IDENT", "a name to import")
+            p_guard_name(name["value"], name["pos"], "an imported name")
             append(names, name["value"])
             if p_current(p)["kind"] != "COMMA" {
                 break
@@ -903,6 +971,7 @@ def parse_expression_statement(p) {
     let equals = p_advance(p)
     let value = parse_expression_statement(p)
     if node["kind"] == "Var" {
+        p_guard_name(node["name"], node["pos"], "a variable")
         return {kind: "Assign", name: node["name"], value: value, pos: node["pos"]}
     }
     if node["kind"] == "Index" {
@@ -1252,17 +1321,19 @@ def env_define(scope, name, value) {
     scope["vars"][name] = value
 }
 
+# Updates an existing binding out to the nearest barrier; a new name is
+# created in the innermost scope, so it does not outlive its block.
 def env_assign(scope, name, value) {
-    let scope = scope
+    let search = scope
     while true {
-        if name in scope["vars"] {
-            scope["vars"][name] = value
+        if name in search["vars"] {
+            search["vars"][name] = value
             return
         }
-        if scope["barrier"] {
+        if search["barrier"] {
             break
         }
-        scope = scope["parent"]
+        search = search["parent"]
     }
     scope["vars"][name] = value
 }
@@ -1303,10 +1374,28 @@ let BUILTIN_NAMES = {
     env: true, exit: true, args: true, platform: true,
     cwd: true, mkdir: true, remove: true, rename: true, copy: true,
     regex: true, replace_all: true, split_lines: true,
+    abspath: true, dirname: true,
     pad: true, pad_left: true, reverse: true, sorted: true,
     "assert": true, log: true,
     map: true, filter: true, reduce: true
 }
+
+# Built-ins with a fixed argument count; the rest take a variable number.
+# Matches the host's BuiltinFunction arities.
+let BUILTIN_ARITY = {
+    len: 1, append: 2, upper: 1, lower: 1, trim: 1, join: 2, str: 1, num: 1,
+    type: 1, keys: 1, values: 1, read: 1, write: 2, exists: 1, listdir: 1,
+    abspath: 1, dirname: 1, "time": 0, sleep: 1, now: 0, format_time: 2,
+    "random": 0, randint: 2, choice: 1, shuffle: 1, "abs": 1, floor: 1,
+    ceil: 1, sqrt: 1, "pow": 2, sin: 1, cos: 1, tan: 1, ln: 1, log10: 1,
+    env: 1, args: 0, platform: 0, cwd: 0, mkdir: 1, remove: 1, rename: 2,
+    copy: 2, regex: 2, replace_all: 3, split_lines: 1, pad: 2, pad_left: 2,
+    reverse: 1, map: 2, filter: 2
+}
+
+# Gives every function value an identity, since a function is a dictionary
+# here and `==` on dictionaries compares contents.
+let FUNCTION_IDS = {next: 0}
 
 def is_target_function(v) {
     return type(v) == "dict" and "kind" in v and (v["kind"] == "function" or v["kind"] == "builtin")
@@ -1322,6 +1411,18 @@ def target_str(v) {
         }
     }
     return str(v)
+}
+
+# "a number", "a list", "nothing": how an error message names a value's type.
+def type_phrase(v) {
+    let kind = target_type(v)
+    if kind == "nothing" {
+        return kind
+    }
+    if kind == "dict" {
+        return "a dictionary"
+    }
+    return "a " + kind
 }
 
 def target_type(v) {
@@ -1421,6 +1522,12 @@ def call_builtin(name, call_args, pos) {
     }
     if name == "listdir" {
         return listdir(call_args[0])
+    }
+    if name == "abspath" {
+        return abspath(call_args[0])
+    }
+    if name == "dirname" {
+        return dirname(call_args[0])
     }
     if name == "input" {
         if len(call_args) == 0 {
@@ -1714,9 +1821,12 @@ def eval_call(node, scope) {
 # into a target function value of their own (Stage 11).
 def call_target_value(callee, call_args, pos) {
     if not is_target_function(callee) {
-        raise_error(target_type(callee) + " is not a function, so it cannot be called", pos)
+        raise_error(type_phrase(callee) + " is not a function, so it cannot be called", pos)
     }
     if callee["kind"] == "builtin" {
+        if callee["name"] in BUILTIN_ARITY and len(call_args) != BUILTIN_ARITY[callee["name"]] {
+            raise_error(callee["name"] + "() takes " + str(BUILTIN_ARITY[callee["name"]]) + " argument(s) but got " + str(len(call_args)), pos)
+        }
         return call_builtin(callee["name"], call_args, pos)
     }
     return call_function(callee, call_args, pos)
@@ -1778,15 +1888,29 @@ def eval_binop(node, scope) {
     raise_error("unknown operator '" + op + "'", node["pos"])
 }
 
+# Functions are equal only to themselves.
+def target_equal(a, b) {
+    if type(a) == "dict" and type(b) == "dict" and is_target_function(a) and is_target_function(b) {
+        if a["kind"] != b["kind"] {
+            return false
+        }
+        if a["kind"] == "builtin" {
+            return a["name"] == b["name"]
+        }
+        return a["id"] == b["id"]
+    }
+    return a == b
+}
+
 def eval_compare(node, scope) {
     let left = eval_expr(node["left"], scope)
     let right = eval_expr(node["right"], scope)
     let op = node["op"]
     if op == "==" {
-        return left == right
+        return target_equal(left, right)
     }
     if op == "!=" {
-        return left != right
+        return not target_equal(left, right)
     }
     if op == "<" {
         return left < right
@@ -2174,8 +2298,10 @@ def exec_stmt(node, scope) {
         return sig_continue()
     }
     if kind == "FunctionDef" {
+        FUNCTION_IDS["next"] = FUNCTION_IDS["next"] + 1
         env_define(scope, node["name"], {
             kind: "function",
+            id: FUNCTION_IDS["next"],
             name: node["name"],
             params: node["params"],
             body: node["body"],
@@ -2506,6 +2632,9 @@ def exec_import(node, scope) {
     if node["mode"] == "as" {
         module_name = node["alias"]
     }
+    if node["mode"] != "as" and module_name in BUILTIN_NAMES {
+        raise_error("'" + module_name + "' is a built-in function and cannot be used as a module name", node["pos"])
+    }
     env_define(scope, module_name, exports)
     return sig_normal()
 }
@@ -2519,7 +2648,13 @@ def run_program(source, path) {
     let ast = parse_program(source)
     let scope = make_env(false, true, true)
     define_stdlib_globals(scope)
-    exec_block(ast["statements"], scope)
+    let result = exec_block(ast["statements"], scope)
+    if result["kind"] == "return" {
+        raise_error("'return' only makes sense inside a function", 0)
+    }
+    if result["kind"] == "break" or result["kind"] == "continue" {
+        raise_error("'" + result["kind"] + "' is not inside a loop", 0)
+    }
 }
 
 def run_file(path) {

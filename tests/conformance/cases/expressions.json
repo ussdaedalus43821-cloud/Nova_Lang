@@ -1,0 +1,1840 @@
+{
+ "area": "expressions",
+ "version": 1,
+ "cases": [
+  {
+   "name": "val-type-names",
+   "spec": [
+    "val.types"
+   ],
+   "profile": "core",
+   "source": "def f() { }\nprint(type(1), type(1.5), type(\"s\"), type(true), type([]), type({}), type(f), type(len), type(f()))",
+   "output": [
+    "number number string boolean list dict function function nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-integers-and-floats-are-both-numbers",
+   "spec": [
+    "val.types",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(type(5), type(5.5), type(10 / 4), 1 == 1.0)",
+   "output": [
+    "number number number true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-whole-valued-floats-print-without-point",
+   "spec": [
+    "val.numbers",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(5.0, 2.50, 10 / 2, 2 * 0.5, 7 // 2.0)",
+   "output": [
+    "5 2.5 5 1 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-float-display-is-shortest-round-trip",
+   "spec": [
+    "val.numbers",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(0.1 + 0.2, 10 / 3, 1 / 3)",
+   "output": [
+    "0.30000000000000004 3.3333333333333335 0.3333333333333333"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-integers-do-not-overflow",
+   "spec": [
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(2 * 4611686018427387904, 99999999999999999999 + 1)",
+   "output": [
+    "9223372036854775808 100000000000000000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-display-of-collections",
+   "spec": [
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print([1, \"a\", true, [2], {k: 1}], {}, [], [[]])",
+   "output": [
+    "[1, \"a\", true, [2], {k: 1}] {} [] [[]]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-str-quotes-strings-inside-collections-only",
+   "spec": [
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(str(\"s\"), str([1, \"a\"]), str({a: \"x\"}), str(1.5), str(true))",
+   "output": [
+    "s [1, \"a\"] {a: \"x\"} 1.5 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-display-of-functions",
+   "spec": [
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "def f(x, y) { return x }\nprint(f, print, len)",
+   "output": [
+    "<function f(x, y)> <built-in function print> <built-in function len>"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-display-dictionary-keys-print-bare-when-they-can",
+   "spec": [
+    "val.display",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "print({\"a\": 1, \"b c\": 2})",
+   "output": [
+    "{a: 1, \"b c\": 2}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-print-separators",
+   "spec": [
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(\"a\", 1, true)\nprint()\nprint(\"\")",
+   "output": [
+    "a 1 true",
+    "",
+    ""
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-nothing-is-the-result-of-a-call-with-no-return",
+   "spec": [
+    "val.types",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "def f() { }\ndef g() { return }\nprint(f(), g(), type(f()))",
+   "output": [
+    "nothing nothing nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-there-is-no-nothing-name",
+   "spec": [
+    "val.types",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(nothing)",
+   "output": [],
+   "error": "NovaError: undefined name 'nothing'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "val-equality-by-structure",
+   "spec": [
+    "val.equality"
+   ],
+   "profile": "core",
+   "source": "print([1, 2] == [1, 2], [1, 2] != [2, 1], {a: 1} == {a: 1}, [] == [], \"a\" == \"a\")",
+   "output": [
+    "true true true true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-equality-never-converts-types",
+   "spec": [
+    "val.equality"
+   ],
+   "profile": "core",
+   "source": "print(1 == \"1\", true == 1, 0 == false, [] == {}, \"\" == [])",
+   "output": [
+    "false false false false false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-equality-of-functions-is-identity",
+   "spec": [
+    "val.equality"
+   ],
+   "profile": "core",
+   "source": "def f() { }\ndef g() { }\nprint(f == f, f == g, print == print)",
+   "output": [
+    "true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-equality-dictionary-order-does-not-matter",
+   "spec": [
+    "val.equality",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "print({a: 1, b: 2} == {b: 2, a: 1})",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-conversions",
+   "spec": [
+    "val.types"
+   ],
+   "profile": "core",
+   "source": "print(num(\"12\"), num(\"1.5\"), num(\" 7 \"), num(5), str(12) + \"!\")",
+   "output": [
+    "12 1.5 7 5 12!"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-num-rejects-non-numbers",
+   "spec": [
+    "val.types",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(num(\"x\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"x\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "val-num-rejects-superscript-digits",
+   "spec": [
+    "val.types",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(num(\"²\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"²\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-literals",
+   "spec": [
+    "expr.literals"
+   ],
+   "profile": "core",
+   "source": "print(1, 2.5, \"s\", true, false, [1, 2], {a: 1})",
+   "output": [
+    "1 2.5 s true false [1, 2] {a: 1}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-literal-nesting-and-empties",
+   "spec": [
+    "expr.literals",
+    "expr.lists"
+   ],
+   "profile": "core",
+   "source": "print([], [[]], [1, [2, [3]]], len([[], []]))",
+   "output": [
+    "[] [[]] [1, [2, [3]]] 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-literal-quoted-and-bare-keys",
+   "spec": [
+    "expr.literals",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1, \"b c\": 2}\nprint(d[\"a\"], d.a, d[\"b c\"], len(d))",
+   "output": [
+    "1 1 2 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-duplicate-key-error",
+   "spec": [
+    "expr.dicts",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print({a: 1, a: 2})",
+   "output": [],
+   "error": "NovaError: the key 'a' appears twice in this dictionary",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-keys-must-be-names-or-strings",
+   "spec": [
+    "expr.dicts",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print({1: 2})",
+   "output": [],
+   "error": "NovaError: expected a key name, found 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-no-trailing-comma-in-list",
+   "spec": [
+    "expr.lists",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print([1,])",
+   "output": [],
+   "error": "NovaError: unexpected ']'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-no-trailing-comma-in-dict",
+   "spec": [
+    "expr.dicts",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print({a: 1,})",
+   "output": [],
+   "error": "NovaError: expected a key name, found '}'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-needs-commas",
+   "spec": [
+    "expr.lists",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print([1 2])",
+   "output": [],
+   "error": "NovaError: expected a ']' to close the list, found 2",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-needs-colon",
+   "spec": [
+    "expr.dicts",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print({a 1})",
+   "output": [],
+   "error": "NovaError: expected a ':' after the key, found 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-newlines-inside-list-literal",
+   "spec": [
+    "expr.newlines",
+    "expr.lists"
+   ],
+   "profile": "core",
+   "source": "print([\n1,\n2\n])",
+   "output": [
+    "[1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-newlines-inside-dict-literal",
+   "spec": [
+    "expr.newlines",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "let d = {\na: 1,\nb: 2\n}\nprint(d)",
+   "output": [
+    "{a: 1, b: 2}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-newline-inside-call-parentheses-error",
+   "spec": [
+    "expr.newlines",
+    "expr.call",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1,\n2)",
+   "output": [],
+   "error": "NovaError: the expression ends too early",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-newline-after-operator-error",
+   "spec": [
+    "expr.newlines",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 +\n2)",
+   "output": [],
+   "error": "NovaError: the expression ends too early",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-newline-after-equals-error",
+   "spec": [
+    "expr.newlines",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let x =\n5",
+   "output": [],
+   "error": "NovaError: the expression ends too early",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-parentheses-group",
+   "spec": [
+    "expr.group",
+    "expr.precedence"
+   ],
+   "profile": "core",
+   "source": "print((2 + 3) * 4, 2 + (3 * 4), ((1)))",
+   "output": [
+    "20 14 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-unclosed-parenthesis-error",
+   "spec": [
+    "expr.group",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print((1)",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found the end of the input",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-precedence-arithmetic",
+   "spec": [
+    "expr.precedence",
+    "expr.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(2 + 3 * 4, 2 * 3 + 4, 10 - 4 - 3, 100 / 10 / 5, 2 * 3 % 4, 7 + 8 // 3)",
+   "output": [
+    "14 10 3 2 2 9"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-precedence-unary-binds-tighter-than-binary",
+   "spec": [
+    "expr.precedence",
+    "expr.unary"
+   ],
+   "profile": "core",
+   "source": "print(-2 * -3, - -3, 1 - -2, 1 + -2, 2 * -3 + 1)",
+   "output": [
+    "6 3 3 -1 -5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-precedence-comparison-over-logic",
+   "spec": [
+    "expr.precedence",
+    "expr.logic",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "print(1 + 2 == 3 and 2 * 2 == 4, 1 < 2 or 1 / 1 == 5)",
+   "output": [
+    "true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-precedence-not-is-below-comparison",
+   "spec": [
+    "expr.precedence",
+    "expr.logic"
+   ],
+   "profile": "core",
+   "source": "print(not 1 == 2, not true == false, not (1 == 1))",
+   "output": [
+    "true true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-precedence-and-over-or",
+   "spec": [
+    "expr.precedence",
+    "expr.logic"
+   ],
+   "profile": "core",
+   "source": "print(true or false and false, (true or false) and false)",
+   "output": [
+    "true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-unary-plus-and-minus",
+   "spec": [
+    "expr.unary"
+   ],
+   "profile": "core",
+   "source": "print(+3, -3, +-3, -(2 + 3))",
+   "output": [
+    "3 -3 -3 -5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-unary-minus-on-string-error",
+   "spec": [
+    "expr.unary",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(-\"a\")",
+   "output": [],
+   "error": "NovaError: cannot apply unary '-' to a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-unary-plus-on-boolean-error",
+   "spec": [
+    "expr.unary",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(+true)",
+   "output": [],
+   "error": "NovaError: cannot apply unary '+' to a boolean",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-arithmetic-basics",
+   "spec": [
+    "expr.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(1 + 2, 5 - 7, 3 * 4, 0.5 + 0.25, 3 * 0.5)",
+   "output": [
+    "3 -2 12 0.75 1.5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-division-is-true-division",
+   "spec": [
+    "expr.division"
+   ],
+   "profile": "core",
+   "source": "print(7 / 2, 10 / 2, 1 / 4, 6 / 3 == 2)",
+   "output": [
+    "3.5 5 0.25 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-floor-division-rounds-toward-minus-infinity",
+   "spec": [
+    "expr.division"
+   ],
+   "profile": "core",
+   "source": "print(7 // 2, -7 // 2, 7 // -2, -7 // -2, 7.5 // 2)",
+   "output": [
+    "3 -4 -4 3 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-remainder-takes-the-sign-of-the-right-operand",
+   "spec": [
+    "expr.division"
+   ],
+   "profile": "core",
+   "source": "print(7 % 3, -7 % 3, 7 % -3, -7 % -3, 7.5 % 2, 5 % 2.5)",
+   "output": [
+    "1 2 -2 -1 1.5 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-division-by-zero-error",
+   "spec": [
+    "expr.division",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(1 / 0)",
+   "output": [],
+   "error": "NovaError: division by zero",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-floor-division-by-zero-error",
+   "spec": [
+    "expr.division",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(1 // 0)",
+   "output": [],
+   "error": "NovaError: integer division by zero",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-floor-division-of-float-by-zero-error",
+   "spec": [
+    "expr.division",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(1.5 // 0)",
+   "output": [],
+   "error": "NovaError: integer division by zero",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-remainder-by-zero-error",
+   "spec": [
+    "expr.division",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(1 % 0)",
+   "output": [],
+   "error": "NovaError: cannot take the remainder of a division by zero",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-division-by-zero-is-catchable",
+   "spec": [
+    "expr.division",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { print(10 / 0) } catch e { print(\"caught:\", e) }\nprint(\"after\")",
+   "output": [
+    "caught: division by zero",
+    "after"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-arithmetic-on-non-numbers-error",
+   "spec": [
+    "expr.arithmetic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 - \"a\")",
+   "output": [],
+   "error": "NovaError: cannot use '-' on a number and a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-arithmetic-on-boolean-error",
+   "spec": [
+    "expr.arithmetic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(true * 2)",
+   "output": [],
+   "error": "NovaError: cannot use '*' on a boolean and a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-concatenation-and-repetition",
+   "spec": [
+    "expr.strings"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" + \"b\", \"ab\" * 3, 3 * \"ab\", \"x\" * 0)",
+   "output": [
+    "ab ababab ababab "
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-plus-number-error",
+   "spec": [
+    "expr.strings",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" + 1)",
+   "output": [],
+   "error": "NovaError: cannot use '+' on a string and a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-number-plus-string-error",
+   "spec": [
+    "expr.strings",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 + \"a\")",
+   "output": [],
+   "error": "NovaError: cannot use '+' on a number and a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-repeat-negative-error",
+   "spec": [
+    "expr.strings",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(\"x\" * -1)",
+   "output": [],
+   "error": "NovaError: a string cannot be repeated a negative number of times",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-repeat-fractional-error",
+   "spec": [
+    "expr.strings",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" * 1.5)",
+   "output": [],
+   "error": "NovaError: string repetition needs a whole number, but got 1.5",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-times-string-error",
+   "spec": [
+    "expr.strings",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" * \"b\")",
+   "output": [],
+   "error": "NovaError: cannot use '*' on a string and a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-concatenation-and-repetition",
+   "spec": [
+    "expr.lists"
+   ],
+   "profile": "core",
+   "source": "print([1] + [2, 3], [0] * 3, 2 * [1, 2], [1] * 0)",
+   "output": [
+    "[1, 2, 3] [0, 0, 0] [1, 2, 1, 2] []"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-plus-number-error",
+   "spec": [
+    "expr.lists",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1] + 2)",
+   "output": [],
+   "error": "NovaError: cannot use '+' on a list and a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-operators-make-new-lists",
+   "spec": [
+    "expr.lists"
+   ],
+   "profile": "core",
+   "source": "let a = [1]\nlet b = a + [2]\nappend(b, 9)\nprint(a, b)",
+   "output": [
+    "[1] [1, 2, 9]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-merge-right-side-wins",
+   "spec": [
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "print({a: 1} + {b: 2}, {a: 1} + {a: 2}, {a: 1, b: 2} + {})",
+   "output": [
+    "{a: 1, b: 2} {a: 2} {a: 1, b: 2}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-times-number-error",
+   "spec": [
+    "expr.dicts",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print({a: 1} * 2)",
+   "output": [],
+   "error": "NovaError: cannot use '*' on a dictionary and a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-numbers-and-strings",
+   "spec": [
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "print(1 < 2, 2 <= 2, 3 > 4, 2 >= 3, \"a\" < \"b\", \"abc\" >= \"abd\", \"B\" < \"a\", \"\" < \"a\")",
+   "output": [
+    "true true false false true false true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-int-with-float",
+   "spec": [
+    "expr.ordering",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(1 < 1.5, 2.0 <= 2, 1 == 1.0, 1 != 1.0)",
+   "output": [
+    "true true true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-mixed-types-error",
+   "spec": [
+    "expr.ordering",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 < \"a\")",
+   "output": [],
+   "error": "NovaError: cannot compare a number with a string using '<'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-booleans-error",
+   "spec": [
+    "expr.ordering",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(true < false)",
+   "output": [],
+   "error": "NovaError: cannot compare a boolean with a boolean using '<'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-lists-error",
+   "spec": [
+    "expr.ordering",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1] < [2])",
+   "output": [],
+   "error": "NovaError: cannot compare a list with a list using '<'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-ordering-dicts-error",
+   "spec": [
+    "expr.ordering",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print({a: 1} < {a: 2})",
+   "output": [],
+   "error": "NovaError: cannot compare a dictionary with a dictionary using '<'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-chained-comparison-error",
+   "spec": [
+    "expr.chaining",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 < 2 < 3)",
+   "output": [],
+   "error": "NovaError: chained comparisons like 'a < b < c' are not supported yet",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-chained-equality-error",
+   "spec": [
+    "expr.chaining",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 == 1 == 1)",
+   "output": [],
+   "error": "NovaError: chained comparisons like 'a < b < c' are not supported yet",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-chaining-with-in-error",
+   "spec": [
+    "expr.chaining",
+    "expr.in",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 in [1, 2] == true)",
+   "output": [],
+   "error": "NovaError: chained comparisons like 'a < b < c' are not supported yet",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-parenthesized-comparisons-are-fine",
+   "spec": [
+    "expr.chaining"
+   ],
+   "profile": "core",
+   "source": "print((1 < 2) == true, (1 < 2) and (2 < 3))",
+   "output": [
+    "true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-logic-on-booleans",
+   "spec": [
+    "expr.logic"
+   ],
+   "profile": "core",
+   "source": "print(true and false, true or false, not true, not false, true and true, false or false)",
+   "output": [
+    "false true false true true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-logic-short-circuits",
+   "spec": [
+    "expr.logic"
+   ],
+   "profile": "core",
+   "source": "print(false and (1 / 0 == 0), true or (1 / 0 == 0))",
+   "output": [
+    "false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-logic-short-circuit-skips-calls",
+   "spec": [
+    "expr.logic",
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "let trail = []\ndef touch(v) { append(trail, v)\nreturn v }\nprint(touch(false) and touch(true), touch(true) or touch(false))\nprint(trail)",
+   "output": [
+    "false true",
+    "[false, true]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-and-needs-booleans",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 and 2)",
+   "output": [],
+   "error": "NovaError: the left side of 'and' must be true or false, but it is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-or-needs-booleans",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(0 or 1)",
+   "output": [],
+   "error": "NovaError: the left side of 'or' must be true or false, but it is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-or-with-empty-string-needs-booleans",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(\"\" or \"x\")",
+   "output": [],
+   "error": "NovaError: the left side of 'or' must be true or false, but it is a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-right-operand-of-and-needs-a-boolean",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(true and 1)",
+   "output": [],
+   "error": "NovaError: the right side of 'and' must be true or false, but it is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-not-needs-a-boolean",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(not 1)",
+   "output": [],
+   "error": "NovaError: 'not' needs true or false, but this is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-conditions-need-booleans-if",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "if 1 { print(\"yes\") }",
+   "output": [],
+   "error": "NovaError: a 'if' condition must be true or false, but this is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-conditions-need-booleans-while",
+   "spec": [
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "while 0 { }",
+   "output": [],
+   "error": "NovaError: a 'while' condition must be true or false, but this is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-conditions-accept-comparisons",
+   "spec": [
+    "expr.logic",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "let n = 3\nif n > 2 and n < 5 { print(\"in range\") }\nif n == 2 { print(\"two\") } else { print(\"not two\") }",
+   "output": [
+    "in range",
+    "not two"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-list-and-string",
+   "spec": [
+    "expr.index"
+   ],
+   "profile": "core",
+   "source": "let a = [10, 20, 30]\nprint(a[0], a[2], a[-1], a[-3], \"hello\"[1], \"hello\"[-1])",
+   "output": [
+    "10 30 30 10 e o"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-with-whole-valued-float",
+   "spec": [
+    "expr.index",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][1.0])",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-out-of-range-error",
+   "spec": [
+    "expr.index",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][2])",
+   "output": [],
+   "error": "NovaError: index 2 is out of range for a list of 2 item(s) - valid indexes are -2 to 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-negative-out-of-range-error",
+   "spec": [
+    "expr.index",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][-3])",
+   "output": [],
+   "error": "NovaError: index -3 is out of range for a list of 2 item(s) - valid indexes are -2 to 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-string-index-out-of-range-error",
+   "spec": [
+    "expr.index",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(\"hi\"[2])",
+   "output": [],
+   "error": "NovaError: index 2 is out of range for a string of 2 character(s) - valid indexes are -2 to 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-fractional-error",
+   "spec": [
+    "expr.index",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][1.5])",
+   "output": [],
+   "error": "NovaError: a list index needs a whole number, but got 1.5",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-with-string-error",
+   "spec": [
+    "expr.index",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][\"a\"])",
+   "output": [],
+   "error": "NovaError: a list index needs a whole number, but got a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-with-boolean-error",
+   "spec": [
+    "expr.index",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1, 2][true])",
+   "output": [],
+   "error": "NovaError: a list index needs a whole number, but got a boolean",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-index-a-number-error",
+   "spec": [
+    "expr.index",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(5[0])",
+   "output": [],
+   "error": "NovaError: a number cannot be indexed",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-index-by-string",
+   "spec": [
+    "expr.index",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1}\nlet k = \"a\"\nprint(d[\"a\"], d[k])",
+   "output": [
+    "1 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-missing-key-error",
+   "spec": [
+    "expr.index",
+    "expr.member",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print({a: 1}[\"b\"])",
+   "output": [],
+   "error": "NovaError: this dictionary has no key 'b' - it has a",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-dict-index-with-number-error",
+   "spec": [
+    "expr.index",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print({a: 1}[0])",
+   "output": [],
+   "error": "NovaError: a dictionary key must be a string, but this is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-lists",
+   "spec": [
+    "expr.slice"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2, 3, 4, 5]\nprint(a[1:3], a[:2], a[3:], a[:], a[-2:], a[1:-1])",
+   "output": [
+    "[2, 3] [1, 2] [4, 5] [1, 2, 3, 4, 5] [4, 5] [2, 3, 4]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-bounds-clamp",
+   "spec": [
+    "expr.slice"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2, 3]\nprint(a[10:], a[3:1], a[:100], a[-100:2], a[1:1])",
+   "output": [
+    "[] [] [1, 2, 3] [1, 2] []"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-strings",
+   "spec": [
+    "expr.slice"
+   ],
+   "profile": "core",
+   "source": "print(\"hello\"[1:4], \"hello\"[:2], \"hello\"[-3:], \"hello\"[9:])",
+   "output": [
+    "ell he llo "
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-makes-a-copy",
+   "spec": [
+    "expr.slice",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2, 3]\nlet b = a[:]\nappend(b, 4)\nprint(a, b)",
+   "output": [
+    "[1, 2, 3] [1, 2, 3, 4]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-fractional-bound-error",
+   "spec": [
+    "expr.slice",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print([1, 2, 3][1.5:2])",
+   "output": [],
+   "error": "NovaError: a slice bound needs a whole number, but got 1.5",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-a-number-error",
+   "spec": [
+    "expr.slice",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(5[1:2])",
+   "output": [],
+   "error": "NovaError: a number cannot be sliced",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-slice-a-dict-error",
+   "spec": [
+    "expr.slice",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print({a: 1}[1:2])",
+   "output": [],
+   "error": "NovaError: a dictionary cannot be sliced",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-member-access",
+   "spec": [
+    "expr.member"
+   ],
+   "profile": "core",
+   "source": "let p = {name: \"Ada\", pos: {x: 1}}\nprint(p.name, p.pos.x, p[\"pos\"][\"x\"])",
+   "output": [
+    "Ada 1 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-member-missing-key-error",
+   "spec": [
+    "expr.member",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print({a: 1}.b)",
+   "output": [],
+   "error": "NovaError: this dictionary has no key 'b' - it has a",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-in-for-lists-strings-and-dicts",
+   "spec": [
+    "expr.in"
+   ],
+   "profile": "core",
+   "source": "print(2 in [1, 2], 9 in [1, 2], \"a\" in \"abc\", \"z\" in \"abc\", \"\" in \"abc\", \"a\" in {a: 1}, \"b\" in {a: 1}, [1] in [[1]])",
+   "output": [
+    "true false true false true true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-in-number-in-string-error",
+   "spec": [
+    "expr.in",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 in \"abc\")",
+   "output": [],
+   "error": "NovaError: 'in' can only look for a string inside a string, not a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-in-on-a-number-error",
+   "spec": [
+    "expr.in",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" in 5)",
+   "output": [],
+   "error": "NovaError: 'in' needs a list, a string or a dictionary on its right, but got a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-arguments-and-result",
+   "spec": [
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "def add(a, b) { return a + b }\nprint(add(1, 2), add(\"x\", \"y\"), add([1], [2]))",
+   "output": [
+    "3 xy [1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-too-many-arguments-error",
+   "spec": [
+    "expr.call",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "def f(a) { return a }\nprint(f(1, 2))",
+   "output": [],
+   "error": "NovaError: f() expects 1 argument(s) but got 2",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-too-few-arguments-error",
+   "spec": [
+    "expr.call",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "def f(a) { return a }\nprint(f())",
+   "output": [],
+   "error": "NovaError: f() expects 1 argument(s) but got 0",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-a-number-error",
+   "spec": [
+    "expr.call",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "let x = 3\nx()",
+   "output": [],
+   "error": "NovaError: a number is not a function, so it cannot be called",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-the-result-of-a-call-error",
+   "spec": [
+    "expr.call",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "print(print(1)(2))",
+   "output": [
+    "1"
+   ],
+   "error": "NovaError: nothing is not a function, so it cannot be called",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-calls-evaluate-arguments-left-to-right",
+   "spec": [
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "let trail = []\ndef t(v) { append(trail, v)\nreturn v }\ndef f(a, b, c) { return a }\nf(t(1), t(2), t(3))\nprint(trail)",
+   "output": [
+    "[1, 2, 3]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-recursion",
+   "spec": [
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "def fact(n) { if n <= 1 { return 1 }\nreturn n * fact(n - 1) }\nprint(fact(10), fact(20))",
+   "output": [
+    "3628800 2432902008176640000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-functions-are-values",
+   "spec": [
+    "expr.call",
+    "val.types"
+   ],
+   "profile": "core",
+   "source": "def double(x) { return x * 2 }\nlet g = double\nlet fs = [double, g]\nprint(g(4), fs[0](5), type(g))",
+   "output": [
+    "8 10 function"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "expr-call-builtin-with-wrong-type-error",
+   "spec": [
+    "expr.call",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(len(5))",
+   "output": [],
+   "error": "NovaError: len() needs a list, a string or a dictionary, but got a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-repeat-fractional-error",
+   "spec": [
+    "expr.lists",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print([1] * 1.5)",
+   "output": [],
+   "error": "NovaError: list repetition needs a whole number, but got 1.5",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-list-repeat-negative-error",
+   "spec": [
+    "expr.lists",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print([1] * -1)",
+   "output": [],
+   "error": "NovaError: a list cannot be repeated a negative number of times",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "expr-repeat-accepts-whole-valued-float",
+   "spec": [
+    "expr.strings",
+    "expr.lists",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(\"ab\" * 2.0, [1] * 2.0)",
+   "output": [
+    "abab [1, 1]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "val-num-reads-ascii-digits-only",
+   "spec": [
+    "val.types",
+    "err.value",
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(num(\"٣\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"٣\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "val-display-keys-that-are-not-ascii-names-are-quoted",
+   "spec": [
+    "val.display",
+    "lex.identifiers"
+   ],
+   "profile": "core",
+   "source": "print({\"é\": 1, \"a_1\": 2, \"1a\": 3, \"b c\": 4})",
+   "output": [
+    "{\"é\": 1, a_1: 2, \"1a\": 3, \"b c\": 4}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}

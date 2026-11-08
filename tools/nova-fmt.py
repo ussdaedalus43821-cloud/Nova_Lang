@@ -63,9 +63,7 @@ def quote(text, mark='"', fstring=False):
 
 def bare_name(key):
     """Can this dictionary key be written without quotes?"""
-    return bool(key) and (key[0].isalpha() or key[0] == "_") and all(
-        char.isalnum() or char == "_" for char in key
-    )
+    return nl.is_bare_name(key)
 
 
 def annotation(type_node):

@@ -26,6 +26,103 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M9: language specification and conformance corpus (first slice)
+- `docs/spec/`: the first written specification of NovaLang, normative per
+  ADR 0001. 68 sections, each with an id such as `[lex.numbers]`, covering
+  lexical structure, the value model, expressions, names and scopes, the error
+  catalogue with its message text, the security properties of the language
+  (no ambient authority, no dynamic code, no reflection, scope isolation, no
+  host failure leaking as a host exception) and the rules a portable host must
+  follow (integers, how floats print, text, ordering, limits). It is written for
+  hosts that do not exist yet (browsers, microcontrollers): an ambiguity is
+  written down and tested, not left to what Python did. A versioning rule says
+  what a major, minor and patch release may change in the language.
+- `tests/conformance/`: a host-neutral corpus of 359 cases (source, expected
+  output, error, line and exit status, the spec sections tested, a profile),
+  in the shape the game port already uses, and a `conformance` station that
+  runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
+  The station fails if a spec section is cited by no case, a case cites a
+  section that does not exist, or a divergence is not in the log. The full
+  suite is now 1,925 parent checks; the quick tier 1,852.
+- `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
+  follow the text. 15 entries came out of this slice and 13 are closed in the
+  same slice. Two remain: D-001, a normalization (how the self-hosted
+  interpreter words error headlines), and D-015, a cosmetic difference (a whole
+  float such as `5.` is named `5.0` by the host and `5` by the self-hosted
+  interpreter in a syntax error), accepted for now.
+- ADR 0003 (security stance) is accepted: capability gating and resource
+  limits, not isolation.
+
+### Changed
+- **Integers have at most 4,000 digits, on every host (breaking for programs
+  that built larger ones; D-012, D-013).** Integers were unbounded in the
+  reference host and bounded by the Python release when turned into text, so
+  `print(big)` worked on one Python and failed on another, and a program could
+  build a number a microcontroller or a browser could not hold. The bound is now
+  part of the language: an operation (`+`, `-`, `*`, `pow()`, `sum()`, `round()`,
+  or an integer arriving from `json.loads()` or the embedding bridge) that would
+  reach 10^4000 is `the result has too many digits - an integer cannot have more
+  than 4000 digits`, a literal or `num()` argument of more than 4,000 digits is
+  `this number has too many digits`, and `pow(2, 1000000000)` is refused before
+  it is computed instead of exhausting memory. A program that stays under 4,000
+  digits (factorials past 1000! are 2,568 digits) is unaffected. The VM's
+  arithmetic got about 2% slower for the check.
+- **How a float prints is a written rule, not Python's (D-014).** The
+  specification now defines the digits (the shortest that read back as the same
+  float, the nearest to the true value among those, ties to even) and the layout
+  (positional from `0.0001`, `e` form below, whole values in full). The engines
+  compute it with exact decimal arithmetic and no longer call `repr`, so a
+  port to C or WebAssembly can reproduce it. Output is unchanged for every float;
+  `tests/portability/test_numbers.py` checks that against `repr` over every
+  power of two and a large random sample. (A first version that tried only the
+  nearest decimal of each length printed 92 powers of two wrongly.)
+- **Names and numbers are ASCII only (breaking, D-002).** The host lexer used
+  Python's `isalpha`, `isalnum` and `isdecimal`, so `let é = 1`, a Cyrillic
+  `а` in place of a Latin `a`, and `print(١٢٣)` all ran. Identifiers are now
+  `[A-Za-z_][A-Za-z0-9_]*` and digits are `0-9`, as `[lex.identifiers]` and
+  `[lex.numbers]` say and as the self-hosted interpreter already did. Look-alike
+  letters are how a reviewer is shown one name and the machine runs another; for
+  a language meant for financial and hardware systems that door is shut. Text in
+  strings and comments is unaffected. `num()`, dictionary-key printing and the
+  formatter follow the same rule. Programs with non-ASCII names fail with
+  `unexpected character`; rename them.
+
+### Fixed
+- **The self-hosted interpreter (`--bootstrap`) now behaves like the host on the
+  nine points the conformance corpus found (D-003 to D-011).** The two had been
+  disagreeing silently:
+  - a name first assigned inside an `if`, `while` or `for` block leaked into the
+    enclosing scope; it now stays in the block, as on the host;
+  - a top-level `return`, `break` or `continue` was ignored; each is now the
+    host's error;
+  - built-in names could be redefined (`let print = 5`, `def len()`, a
+    parameter, loop variable, `catch` name, import alias or assignment); each is
+    now an error, and `abspath` and `dirname`, which the host has, are available;
+  - `def f(a, a)` was accepted; it is now `parameter 'a' is listed twice`;
+  - `f == f` for a function overflowed the stack; functions now compare by
+    identity;
+  - a built-in called with the wrong number of arguments read past its
+    arguments; it is now `len() takes 1 argument(s) but got 0`;
+  - syntax errors quote the offending token (`found 'print'`), `1.2.3` is a
+    lexical error, and "a number is not a function" keeps its article.
+- Four more ways a Python failure reached a program as a host exception that
+  `try`/`catch` could not catch (the class of issue 3), found by writing the
+  security and portability chapters of the specification:
+  - `print(²)` and `num("²")` (a superscript digit, which Python's `isdigit`
+    accepts but `int()` does not): now `unexpected character '²'` and
+    `num() cannot read a number from "²"`.
+  - An integer too large to be a float, mixed with a float or divided
+    (`big * 1.0`, `big + 0.5`, `big / 3`): was a raw `OverflowError`, now
+    `a number is too large for this operation - an integer beyond the range of
+    a float cannot be divided or mixed with a float`. A built-in given one
+    (`sqrt(big)`) reports `TypeError: sqrt(): a number is too large for this
+    function`.
+  - A number literal, or a `num()` argument, of thousands of digits, and an
+    integer of more than 4300 digits printed or converted to text (Python
+    refuses both on 3.11 and the security releases of earlier versions, and
+    not at all on the others). Both are now governed by the language's own
+    integer bound, below, so they no longer depend on the Python release.
+
 ## [2.1.0] - 2026-11-08 — Verification, portability, and a closed `python.*` bridge
 
 ### Security

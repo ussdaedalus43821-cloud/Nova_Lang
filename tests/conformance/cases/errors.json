@@ -1,0 +1,817 @@
+{
+ "area": "errors",
+ "version": 1,
+ "cases": [
+  {
+   "name": "err-uncaught-error-stops-the-program",
+   "spec": [
+    "err.model",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"before\")\nprint(1 / 0)\nprint(\"after\")",
+   "output": [
+    "before"
+   ],
+   "error": "NovaError: division by zero",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-error-reports-its-line",
+   "spec": [
+    "err.model"
+   ],
+   "profile": "core",
+   "source": "print(\"a\")\nprint(\"b\")\nlet x = 1 / 0",
+   "output": [
+    "a",
+    "b"
+   ],
+   "error": "NovaError: division by zero",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-error-inside-function-reports-the-line-in-the-function",
+   "spec": [
+    "err.model",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"start\")\ndef f(x) {\n    return x / 0\n}\nf(3)",
+   "output": [
+    "start"
+   ],
+   "error": "NovaError: division by zero",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-labelled-error-keeps-its-label",
+   "spec": [
+    "err.model",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(sqrt(-1))",
+   "output": [],
+   "error": "TypeError: sqrt() needs a number that is not negative",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-exit-status-of-a-clean-run-is-zero",
+   "spec": [
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"fine\")",
+   "output": [
+    "fine"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-exit-builtin-sets-the-status",
+   "spec": [
+    "err.uncaught"
+   ],
+   "profile": "host",
+   "source": "print(\"a\")\nexit(3)\nprint(\"b\")",
+   "output": [
+    "a"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-receives-the-message-as-a-string",
+   "spec": [
+    "err.try-catch",
+    "err.model"
+   ],
+   "profile": "core",
+   "source": "try { 1 / 0 } catch e { print(e, type(e)) }",
+   "output": [
+    "division by zero string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-message-includes-the-label-when-not-plain",
+   "spec": [
+    "err.try-catch",
+    "err.model"
+   ],
+   "profile": "core",
+   "source": "try { sqrt(-1) } catch e { print(e) }",
+   "output": [
+    "TypeError: sqrt() needs a number that is not negative"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-index-error-message",
+   "spec": [
+    "err.try-catch",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "try { [1][5] } catch e { print(e) }",
+   "output": [
+    "index 5 is out of range for a list of 1 item(s) - valid indexes are -1 to 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-name-error-message",
+   "spec": [
+    "err.try-catch",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "try { undefined_name } catch e { print(e) }",
+   "output": [
+    "undefined name 'undefined_name'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-try-without-error-skips-catch",
+   "spec": [
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { print(\"ok\") } catch e { print(\"no\") }\nprint(\"done\")",
+   "output": [
+    "ok",
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-without-a-name",
+   "spec": [
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { 1 / 0 } catch { print(\"caught\") }",
+   "output": [
+    "caught"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-statements-after-the-error-in-try-do-not-run",
+   "spec": [
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { print(1)\nprint(1 / 0)\nprint(2) } catch e { print(\"caught\") }",
+   "output": [
+    "1",
+    "caught"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-variable-is-local-to-the-catch-block",
+   "spec": [
+    "err.try-catch",
+    "scope.blocks",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "try { throw(\"x\") } catch e { }\nprint(e)",
+   "output": [],
+   "error": "NovaError: undefined name 'e'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-nested-try-inner-catches-first",
+   "spec": [
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { try { throw(\"inner\") } catch e { print(\"inner caught\", e) } print(\"after inner\") } catch e2 { print(\"outer\") }",
+   "output": [
+    "inner caught inner",
+    "after inner"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-error-in-catch-propagates-outward",
+   "spec": [
+    "err.try-catch",
+    "err.throw"
+   ],
+   "profile": "core",
+   "source": "try { try { throw(\"inner\") } catch e { throw(\"outer \" + e) } } catch e2 { print(e2) }",
+   "output": [
+    "outer inner"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-try-needs-catch-or-finally",
+   "spec": [
+    "err.try-catch",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "try { }",
+   "output": [],
+   "error": "NovaError: a 'try' needs a 'catch', a 'finally', or both",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-catch-without-try-error",
+   "spec": [
+    "err.try-catch",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "catch e { }",
+   "output": [],
+   "error": "NovaError: unexpected 'catch'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-errors-cross-function-boundaries",
+   "spec": [
+    "err.try-catch",
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "def boom() { return 1 / 0 }\ndef middle() { return boom() }\ntry { middle() } catch e { print(\"caught\", e) }",
+   "output": [
+    "caught division by zero"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-finally-runs-after-success",
+   "spec": [
+    "err.finally"
+   ],
+   "profile": "core",
+   "source": "try { print(\"t\") } finally { print(\"fin\") }",
+   "output": [
+    "t",
+    "fin"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-finally-runs-then-the-error-continues",
+   "spec": [
+    "err.finally",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "try { throw(\"a\") } finally { print(\"fin\") }\nprint(\"never\")",
+   "output": [
+    "fin"
+   ],
+   "error": "Error: a",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-finally-runs-after-catch",
+   "spec": [
+    "err.finally",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { throw(\"a\") } catch e { print(e) } finally { print(\"f\") }",
+   "output": [
+    "a",
+    "f"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-finally-runs-on-return",
+   "spec": [
+    "err.finally",
+    "scope.function"
+   ],
+   "profile": "core",
+   "source": "def f() { try { return 1 } finally { print(\"f\") } }\nprint(f())",
+   "output": [
+    "f",
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-throw-a-string",
+   "spec": [
+    "err.throw",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { throw(\"boom\") } catch e { print(e) }",
+   "output": [
+    "boom"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-throw-uncaught-reports-the-message",
+   "spec": [
+    "err.throw",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "throw(\"x\")",
+   "output": [],
+   "error": "Error: x",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-throw-needs-a-string",
+   "spec": [
+    "err.throw",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "throw(5)",
+   "output": [],
+   "error": "NovaError: throw needs a string, but got a number - use str() to convert it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-throw-takes-one-argument",
+   "spec": [
+    "err.throw",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "throw(\"a\", \"b\")",
+   "output": [],
+   "error": "NovaError: expected a closing ')', found ','",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-lexical-catalogue-unclosed-string",
+   "spec": [
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"abc",
+   "output": [],
+   "error": "NovaError: this string is never closed",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-lexical-catalogue-unknown-escape",
+   "spec": [
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"a\\qb\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\q'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-lexical-error-is-reported-before-anything-runs",
+   "spec": [
+    "err.lexical",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"runs?\")\nprint(\"abc",
+   "output": [],
+   "error": "NovaError: this string is never closed",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-error-is-reported-before-anything-runs",
+   "spec": [
+    "err.syntax",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"runs?\")\nlet x =",
+   "output": [],
+   "error": "NovaError: the expression ends too early",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-unexpected-token",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 +)",
+   "output": [],
+   "error": "NovaError: unexpected ')'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-expression-ends-too-early",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "1 +",
+   "output": [],
+   "error": "NovaError: the expression ends too early",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-let-needs-a-name",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let",
+   "output": [],
+   "error": "NovaError: expected a name after 'let', found the end of the input",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-let-needs-equals",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let x",
+   "output": [],
+   "error": "NovaError: expected a '=' after the name in a 'let', found the end of the input",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-unmatched-close-brace",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "}",
+   "output": [],
+   "error": "NovaError: unexpected '}'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-unmatched-close-paren",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1))",
+   "output": [],
+   "error": "NovaError: expected a new line between statements, found ')'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-assignment-target",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "1 = 2",
+   "output": [],
+   "error": "NovaError: the left side of '=' must be a variable, a list item or a field",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-assignment-to-a-call",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "f() = 1",
+   "output": [],
+   "error": "NovaError: the left side of '=' must be a variable, a list item or a field",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-def-needs-a-name",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "def\nf() { }",
+   "output": [],
+   "error": "NovaError: expected a function name after 'def', found the end of the line",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-block-brace-may-follow-on-the-next-line",
+   "spec": [
+    "err.syntax",
+    "lex.whitespace"
+   ],
+   "profile": "core",
+   "source": "if true\n{ print(1) }",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-syntax-else-may-start-the-next-line",
+   "spec": [
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "if false { print(1) }\nelse { print(2) }",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-name-undefined-name",
+   "spec": [
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(nowhere)",
+   "output": [],
+   "error": "NovaError: undefined name 'nowhere'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-type-operand-types",
+   "spec": [
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(1 + [])",
+   "output": [],
+   "error": "NovaError: cannot use '+' on a number and a list",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-type-mixed-comparison",
+   "spec": [
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "print(\"a\" < 1)",
+   "output": [],
+   "error": "NovaError: cannot compare a string with a number using '<'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-value-list-index-range-message",
+   "spec": [
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2, 3]\nprint(a[3])",
+   "output": [],
+   "error": "NovaError: index 3 is out of range for a list of 3 item(s) - valid indexes are -3 to 2",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-value-pop-from-empty-list",
+   "spec": [
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(pop([]))",
+   "output": [],
+   "error": "NovaError: pop() cannot take anything from an empty list",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-value-num-of-text",
+   "spec": [
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "print(num(\"12x\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"12x\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-value-for-step-must-be-positive",
+   "spec": [
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "for i = 0 to 3 step 0 { }",
+   "output": [],
+   "error": "NovaError: a 'for' step must be greater than zero (use 'downto' to count down)",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-value-labelled-pow-error",
+   "spec": [
+    "err.value",
+    "err.model"
+   ],
+   "profile": "core",
+   "source": "print(pow(0, -1))",
+   "output": [],
+   "error": "TypeError: pow(): 0.0 cannot be raised to a negative power",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-arithmetic-modulo-message",
+   "spec": [
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "print(5 % 0)",
+   "output": [],
+   "error": "NovaError: cannot take the remainder of a division by zero",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-call-wrong-argument-count",
+   "spec": [
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "def pair(a, b) { return a }\nprint(pair(1))",
+   "output": [],
+   "error": "NovaError: pair() expects 2 argument(s) but got 1",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-call-builtin-wrong-argument-count",
+   "spec": [
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "print(len())",
+   "output": [],
+   "error": "NovaError: len() takes 1 argument(s) but got 0",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-call-undefined-function",
+   "spec": [
+    "err.call",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "nothing_here()",
+   "output": [],
+   "error": "NovaError: undefined name 'nothing_here'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "err-a-caught-message-can-be-matched",
+   "spec": [
+    "err.try-catch",
+    "expr.in"
+   ],
+   "profile": "core",
+   "source": "try { 1 / 0 } catch e { if \"zero\" in e { print(\"math\") } else { print(\"other\") } }",
+   "output": [
+    "math"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "err-cleanup-pattern",
+   "spec": [
+    "err.try-catch",
+    "err.finally",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let trail = []\ndef risky(n) { if n > 1 { throw(\"too big: \" + str(n)) }\nappend(trail, n) }\nfor i = 0 to 2 { try { risky(i) } catch e { append(trail, e) } finally { append(trail, \"done\") } }\nprint(trail)",
+   "output": [
+    "[0, \"done\", 1, \"done\", \"too big: 2\", \"done\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}

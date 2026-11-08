@@ -1,0 +1,251 @@
+{
+ "area": "security",
+ "version": 1,
+ "cases": [
+  {
+   "name": "sec-core-has-no-dynamic-code",
+   "spec": [
+    "sec.no-dynamic-code",
+    "err.name",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { eval(\"1\") } catch e { print(e) }\ntry { exec(\"x = 1\") } catch e { print(e) }\ntry { compile(\"1\") } catch e { print(e) }\ntry { __import__(\"os\") } catch e { print(e) }\ntry { load(\"1\") } catch e { print(e) }",
+   "output": [
+    "undefined name 'eval'",
+    "undefined name 'exec'",
+    "undefined name 'compile'",
+    "undefined name '__import__'",
+    "undefined name 'load'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-core-has-no-reflection",
+   "spec": [
+    "sec.no-reflection",
+    "err.name",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { globals() } catch e { print(e) }\ntry { locals() } catch e { print(e) }\ntry { vars() } catch e { print(e) }\ntry { dir() } catch e { print(e) }\ntry { getattr({a: 1}, \"a\") } catch e { print(e) }\ntry { setattr({a: 1}, \"a\", 2) } catch e { print(e) }",
+   "output": [
+    "undefined name 'globals'",
+    "undefined name 'locals'",
+    "undefined name 'vars'",
+    "undefined name 'dir'",
+    "undefined name 'getattr'",
+    "undefined name 'setattr'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-core-has-no-host-reach-by-name",
+   "spec": [
+    "sec.principles",
+    "err.name",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { open(\"x\") } catch e { print(e) }\ntry { system(\"echo hi\") } catch e { print(e) }\ntry { subprocess } catch e { print(e) }\ntry { os } catch e { print(e) }\ntry { sys } catch e { print(e) }",
+   "output": [
+    "undefined name 'open'",
+    "undefined name 'system'",
+    "undefined name 'subprocess'",
+    "undefined name 'os'",
+    "undefined name 'sys'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-a-callee-cannot-see-its-callers-locals",
+   "spec": [
+    "sec.scope-isolation",
+    "scope.function"
+   ],
+   "profile": "core",
+   "source": "def inner() { return secret }\ndef outer() { let secret = 5\nreturn inner() }\nprint(outer())",
+   "output": [],
+   "error": "NovaError: undefined name 'secret'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "sec-a-callee-cannot-change-its-callers-variables",
+   "spec": [
+    "sec.scope-isolation",
+    "scope.assign"
+   ],
+   "profile": "core",
+   "source": "def meddle() { balance = 0\nreturn balance }\ndef account() { let balance = 100\nlet seen = meddle()\nreturn balance }\nprint(account())",
+   "output": [
+    "100"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-state-changes-only-through-shared-objects",
+   "spec": [
+    "sec.scope-isolation",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "def reset(acct) { acct.balance = 0 }\nlet mine = {balance: 100}\nlet yours = {balance: 100}\nreset(mine)\nprint(mine.balance, yours.balance)",
+   "output": [
+    "0 100"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-reserved-names-cannot-be-shadowed-to-intercept-calls",
+   "spec": [
+    "sec.scope-isolation",
+    "scope.reserved",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "def len(x) { return 0 }",
+   "output": [],
+   "error": "NovaError: 'len' is a built-in function and cannot be used as a function name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-float-conversion",
+   "spec": [
+    "sec.error-boundary",
+    "port.integers",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\ntry { print(big * 1.0) } catch e { print(\"caught:\", e) }",
+   "output": [
+    "caught: a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-division",
+   "spec": [
+    "sec.error-boundary",
+    "port.integers",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\ntry { print(big / 3) } catch e { print(\"caught:\", e) }",
+   "output": [
+    "caught: a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-in-builtins",
+   "spec": [
+    "sec.error-boundary",
+    "port.integers",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\ntry { print(sqrt(big)) } catch e { print(\"caught:\", e) }",
+   "output": [
+    "caught: TypeError: sqrt(): a number is too large for this function"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-infinity-to-integer",
+   "spec": [
+    "sec.error-boundary",
+    "port.floats",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\ntry { print(floor(inf)) } catch e { print(\"caught:\", e) }\ntry { print(round(inf - inf)) } catch e { print(\"caught:\", e) }",
+   "output": [
+    "caught: TypeError: floor() needs a finite number, but got inf",
+    "caught: TypeError: round() needs a finite number, but got nan"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-loop-bounds",
+   "spec": [
+    "sec.error-boundary",
+    "port.floats",
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\ntry { for i = 0 to inf { break } } catch e { print(\"caught:\", e) }",
+   "output": [
+    "caught: the end of a 'for' range must be a finite number, but this is inf"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "sec-host-failures-are-nova-errors-non-decimal-digits",
+   "spec": [
+    "sec.error-boundary",
+    "lex.numbers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(num(\"²\"))",
+   "output": [],
+   "error": "NovaError: num() cannot read a number from \"²\"",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "sec-sandbox-escape-attempts-by-name-are-just-undefined-names",
+   "spec": [
+    "sec.principles",
+    "sec.no-reflection",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "let attempts = [\"__builtins__\", \"__class__\", \"__import__\", \"builtins\", \"globals\"]\nprint(len(attempts))\ntry { __builtins__ } catch e { print(e) }\ntry { __class__ } catch e { print(e) }",
+   "output": [
+    "5",
+    "undefined name '__builtins__'",
+    "undefined name '__class__'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}

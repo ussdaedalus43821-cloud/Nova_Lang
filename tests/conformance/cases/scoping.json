@@ -1,0 +1,863 @@
+{
+ "area": "scoping",
+ "version": 1,
+ "cases": [
+  {
+   "name": "scope-assignment-at-top-level-creates-a-global",
+   "spec": [
+    "scope.global",
+    "scope.assign"
+   ],
+   "profile": "core",
+   "source": "x = 1\nprint(x)",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-let-declares-and-redeclares",
+   "spec": [
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "let x = 1\nlet x = 2\nprint(x)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-let-right-side-sees-no-new-name",
+   "spec": [
+    "scope.let",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "let x = x",
+   "output": [],
+   "error": "NovaError: undefined name 'x'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-assign-to-undefined-in-expression-error",
+   "spec": [
+    "scope.assign",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "x = x + 1",
+   "output": [],
+   "error": "NovaError: undefined name 'x'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-global-containers-can-be-mutated-from-functions",
+   "spec": [
+    "scope.global",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let state = {n: 0}\ndef bump() { state.n = state.n + 1 }\nbump()\nbump()\nprint(state.n)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-read-of-undefined-name-error",
+   "spec": [
+    "scope.global",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(missing)",
+   "output": [],
+   "error": "NovaError: undefined name 'missing'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-let-in-block-is-local",
+   "spec": [
+    "scope.blocks",
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "let x = 1\nif true { let x = 2\nprint(x) }\nprint(x)",
+   "output": [
+    "2",
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-assign-in-block-updates-outer",
+   "spec": [
+    "scope.blocks",
+    "scope.assign"
+   ],
+   "profile": "core",
+   "source": "let x = 1\nif true { x = 2 }\nprint(x)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-new-name-in-block-is-local",
+   "spec": [
+    "scope.blocks",
+    "scope.assign",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "if true { y = 5 }\nprint(y)",
+   "output": [],
+   "error": "NovaError: undefined name 'y'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-let-in-block-ends-with-block",
+   "spec": [
+    "scope.blocks",
+    "scope.let",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "if true { let y = 5 }\nprint(y)",
+   "output": [],
+   "error": "NovaError: undefined name 'y'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-while-body-is-a-block",
+   "spec": [
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "let i = 0\nwhile i < 3 { let t = i * 2\ni = i + 1 }\nprint(i)\nprint(t)",
+   "output": [
+    "3"
+   ],
+   "error": "NovaError: undefined name 't'",
+   "error_line": 5,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-block-locals-are-fresh-each-iteration",
+   "spec": [
+    "scope.blocks",
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "let i = 0\nlet seen = []\nwhile i < 3 { let n = i * 10\nappend(seen, n)\ni = i + 1 }\nprint(seen)",
+   "output": [
+    "[0, 10, 20]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-declared-in-block-is-local",
+   "spec": [
+    "scope.blocks",
+    "scope.function",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "if true { def h() { return 1 } }\nprint(h())",
+   "output": [],
+   "error": "NovaError: undefined name 'h'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-for-variable-is-scoped-to-the-loop",
+   "spec": [
+    "scope.loop-var",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "for i = 0 to 2 { }\nprint(i)",
+   "output": [],
+   "error": "NovaError: undefined name 'i'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-for-in-variable-is-scoped-to-the-loop",
+   "spec": [
+    "scope.loop-var",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "for x in [1, 2] { }\nprint(x)",
+   "output": [],
+   "error": "NovaError: undefined name 'x'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-for-variable-shadows-an-outer-name",
+   "spec": [
+    "scope.loop-var",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "let n = 10\nfor n = 0 to 2 { }\nprint(n)",
+   "output": [
+    "10"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-for-range-bounds-include-both-ends",
+   "spec": [
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "let s = []\nfor i = 0 to 3 { append(s, i) }\nfor i = 3 downto 1 { append(s, i) }\nfor i = 0 to 10 step 5 { append(s, i) }\nprint(s, range(3))",
+   "output": [
+    "[0, 1, 2, 3, 3, 2, 1, 0, 5, 10] [0, 1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-assignment-to-outer-name-makes-a-local",
+   "spec": [
+    "scope.function",
+    "scope.assign"
+   ],
+   "profile": "core",
+   "source": "let x = 1\ndef f() { x = 2\nreturn x }\nprint(f(), x)",
+   "output": [
+    "2 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-new-name-is-local",
+   "spec": [
+    "scope.function",
+    "scope.assign",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "def f() { z = 1\nreturn z }\nprint(f())\nprint(z)",
+   "output": [
+    "1"
+   ],
+   "error": "NovaError: undefined name 'z'",
+   "error_line": 4,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-reads-globals-at-call-time",
+   "spec": [
+    "scope.function",
+    "scope.order"
+   ],
+   "profile": "core",
+   "source": "let x = 1\ndef f() { return x }\nx = 5\nprint(f())",
+   "output": [
+    "5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-may-use-a-global-defined-later",
+   "spec": [
+    "scope.function",
+    "scope.order"
+   ],
+   "profile": "core",
+   "source": "def f() { return later }\nlet later = 3\nprint(f())",
+   "output": [
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-functions-may-call-functions-defined-later",
+   "spec": [
+    "scope.function",
+    "scope.order"
+   ],
+   "profile": "core",
+   "source": "def f() { return g() }\ndef g() { return 7 }\nprint(f())",
+   "output": [
+    "7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-use-before-definition-at-top-level-error",
+   "spec": [
+    "scope.order",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(g())\ndef g() { return 1 }",
+   "output": [],
+   "error": "NovaError: undefined name 'g'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-let-inside-function-shadows-global",
+   "spec": [
+    "scope.function",
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "def f() { let x = 2\nreturn x }\nlet x = 1\nprint(f(), x)",
+   "output": [
+    "2 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-local-declared-after-read-keeps-reading-the-global",
+   "spec": [
+    "scope.function",
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "let x = 5\ndef f() { print(x)\nlet x = 2\nprint(x) }\nf()",
+   "output": [
+    "5",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-function-name-can-be-reused-inside-itself",
+   "spec": [
+    "scope.function",
+    "scope.let"
+   ],
+   "profile": "core",
+   "source": "def f() { let f = 1\nreturn f }\nprint(f())",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-nested-function-is-local-to-its-function",
+   "spec": [
+    "scope.function",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "def a() { def b() { return 1 }\nreturn b() }\nprint(a())\nprint(b())",
+   "output": [
+    "1"
+   ],
+   "error": "NovaError: undefined name 'b'",
+   "error_line": 4,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-if-inside-function-updates-function-local",
+   "spec": [
+    "scope.function",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "def f() { let x = 1\nif true { x = 2 }\nreturn x }\nprint(f())",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-parameters-are-locals",
+   "spec": [
+    "scope.param"
+   ],
+   "profile": "core",
+   "source": "let x = 1\ndef f(x) { x = x + 1\nreturn x }\nprint(f(10), x)",
+   "output": [
+    "11 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-duplicate-parameter-error",
+   "spec": [
+    "scope.param",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "def f(a, a) { return a }\nprint(f(1, 2))",
+   "output": [],
+   "error": "NovaError: parameter 'a' is listed twice",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-parameters-are-passed-by-value-for-numbers",
+   "spec": [
+    "scope.param",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "def f(n) { n = n + 1\nreturn n }\nlet k = 1\nprint(f(k), k)",
+   "output": [
+    "2 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-closure-over-a-shared-container",
+   "spec": [
+    "scope.closure",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "def counter() { let c = {n: 0}\ndef inc() { c.n = c.n + 1\nreturn c.n }\nreturn inc }\nlet a = counter()\nlet b = counter()\nprint(a(), a(), a(), b())",
+   "output": [
+    "1 2 3 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-closure-reads-enclosing-locals",
+   "spec": [
+    "scope.closure"
+   ],
+   "profile": "core",
+   "source": "def outer() { let v = 1\ndef inner() { return v }\nreturn inner }\nprint(outer()())",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-closure-assignment-makes-its-own-local",
+   "spec": [
+    "scope.closure",
+    "scope.assign"
+   ],
+   "profile": "core",
+   "source": "def outer() { let v = 1\ndef inner() { v = 2 }\ninner()\nreturn v }\nprint(outer())",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-lists-are-shared-not-copied",
+   "spec": [
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let a = [1]\nlet b = a\nappend(b, 2)\nprint(a, b)",
+   "output": [
+    "[1, 2] [1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-list-argument-is-mutated-by-the-callee",
+   "spec": [
+    "scope.references",
+    "scope.param"
+   ],
+   "profile": "core",
+   "source": "let a = [1]\ndef f(l) { append(l, 2) }\nf(a)\nprint(a)",
+   "output": [
+    "[1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-numbers-are-copied",
+   "spec": [
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let a = 1\nlet b = a\nb = 2\nprint(a, b)",
+   "output": [
+    "1 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-dicts-are-shared-not-copied",
+   "spec": [
+    "scope.references",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "let d = {n: 1}\nlet e = d\ne.n = 2\nprint(d.n)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-builtin-names-cannot-be-variables",
+   "spec": [
+    "scope.reserved",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "let print = 5",
+   "output": [],
+   "error": "NovaError: 'print' is a built-in function and cannot be used as a variable name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-builtin-names-cannot-be-assigned",
+   "spec": [
+    "scope.reserved",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print = 1",
+   "output": [],
+   "error": "NovaError: 'print' is a built-in function and cannot be used as a variable name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-builtin-names-cannot-be-function-names",
+   "spec": [
+    "scope.reserved",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "def len() { }",
+   "output": [],
+   "error": "NovaError: 'len' is a built-in function and cannot be used as a function name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-builtin-names-cannot-be-parameters",
+   "spec": [
+    "scope.reserved",
+    "scope.param",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "def f(len) { return len }",
+   "output": [],
+   "error": "NovaError: 'len' is a built-in function and cannot be used as a parameter name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-return-at-top-level-error",
+   "spec": [
+    "scope.toplevel",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "return 1",
+   "output": [],
+   "error": "NovaError: 'return' only makes sense inside a function",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-break-outside-loop-error",
+   "spec": [
+    "scope.toplevel",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "break",
+   "output": [],
+   "error": "NovaError: 'break' is not inside a loop",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-continue-outside-loop-error",
+   "spec": [
+    "scope.toplevel",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "continue",
+   "output": [],
+   "error": "NovaError: 'continue' is not inside a loop",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-break-inside-function-but-outside-loop-error",
+   "spec": [
+    "scope.toplevel",
+    "scope.function",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "def f() { break }\nf()",
+   "output": [],
+   "error": "NovaError: 'break' is not inside a loop in f()",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-return-inside-loop-at-top-level-error",
+   "spec": [
+    "scope.toplevel",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "while true { return 1 }",
+   "output": [],
+   "error": "NovaError: 'return' only makes sense inside a function",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-break-and-continue-in-loops",
+   "spec": [
+    "scope.toplevel",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "let i = 0\nwhile true { i = i + 1\nif i > 4 { break }\nif i % 2 == 0 { continue }\nprint(i) }",
+   "output": [
+    "1",
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-return-leaves-nested-blocks",
+   "spec": [
+    "scope.function",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "def find(a, v) { for x in a { if x == v { return \"found\" } }\nreturn \"missing\" }\nprint(find([1, 2, 3], 2), find([1], 9))",
+   "output": [
+    "found missing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-try-bodies-are-block-scopes",
+   "spec": [
+    "scope.blocks",
+    "err.try-catch",
+    "err.finally"
+   ],
+   "profile": "core",
+   "source": "try { let a = 1\nthrow(\"x\") } catch e { let b = 2 } finally { let c = 3 }\ntry { print(a) } catch e { print(e) }\ntry { print(b) } catch e { print(e) }\ntry { print(c) } catch e { print(e) }",
+   "output": [
+    "undefined name 'a'",
+    "undefined name 'b'",
+    "undefined name 'c'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-else-body-is-a-block-scope",
+   "spec": [
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "if false { } else { let z = 1 }\ntry { print(z) } catch e { print(e) }",
+   "output": [
+    "undefined name 'z'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-list-item-assignment",
+   "spec": [
+    "scope.assign",
+    "expr.index"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2, 3]\na[0] = 9\na[-1] = 7\nprint(a)",
+   "output": [
+    "[9, 2, 7]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-dict-field-assignment-sets-or-adds",
+   "spec": [
+    "scope.assign",
+    "expr.dicts",
+    "expr.member"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1}\nd.a = 2\nd.b = 3\nd[\"c\"] = 4\nprint(d)",
+   "output": [
+    "{a: 2, b: 3, c: 4}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "scope-list-item-assignment-out-of-range-error",
+   "spec": [
+    "scope.assign",
+    "err.value"
+   ],
+   "profile": "core",
+   "source": "let a = [1, 2]\na[2] = 9",
+   "output": [],
+   "error": "NovaError: index 2 is out of range for a list of 2 item(s) - valid indexes are -2 to 1",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-strings-cannot-be-assigned-into",
+   "spec": [
+    "scope.assign",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let s = \"ab\"\ns[0] = \"x\"",
+   "output": [],
+   "error": "NovaError: strings cannot be changed in place - build a new one instead",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "scope-assignment-target-must-be-assignable",
+   "spec": [
+    "scope.assign",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "1 = 2",
+   "output": [],
+   "error": "NovaError: the left side of '=' must be a variable, a list item or a field",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  }
+ ]
+}

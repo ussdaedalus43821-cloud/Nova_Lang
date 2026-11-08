@@ -146,6 +146,17 @@ runs a longer soak of random programs. Before sending a change:
   new language feature or built-in, rather than only testing it by hand
   at the REPL.
 
+## The specification and the conformance corpus
+
+[`docs/spec/`](docs/spec/README.md) is the normative statement of the language
+([ADR 0001](docs/decisions/0001-specification-is-normative.md)) and
+[`tests/conformance/`](tests/conformance/README.md) is its host-neutral test
+corpus. A change to what a program means, prints or reports as an error changes
+the spec section that describes it and the cases that cite it, in the same pull
+request; a new section needs a case, and the `conformance` station fails
+otherwise. If an engine disagrees with the text and you are not fixing it now,
+record it in `docs/spec/DIVERGENCES.md` with a case; do not loosen the case.
+
 ## Continuous integration
 
 Pull requests run the quick tier of the suite on GitHub Actions; see
