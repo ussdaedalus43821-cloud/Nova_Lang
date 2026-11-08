@@ -20,7 +20,7 @@ No `eval()`. No `exec()`. No parser generators. Every stage is built by
 hand. See [Architecture](#architecture) for how the pieces fit, and for
 the tree-walking interpreter that is kept as the fallback and reference.
 
-**Current release: v2.0.1.** See [`CHANGELOG.md`](CHANGELOG.md) for the
+**Current release: v2.1.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history, from the 14 build stages of 1.x to the bytecode VM.
 
 ## Contents
@@ -473,7 +473,7 @@ narrow bridge — not unrestricted process access.
 ```python
 from novalang import Nova, NovaLangError
 
-nova = Nova()
+nova = Nova()                           # add allow_python=True to give scripts python.* (see Security)
 nova.load_file("script.nova")
 result = nova.call("add", 2, 3)          # call a NovaLang function
 value = nova.eval("1 + 2 * 3")            # evaluate an expression
@@ -487,7 +487,7 @@ except NovaLangError as error:
 
 | Method | Purpose |
 |---|---|
-| `Nova()` | A fresh, isolated interpreter — nothing is shared between instances |
+| `Nova(engine=None, allow_python=False)` | A fresh, isolated interpreter — nothing is shared between instances. `python.*` is **off** unless `allow_python=True` |
 | `eval(code)` / `exec(code)` | Run a string of NovaLang, returning its value (or discarding it) — cached by source text, so calling the same script every frame costs no repeated parsing |
 | `compile(code)` | Lex and parse once, returning a `CompiledScript` you can `run()` repeatedly yourself |
 | `load_file(path)` | Read and run a `.nova` file; its own relative imports resolve against its directory |
@@ -533,7 +533,9 @@ NovaLang `try`/`catch` can handle. Host `SystemExit` and `KeyboardInterrupt`
 remain control-flow signals. A failed operation does not roll back host mutations
 that already happened.
 
-From the NovaLang side, the `python` namespace reaches back into Python:
+From the NovaLang side, the `python` namespace reaches back into Python — once the
+host has asked for it with `Nova(allow_python=True)` (without that, every `python.*`
+call refuses with a `PythonError`):
 
 ```nova
 python.import("math")                # only succeeds for an allowlisted module
@@ -706,9 +708,29 @@ the host process:
   made stay made. This is expected behavior, not corruption — treat each
   `python.set`/attribute write as taking effect immediately, not as part
   of an atomic batch.
-- None of this matters when running `novalang.py` directly — the `python`
-  namespace only exists for a script running *inside* an embedding Python
-  program via the `Nova` class.
+- **`python.*` is off by default.** Without `--allow-python` on the command
+  line, or `Nova(allow_python=True)` in an embedding host, `python.import`,
+  `call`, `get` and `set` all refuse with a `PythonError`. A host that runs
+  scripts it did not write should leave it off and hand over what it means
+  to with `expose_global()`.
+- **Names that start with `_` are unreachable** through `python.*` and
+  through a proxy, for reading *and* writing, so `json.__builtins__`,
+  `obj.__class__` and an object's private state are all out of reach.
+- **A module alias is not a way round the allowlist.** An attribute whose
+  value is a module is visible only if that module is itself allowed (on the
+  list, or exposed with `expose_module`). `re.enum.bltns`, `json.codecs` and
+  `statistics.sys` would otherwise lead to `builtins` and `sys`. A module
+  that is handed over stays a proxy, and printing one shows
+  `<python object module>`. A test walks every path the gate allows from each
+  allowed module, on every Python the CI matrix covers, and fails if one
+  reaches a forbidden module or a builtin such as `eval` or `open`.
+- This is **capability gating, not a sandbox.** Run code you did not write in
+  a separate process or container as well; see
+  [`docs/decisions/0003-security-stance.md`](docs/decisions/0003-security-stance.md)
+  and [`docs/design/python-bridge-hardening.md`](docs/design/python-bridge-hardening.md).
+
+This changed in 2.1.0 (issue 1): before it, `python.*` was on everywhere and
+reachable names included private attributes and module aliases.
 
 This design was a deliberate departure from an earlier, broader spec
 (unrestricted access to any Python module/function) — see

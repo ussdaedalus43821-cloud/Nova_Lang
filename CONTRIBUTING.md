@@ -68,7 +68,12 @@ a note explaining why, not a quiet workaround.
 - **`python.*` stays a curated bridge, not open process access.** `
   python.import()`'s allowlist and the explicit `expose()`/
   `expose_module()`/`expose_global()` registration model are a deliberate
-  security boundary (see `README.md`'s Security section and
+  security boundary, and `python.*` is off unless `--allow-python` or
+  `Nova(allow_python=True)` asks for it. Every access goes through
+  `bridge_lookup` (names starting with `_` and ungranted modules are
+  hidden); do not add a path around it. The reachability test in
+  `tests/embedding/test_python_bridge.py` must keep passing on every Python
+  in the matrix (see `README.md`'s Security section and
   `CHANGELOG.md`'s `[0.12.0]` entry). Don't widen what a NovaLang script
   can reach by default; if a use case needs more, that's what
   `expose_module()` is for — from the *embedding* Python program, not

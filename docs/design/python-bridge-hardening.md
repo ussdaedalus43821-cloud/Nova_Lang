@@ -1,8 +1,8 @@
 # Design: closing the `python.*` bridge escapes (issue 1)
 
-Status: **Design approved by the owner on 2026-11-08; nothing in this
-document is implemented yet.** Implementation follows the issue 3 change, on
-its own branch.
+Status: **Implemented in 2.1.0** (branch `claude/issue-1-python-bridge`). The
+design was approved by the owner on 2026-11-08; the notes under
+"As implemented" record where the code differs from the plan or adds to it.
 
 Issue 1 reports that `python.get()` can reach Python's `builtins` and so run
 arbitrary code, contradicting the README's description of `python.*` as a
@@ -129,11 +129,50 @@ module attribute, stop working, and every host that uses `python.*` must pass
 `allow_python=True`. It needs a changelog entry, a README correction, and a
 minor version bump (2.1.0).
 
+## As implemented
+
+- **Where the gate lives.** `bridge_lookup(owner, name, interpreter)` in
+  `novalang.py` returns the attribute or a sentinel; `resolve_python_path`,
+  `python.set`, and `PythonObjectProxy` reads, writes, `in` and listing all
+  call it. Writes also pass `bridge_write_check`.
+- **A second choke point (added).** `to_nova_value` refuses a module that is
+  not granted. The attribute gate cannot see a module that arrives inside a
+  dict or a list, or as the result of a call, so conversion checks too.
+- **What "granted" means.** The top-level name is on `PYTHON_IMPORT_ALLOWLIST`
+  or in `interpreter.python_granted`, which `Nova.expose_module`, `expose` and
+  `expose_global` fill when given a module. It is by top-level name, so
+  exposing `os` does not grant `os.path` (the module `posixpath`): a host that
+  wants that exposes it as well.
+- **`--bootstrap` needed no change to `novalang.nova`.** Its `python.*`
+  built-ins already call the host's `python`, which is the refusing stub when
+  the switch is off. The flag only had to reach the host interpreter that
+  `bootstrap.run_bootstrap` creates, so `run_bootstrap` takes `allow_python`
+  (the `__main__` copy of `novalang.py` reads the flag, and `bootstrap.py`
+  imports a second copy that never saw it, as with `--tree-walk`).
+- **Flags.** `--allow-python` and `--tree-walk` are both accepted before the
+  file or subcommand, in either order. After the file they belong to the
+  script.
+- **The reachability test** is `tests/embedding/test_python_bridge.py`
+  (`ReachabilityTests`). It walks modules and classes to depth four, with and
+  without the gate; without it the walk finds 22 routes on Python 3.13
+  (`re.enum.bltns`, `json.codecs.builtins`, `statistics.sys`, ...), which is
+  what keeps a pass meaningful.
+- **Version.** 2.1.0.
+
 ## What this does not do
 
 - **It is not a sandbox.** It follows ADR 0003's second option: deny by
   default, grant explicitly, test every denial, and say that untrusted code
   still needs a separate process or container.
+- **A script can still overwrite public attributes of an allowed module.**
+  `python.set("json.dumps", 5)` replaces `json.dumps` for the whole process,
+  and `python.set("random.random", ...)` likewise. That can corrupt the host
+  and other scripts, though it does not give a script new capabilities. It was
+  found while implementing this design and is not covered by it. The
+  suggested follow-up is to refuse writes into the modules on
+  `PYTHON_IMPORT_ALLOWLIST` and keep them for objects and modules the host
+  exposed; it is a further behavior change for hosts, so it is the owner's
+  decision.
 - A script can still read the string form of private state through
   `string.Formatter`, which formats attribute chains. That leaks text, not
   objects, and does not run code. It is a documented residual.

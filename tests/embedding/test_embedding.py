@@ -54,7 +54,7 @@ class RejectingRead:
 
 class EmbeddingContract:
     def setUp(self):
-        self.nova = nl.Nova(self.engine)
+        self.nova = nl.Nova(self.engine, allow_python=True)
 
     def assert_nova_error(self, operation, fragment, label=None):
         with self.assertRaises(nl.NovaLangError) as caught:
@@ -103,7 +103,7 @@ class EmbeddingContract:
 
     def test_callback_errors_do_not_leak_state_between_instances(self):
         program = "let state = {count: 0}\ndef next() { state.count = state.count + 1; return state.count }"
-        other = nl.Nova(self.engine)
+        other = nl.Nova(self.engine, allow_python=True)
         self.nova.exec(program)
         other.exec(program)
         first = self.nova.eval("next")
@@ -313,20 +313,20 @@ print(message)
             path.write_text(source, encoding="utf-8")
             for engine in ("vm", "tree"):
                 with self.subTest(engine=engine):
-                    direct = nl.Nova(engine)
+                    direct = nl.Nova(engine, allow_python=True)
                     direct.expose("box", RejectingWrite())
                     out = io.StringIO()
                     with contextlib.redirect_stdout(out):
                         direct.exec(source)
                     self.assertEqual(out.getvalue(), expected)
-                    def make_interpreter(selected=None):
-                        interpreter = nl.Interpreter(selected)
+                    def make_interpreter(selected=None, allow_python=None):
+                        interpreter = nl.Interpreter(selected, allow_python=allow_python)
                         interpreter.python_registry["box"] = RejectingWrite()
                         return interpreter
                     out = io.StringIO()
                     with patch.object(bootstrap, "Interpreter", make_interpreter), \
                             contextlib.redirect_stdout(out):
-                        status = bootstrap.run_bootstrap(str(path), engine=engine)
+                        status = bootstrap.run_bootstrap(str(path), engine=engine, allow_python=True)
                     self.assertEqual(status, 0)
                     self.assertEqual(out.getvalue(), expected)
 

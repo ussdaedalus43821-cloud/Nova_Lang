@@ -24,7 +24,60 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ---
 
-## [Unreleased] - Baseline continuation
+## [Unreleased]
+
+## [2.1.0] - 2026-11-08 — Verification, portability, and a closed `python.*` bridge
+
+### Security
+- **`python.*` could reach arbitrary code (issue 1); it is now closed.** After
+  any allowlisted module was imported, `python.get("json.__builtins__")`
+  returned Python's `builtins`, and with it `eval`, `exec`, `open` and
+  `__import__`. Three things were wrong and all three are fixed:
+  - `python.get`, `call` and `set` walked every dotted component with
+    `getattr` and rejected none. The same unfiltered `getattr`/`setattr` sat
+    in `PythonObjectProxy` lookups and assignments, so an object given to
+    `expose_global` had its private (`_`) state readable and writable.
+    Names that start with `_` are now unreachable through `python.*` and
+    through a proxy, for reads, writes and `in`.
+  - Blocking `_` names alone would not have closed it. Allowlisted modules
+    expose other modules under public names: `re.enum.bltns` is `builtins`,
+    `json.codecs.builtins` is `builtins`, `statistics.sys` is `sys`. An
+    attribute whose value is a module is now visible only if that module is
+    itself allowed (on the `python.import` list, or exposed by the host with
+    `expose_module`, `expose` or `expose_global`), and a module that arrives
+    inside a dict, a list or a call result is refused the same way. A hidden
+    name reads exactly like an absent one.
+  - `python` existed in every run, though the README said it did not outside
+    an embedding host. It is now **off unless asked for**:
+    `novalang.py --allow-python ...` on the command line, and
+    `Nova(allow_python=True)` for a host. Otherwise every `python.import`,
+    `call`, `get` and `set` raises `PythonError: python.* is disabled`. The
+    self-hosted interpreter forwards to the host, so one switch covers
+    `--bootstrap` too.
+- Printing a module proxy ran the interpreter out of stack, because walking a
+  module's attributes leads to more modules. Any live-object proxy now prints
+  shallowly as `<python object module>`.
+- A test walks every path the gate allows from each allowlisted module and
+  fails if it reaches a forbidden module (`builtins`, `sys`, `os`, `io`,
+  `codecs`, ...) or a builtin such as `eval` or `open`, found by identity. It
+  runs on every Python in the CI matrix, because module internals change
+  between releases. Design and reasoning: `docs/design/python-bridge-hardening.md`.
+- This is capability gating, not a sandbox (ADR 0003): run code you did not
+  write in a separate process as well.
+
+### Changed — breaking for embedding hosts
+- **`Nova()` no longer gives scripts `python.*`.** A host whose scripts use
+  `python.import`, `python.call`, `python.get` or `python.set` must create
+  `Nova(allow_python=True)`. Scripts that only use `expose_global()` objects
+  need no change. Scripts that read or write `_`-prefixed attributes of
+  exposed objects, or that reached a module through another module's
+  attribute (`os.path` when only `os` was exposed, for example), stop working;
+  expose the second module with `expose_module` as well. `examples/embedding_demo.py`
+  now passes `allow_python=True`.
+- `Interpreter(engine=None, allow_python=None)` takes the same switch, and
+  `bootstrap.run_bootstrap(..., allow_python=False)` and
+  `python3 bootstrap.py --allow-python file.nova` carry it.
+
 
 ### Fixed
 - `floor()`, `ceil()` and `round()` of NaN or infinity leaked a raw Python

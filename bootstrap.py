@@ -58,7 +58,8 @@ def type_check_graph(target_path):
     return ["TypeCheckError: " + line for line in lines]
 
 
-def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, engine=None):
+def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, engine=None,
+                  allow_python=False):
     """Run `target_path` through the self-hosted interpreter defined in
     `engine_path`. `script_args` become what the target's own args() call
     sees - the Stage 11 standard-library built-in, read from novalang.py's
@@ -87,7 +88,11 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # `engine` ("vm" or "tree") is passed in, never read from novalang's
     # DEFAULT_ENGINE: when novalang.py runs as a script it is __main__, and
     # `import novalang` here is a second copy that never saw --tree-walk.
-    interpreter = Interpreter(engine)
+    # `allow_python` is passed in for the same reason as `engine`: the flag was
+    # read by the __main__ copy of novalang.py, not by this module's copy.
+    # novalang.nova forwards python.* to this interpreter's own `python`, so
+    # the one switch covers the program it runs.
+    interpreter = Interpreter(engine, allow_python=allow_python)
     # novalang.nova tracks "the directory of whichever file is currently
     # executing" itself, in its own FILE_STACK - run_file() pushes the
     # target's directory before running it, so the target's own relative
@@ -113,10 +118,17 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
 
 def main(argv):
     if len(argv) < 2:
-        print("usage: bootstrap.py <target.nova> [script args...]", file=sys.stderr)
+        print("usage: bootstrap.py [--allow-python] <target.nova> [script args...]", file=sys.stderr)
         return 2
-    target_path = argv[1]
-    return run_bootstrap(target_path, script_args=argv[2:])
+    args = argv[1:]
+    allow_python = False
+    if args and args[0] == "--allow-python":
+        allow_python = True
+        args = args[1:]
+        if not args:
+            print("usage: bootstrap.py [--allow-python] <target.nova> [script args...]", file=sys.stderr)
+            return 2
+    return run_bootstrap(args[0], script_args=args[1:], allow_python=allow_python)
 
 
 if __name__ == "__main__":
