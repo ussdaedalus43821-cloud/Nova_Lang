@@ -15,7 +15,7 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | `harness` | 8 | timeout rejection, report flushing, station selection, exit status, timezone-portable standard-library checks |
 | `cli` | 32 | formatter, linter, disassembly and bootstrap command lines: modes, diagnostics, exit codes, batch continuation, malformed UTF-8 |
 | `embedding` | 53 | callbacks into Python, value conversion, live-object reads and writes, host errors, import allowlist, bootstrap error-boundary parity |
-| `repl` | 26 | multiline drafts, error recovery, EOF, session state, on both engines |
+| `repl` | 46 | multiline drafts, error recovery, EOF, session state, `help`, Ctrl-C, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
 | `portability` | 14 | Windows paths, file URIs, newlines, the time limit and the tree-walker skip, simulated on any platform |
 
@@ -31,15 +31,13 @@ branch coverage including Python subprocesses (see `docs/COVERAGE.md`).
 ## Roadmap
 
 The milestones after M6 are in [`docs/ROADMAP.md`](docs/ROADMAP.md). The first,
-M7, adds continuous verification. A CI workflow is written (see
-[`docs/CI.md`](docs/CI.md)) but has not yet run on GitHub, so every result above
-was still produced by running the suite by hand.
+M7, added continuous verification: the suite runs on GitHub across Linux, macOS
+and Windows (see [`docs/CI.md`](docs/CI.md)), and a pull request needs the
+`fast` check to merge. The next milestones are M8 (the GDScript VM) and M9 (the
+language specification).
 
 ## Known gaps
 
-- The REPL's blank-line check looks for a raw `{` in the draft, so a brace
-  inside a quoted string can affect whether an incomplete draft is submitted.
-- The REPL `help` command and Ctrl-C handling have no transcript tests.
 - NovaLang-source and JavaScript (VS Code extension) coverage are not
   measured; Python coverage is.
 - CI has shown the full suite passing on Linux for Python 3.7 through 3.13 and

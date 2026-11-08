@@ -46,8 +46,10 @@ full history, from the 14 build stages of 1.x to the bytecode VM.
 ## Quick start
 
 Requires Python 3.7+. Nothing else — no `pip install`, no build step.
-CI runs the full suite on Linux for Python 3.7 through 3.13 and on macOS for
-3.12; Windows is being brought up (see [`docs/CI.md`](docs/CI.md)).
+CI runs the full suite on Linux for Python 3.7 through 3.13, on macOS for 3.12
+and on Windows for 3.12. Windows with Python 3.7 also passes, but only with the
+tree-walker's deepest recursions skipped in one comparison (see
+[`docs/CI.md`](docs/CI.md)), so it is reported, not required.
 
 ```bash
 git clone <this repository>
@@ -156,6 +158,21 @@ what an operation means (`binary_operation`, `compare_operation`,
 `index_operation` and the rest), so they cannot disagree about
 semantics, only about control flow, and that is what station 11 tests.
 
+**Known limitation: deep recursion under `--tree-walk` on Windows.** The
+tree-walker spends about nine Python frames on each NovaLang call, and before
+Python 3.11 each of those also uses native stack. Windows has far less of it
+than Linux or macOS, so a program that recurses toward the 1200-call limit
+can overflow the native stack there and end the whole process, instead of
+printing `call depth of 1200 exceeded`. This was observed on Windows with
+Python 3.7; Python 3.8 to 3.10 on Windows are expected to behave the same but
+are not tested, and Python 3.11 and later are not affected. The default
+engine is the VM, which keeps NovaLang calls on its own stack and is not
+affected. To keep the comparison honest, station 11 does not give the
+tree-walker the 16 of its 300 generated programs that reach the limit on those
+platforms: it decides them on the VM, prints a `SKIPPED:` line and compares the
+other 284 on both engines (`docs/CI.md`). A larger-stack thread for the
+tree-walker would remove the limitation; it has not been decided.
+
 ### Around the core
 
 - `novalang.nova` is the self-hosted implementation: a lexer, parser and
@@ -194,8 +211,11 @@ if x > 10 {
 while x < 20 {
     x = x + 1
 }
-for i = 0 to 10 { print(i) }          # counts 0..9; `downto` counts down
-for i = 0 to 100 step 10 { print(i) }
+for i = 0 to 10 { print(i) }          # counts 0..10; inclusive on both ends
+for i = 10 downto 0 { print(i) }      # counts 10..0, also inclusive
+for i = 0 to 100 step 10 { print(i) } # 0, 10, ... 100
+# `to` and `downto` include the last value; range(n) does not:
+# range(3) is [0, 1, 2], while `for i = 0 to 3` visits 0, 1, 2 and 3.
 for item in [1, 2, 3] { print(item) }
 for key, value in {a: 1, b: 2} { print(key, value) }
 break                                    # leave a loop early

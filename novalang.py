@@ -6018,8 +6018,8 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
     delete d.name        remove an entry (deleting twice is harmless)
     if c { } else { }    conditionals; `else if` chains
     while c { }          loop while c is true
-    for i = 0 to 10 { }  count up; `downto` counts down
-    for i = 0 to 100 step 10 { }
+    for i = 0 to 10 { }  count up 0..10: both ends included; `downto` counts down
+    for i = 0 to 100 step 10 { }   0, 10, ... 100 (range(n) stops before n)
     for x in a { }       walk a list, a string, or a dictionary's keys
     for k, v in d { }    walk a dictionary's pairs (or a list's index, item)
     break | continue     leave the loop / jump to the next turn
@@ -6108,7 +6108,10 @@ def needs_more_input(source, *, blank_line=False):
         return True
 
     # Preserve blank-line submission for drafts outside an open block or list.
-    if blank_line and "{" not in source and not source.rstrip().endswith((",", "(")):
+    # "Has a block" is decided from tokens: a brace inside a string, an
+    # f-string or a comment is not one.
+    if (blank_line and not any(t.type == TT_LBRACE for t in tokens)
+            and not source.rstrip().endswith((",", "("))):
         return False
 
     if needs_block and not any(t.type == TT_LBRACE for t in meaningful_for_def):
