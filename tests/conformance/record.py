@@ -26,7 +26,7 @@ def dump(path, area, cases):
     ordered = []
     for case in cases:
         first = ("name", "spec", "profile", "source", "output", "error", "error_like",
-                 "error_line", "exit", "host_calls", "files", "env", "stdin", "args", "deep")
+                 "error_line", "exit", "host_calls", "files", "env", "stdin", "args", "allow_python", "embedding", "results", "deep")
         entry = {key: case[key] for key in first if key in case}
         entry.update({key: value for key, value in case.items() if key not in entry and not key.startswith("_")})
         ordered.append(entry)
@@ -56,7 +56,8 @@ def main(argv):
         changed = False
         for case in data["cases"]:
             result = engines.run_case(case, "vm")
-            for key in ("output", "error", "error_line", "exit"):
+            for key in ("output", "error", "error_line", "exit") + (
+                    ("host_calls", "results") if "embedding" in case else ()):
                 if key not in case:
                     if mode == "--missing":
                         case[key] = result[key]
