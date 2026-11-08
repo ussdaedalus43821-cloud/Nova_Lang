@@ -29,18 +29,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "hello",
-      "true",
-      "[\"in.txt\", \"sub\"]"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -103,17 +91,7 @@
    "files": {
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
-    "secret.txt": "top secret",
-    "data/a.txt": "a",
-    "data/c.txt": "c"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
+    "secret.txt": "top secret"
    }
   },
   {
@@ -143,16 +121,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "[1, 2]"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -219,14 +187,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -250,16 +210,6 @@
    ],
    "files": {
     "lib/m.nova": "export let x = 1"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -314,16 +264,6 @@
    "env": {
     "NOVA_SECRET": "s3cret",
     "NOVA_OTHER": "other"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "s3cret"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -355,18 +295,6 @@
    "env": {
     "NOVA_SECRET": "s3cret",
     "NOVA_OTHER": "other"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "s3cret",
-      "other",
-      "nothing"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -392,19 +320,7 @@
    },
    "matrix": [
     "clock:deny"
-   ],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "string",
-      "4"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-clock-granted",
@@ -455,19 +371,7 @@
    },
    "matrix": [
     "random:deny"
-   ],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "number",
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-random-granted",
@@ -515,17 +419,7 @@
    "matrix": [
     "stdin:deny"
    ],
-   "stdin": "line\n",
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "line"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "stdin": "line\n"
   },
   {
    "name": "sbx-stdin-granted",
@@ -576,15 +470,7 @@
    },
    "matrix": [
     "process:deny"
-   ],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 3
-    }
-   }
+   ]
   },
   {
    "name": "sbx-process-granted",
@@ -612,20 +498,7 @@
    "matrix": [
     "process:grant"
    ],
-   "args": [],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "string",
-      "[]",
-      "string",
-      "string"
-     ],
-     "error": "Error: undefined name 'realpath'",
-     "exit": 1
-    }
-   }
+   "args": []
   },
   {
    "name": "sbx-regex-denied",
@@ -648,18 +521,7 @@
    },
    "matrix": [
     "regex:deny"
-   ],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "true",
-      "a-b"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-regex-granted",
@@ -754,15 +616,7 @@
    },
    "matrix": [
     "python:deny"
-   ],
-   "divergences": {
-    "bootstrap": {
-     "id": "D-044",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-denied-names-stay-reserved",

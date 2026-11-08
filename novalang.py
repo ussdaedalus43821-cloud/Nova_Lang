@@ -3641,6 +3641,10 @@ for _capability, _names in (
     for _name in _names:
         CAPABILITY_OF[_name] = _capability
 
+# Windows with Python 3.7 resolves no symbolic link in os.path.realpath, so a path check would
+# be weaker there without saying so. The restricted profile refuses to start instead.
+SANDBOX_UNSUPPORTED = sys.platform == "win32" and sys.version_info < (3, 8)
+
 SANDBOX_PROFILES = ("trusted", "restricted")
 SANDBOX_SETTINGS = {
     "profile": str, "read": (list, tuple), "write": (list, tuple), "import_from": (list, tuple),
@@ -3648,6 +3652,12 @@ SANDBOX_SETTINGS = {
     "regex": bool, "python": (list, tuple), "limits": dict,
 }
 SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
+
+
+def sandbox_error(message):
+    """A mistake in the sandbox configuration, as the embedding API reports it:
+    `NovaLangError: unknown sandbox setting 'allow_reed'` ([sbx.profiles])."""
+    return NovaLangError(NovaError(message, None, label="NovaLangError"))
 
 
 def inside_folder(real, root):
@@ -3679,19 +3689,22 @@ class Capabilities:
         self.settings = dict(settings, profile=profile)
         for name, value in self.settings.items():
             if name not in SANDBOX_SETTINGS:
-                raise NovaLangError("unknown sandbox setting {!r}".format(name))
+                raise sandbox_error("unknown sandbox setting {!r}".format(name))
             if not isinstance(value, SANDBOX_SETTINGS[name]) or (
                     SANDBOX_SETTINGS[name] is bool and not isinstance(value, bool)):
-                raise NovaLangError("sandbox setting {!r} has a value of the wrong kind".format(name))
+                raise sandbox_error("sandbox setting {!r} has a value of the wrong kind".format(name))
         if profile not in SANDBOX_PROFILES:
-            raise NovaLangError("sandbox profile must be one of {}, not {!r}".format(SANDBOX_PROFILES, profile))
+            raise sandbox_error("sandbox profile must be one of {}, not {!r}".format(SANDBOX_PROFILES, profile))
         self.restricted = profile == "restricted"
+        if self.restricted and SANDBOX_UNSUPPORTED:
+            raise sandbox_error("the restricted profile needs Python 3.8 or later on Windows: Python 3.7 "
+                                "does not follow symbolic links when it resolves a path")
         if not self.restricted and len(self.settings) > 1:
-            raise NovaLangError("grants and limits belong to the 'restricted' profile, not 'trusted'")
+            raise sandbox_error("grants and limits belong to the 'restricted' profile, not 'trusted'")
         limits = settings.get("limits", {})
         for name, value in limits.items():
             if name not in SANDBOX_LIMITS or isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise NovaLangError("unknown sandbox limit {!r}, or a value that is not a positive "
+                raise sandbox_error("unknown sandbox limit {!r}, or a value that is not a positive "
                                     "whole number".format(name))
         self.limits = dict(limits)
         here = os.getcwd()
@@ -3798,7 +3811,11 @@ class Interpreter:
         self.type_cache = None          # the type gate's results (a GateCache)
         self.current_exports = {}       # name -> value, for the module now loading
 
+    python_override = None              # the self-hosted engine's grant (bootstrap.py)
+
     def python_allowlist(self):
+        if self.python_override is not None:
+            return self.python_override
         return self.caps.python_modules()
 
     def lookup_builtin(self, name, position=None):
@@ -6893,7 +6910,8 @@ class Nova:
         `limits={...}`): docs/spec/16-sandbox.md. The default, `trusted`, is how NovaLang has
         always behaved and must not be used for code you did not write."""
         self.interpreter = Interpreter(engine, allow_python=allow_python,
-                                       capabilities=Capabilities(profile, **settings))
+                                       capabilities=TRUSTED if profile == "trusted" and not settings
+                                       else Capabilities(profile, **settings))
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
@@ -7013,7 +7031,8 @@ def run_bootstrap(args):
         return 2
     import bootstrap
     return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE,
-                                   allow_python=ALLOW_PYTHON)
+                                   allow_python=ALLOW_PYTHON,
+                                   sandbox=DEFAULT_CAPABILITIES.settings if DEFAULT_CAPABILITIES.restricted else None)
 
 
 def dis_main(paths):
@@ -7115,7 +7134,7 @@ def main(argv):
         try:
             DEFAULT_CAPABILITIES = Capabilities(profile, **sandbox)
         except NovaLangError as problem:
-            print("NovaLangError: {}".format(problem), file=sys.stderr)
+            print(problem, file=sys.stderr)
             return 2
     if not args:
         return repl()

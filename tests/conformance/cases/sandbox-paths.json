@@ -63,17 +63,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "top secret"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -104,16 +93,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: /nova-sandbox-outside/x.txt"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -149,17 +128,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: newdir/new.txt",
-      "x"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -193,19 +161,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "FileNotFoundError: missing.txt",
-      "true",
-      "false"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -238,17 +193,6 @@
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret",
     "data2/x.txt": "not for you"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "not for you",
-      "hello"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -280,17 +224,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: SECRET.txt",
-      "FileNotFoundError: Data/../secret.txt"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -325,17 +258,6 @@
    },
    "symlinks": {
     "data/link.txt": "../secret.txt"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: data/link.txt",
-      "false"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -369,14 +291,6 @@
    },
    "symlinks": {
     "data/inlink.txt": "in.txt"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [],
-     "error": "FileNotFoundError: data/inlink.txt",
-     "exit": 1
-    }
    }
   },
   {
@@ -405,16 +319,6 @@
    "files": {
     "lib/m.nova": "export let x = 1",
     "other/o.nova": "export let y = 2"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -443,16 +347,6 @@
    "files": {
     "lib/m.nova": "export let x = 1",
     "other/o.nova": "export let y = 2"
-   },
-   "divergences": {
-    "bootstrap": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   }
  ]

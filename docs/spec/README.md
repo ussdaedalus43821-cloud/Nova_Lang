@@ -60,7 +60,7 @@ the corpus carries one. The profiles so far:
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
 
 | `policy` | The game's policy dialect, a separate language specified in `12-policy-syntax.md` onwards ([ADR 0004](../decisions/0004-policy-dialect-after-measurement.md)). Its cases run on the policy engine (`dialects/policy/`) and never on NovaLang's engines. |
-| `sandbox` | The `restricted` profile of `16-sandbox.md`: capabilities denied unless granted, and resource limits. **Draft: not implemented yet** (D-040 to D-044). |
+| `sandbox` | The `restricted` profile of `16-sandbox.md`: capabilities denied unless granted, and resource limits. **Draft.** Capabilities and path rules are implemented on all three engines; the limits are not yet (D-042, D-043). |
 
 ## Files
 

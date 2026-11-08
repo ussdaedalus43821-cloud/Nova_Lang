@@ -1373,6 +1373,165 @@ def type_error(message, pos) {
     throw("TypeError: " + message)
 }
 
+# ---- the sandbox profile (docs/spec/16-sandbox.md) ---------------------
+
+# Which capability each gated built-in belongs to ([sbx.capabilities]). A name that is not
+# here is a pure function and is defined in every profile.
+let CAPABILITY_OF = {
+    "read": "files.read", "exists": "files.read", "listdir": "files.read",
+    "write": "files.write", "mkdir": "files.write", "remove": "files.write",
+    "rename": "files.write", "copy": "files.write",
+    "env": "env",
+    "time": "clock", "now": "clock", "sleep": "clock", "format_time": "clock",
+    "random": "random", "randint": "random", "choice": "random", "shuffle": "random",
+    "input": "stdin",
+    "exit": "process", "args": "process", "platform": "process", "cwd": "process",
+    "abspath": "process", "realpath": "process",
+    "regex": "regex", "replace_all": "regex"
+}
+
+# What this engine's programs may reach. Set once, before the program runs, by
+# configure_sandbox(); the engine that runs this file is itself trusted.
+let SANDBOX = {
+    restricted: false, read: [], write: [], import_from: [], env: [], clock: false,
+    "random": false, stdin: false, process: false, regex: false, python: [], limits: {}
+}
+
+def sandbox_sep() {
+    if platform() == "Windows" {
+        return "\\"
+    }
+    return "/"
+}
+
+# A path as the file system compares it: case-folded on Windows.
+def sandbox_norm(path) {
+    if platform() == "Windows" {
+        return lower(replace_all(path, "/", "\\"))
+    }
+    return path
+}
+
+def configure_sandbox(config) {
+    if config["profile"] != "restricted" {
+        return
+    }
+    SANDBOX["restricted"] = true
+    for kind in ["read", "write", "import_from"] {
+        let roots = []
+        for folder in config[kind] {
+            append(roots, sandbox_norm(realpath(folder)))
+        }
+        SANDBOX[kind] = roots
+    }
+    SANDBOX["env"] = config["env"]
+    SANDBOX["python"] = config["python"]
+    SANDBOX["limits"] = config["limits"]
+    for flag in ["clock", "random", "stdin", "process", "regex"] {
+        SANDBOX[flag] = config[flag]
+    }
+}
+
+def cap_has(capability) {
+    if not SANDBOX["restricted"] {
+        return true
+    }
+    if capability == "files.read" {
+        return len(SANDBOX["read"]) > 0
+    }
+    if capability == "files.write" {
+        return len(SANDBOX["write"]) > 0
+    }
+    if capability == "import" {
+        return len(SANDBOX["import_from"]) > 0
+    }
+    if capability == "env" {
+        return len(SANDBOX["env"]) > 0
+    }
+    return SANDBOX[capability]
+}
+
+# Is the built-in `name` defined for this engine's programs? A denied name is exactly as
+# undefined as one the program never wrote.
+def builtin_defined(name) {
+    if not SANDBOX["restricted"] {
+        return true
+    }
+    if not (name in CAPABILITY_OF) {
+        return true
+    }
+    return cap_has(CAPABILITY_OF[name])
+}
+
+# Is the real path `real` one of the granted folders or inside one? A folder that merely
+# starts with a granted folder's name is not.
+def sandbox_inside(real, roots) {
+    let sep = sandbox_sep()
+    for root in roots {
+        if real == root {
+            return true
+        }
+        let prefix = root
+        if root[len(root) - 1:] != sep {
+            prefix = root + sep
+        }
+        if real[0:len(prefix)] == prefix {
+            return true
+        }
+    }
+    return false
+}
+
+# Refuse a path that lies outside the folders granted for `kind` ([sbx.paths]).
+def check_path(path, kind, label) {
+    if not SANDBOX["restricted"] or type(path) != "string" {
+        return
+    }
+    let granted = false
+    try {
+        granted = sandbox_inside(sandbox_norm(realpath(path)), SANDBOX[kind])
+    } catch problem {
+        granted = false
+    }
+    if not granted {
+        throw(label + ": " + path + " is outside the folders this program may use")
+    }
+}
+
+# The file forms of append and the delete statement are writes.
+def check_file_write(path) {
+    if SANDBOX["restricted"] {
+        if not cap_has("files.write") {
+            throw("the 'files.write' capability is not granted")
+        }
+        check_path(path, "write", "FileError")
+    }
+}
+
+# The paths a built-in takes, checked before it is called.
+def check_builtin_paths(name, call_args) {
+    if not SANDBOX["restricted"] {
+        return
+    }
+    if name == "read" or name == "exists" or name == "listdir" {
+        check_path(call_args[0], "read", "FileError")
+    }
+    if name == "write" or name == "mkdir" or name == "remove" {
+        check_path(call_args[0], "write", "FileError")
+    }
+    if name == "rename" {
+        check_path(call_args[0], "write", "FileError")
+        check_path(call_args[1], "write", "FileError")
+    }
+    if name == "copy" {
+        check_path(call_args[0], "read", "FileError")
+        check_path(call_args[1], "write", "FileError")
+    }
+    if name == "append" and type(call_args[0]) == "string" {
+        check_file_write(call_args[0])
+    }
+}
+
 # ---- built-ins --------------------------------------------------------
 
 let BUILTIN_NAMES = {
@@ -1389,7 +1548,7 @@ let BUILTIN_NAMES = {
     env: true, exit: true, args: true, platform: true,
     cwd: true, mkdir: true, remove: true, rename: true, copy: true,
     regex: true, replace_all: true, split_lines: true,
-    abspath: true, dirname: true,
+    abspath: true, realpath: true, dirname: true,
     pad: true, pad_left: true, reverse: true, sorted: true,
     "assert": true, log: true,
     map: true, filter: true, reduce: true
@@ -1400,7 +1559,7 @@ let BUILTIN_NAMES = {
 let BUILTIN_ARITY = {
     len: 1, append: 2, upper: 1, lower: 1, trim: 1, join: 2, str: 1, num: 1,
     type: 1, keys: 1, values: 1, read: 1, write: 2, exists: 1, listdir: 1,
-    abspath: 1, dirname: 1, "time": 0, sleep: 1, now: 0, format_time: 2,
+    abspath: 1, realpath: 1, dirname: 1, "time": 0, sleep: 1, now: 0, format_time: 2,
     "random": 0, randint: 2, choice: 1, shuffle: 1, "abs": 1, floor: 1,
     ceil: 1, sqrt: 1, "pow": 2, sin: 1, cos: 1, tan: 1, ln: 1, log10: 1,
     env: 1, args: 0, platform: 0, cwd: 0, mkdir: 1, remove: 1, rename: 2,
@@ -1490,6 +1649,7 @@ def numbers_from_call_args(call_args) {
 }
 
 def call_builtin(name, call_args, pos) {
+    check_builtin_paths(name, call_args)
     if name == "print" {
         let text = ""
         let i = 0
@@ -1572,6 +1732,9 @@ def call_builtin(name, call_args, pos) {
     if name == "abspath" {
         return abspath(call_args[0])
     }
+    if name == "realpath" {
+        return realpath(call_args[0])
+    }
     if name == "dirname" {
         return dirname(call_args[0])
     }
@@ -1651,6 +1814,9 @@ def call_builtin(name, call_args, pos) {
         return sum(numbers_from_call_args(call_args))
     }
     if name == "env" {
+        if SANDBOX["restricted"] and not (call_args[0] in SANDBOX["env"]) {
+            return make_nothing()
+        }
         return env(call_args[0])
     }
     if name == "exit" {
@@ -1913,7 +2079,7 @@ def eval_var(node, scope) {
     if env_has(scope, node["name"]) {
         return env_get(scope, node["name"])
     }
-    if node["name"] in BUILTIN_NAMES {
+    if node["name"] in BUILTIN_NAMES and builtin_defined(node["name"]) {
         return {kind: "builtin", name: node["name"]}
     }
     raise_error("undefined name '" + node["name"] + "'", node["pos"])
@@ -2337,6 +2503,7 @@ def exec_delete(node, scope) {
 
 def exec_delete_file(node, scope) {
     let path = eval_expr(node["path"], scope)
+    check_file_write(path)
     delete(path)
     return sig_normal()
 }
@@ -2552,14 +2719,40 @@ def resolve_package(name, pos) {
 }
 
 def resolve_import(raw_path, pos) {
+    if SANDBOX["restricted"] and not cap_has("import") {
+        import_error("the 'import' capability is not granted", pos)
+    }
     if is_package_import(raw_path) {
-        return resolve_package(raw_path, pos)
+        let found = resolve_package(raw_path, pos)
+        check_path(found, "import_from", "ImportError")
+        return found
     }
     let candidates = []
     if current_dir() != "" {
         append(candidates, current_dir() + "/" + raw_path)
     }
     append(candidates, raw_path)
+
+    if SANDBOX["restricted"] {
+        # Judge every place before looking in any of them, so a path outside the grant is
+        # refused whether or not a file is there ([sbx.paths] 4).
+        let granted = []
+        for candidate in candidates {
+            let inside = false
+            try {
+                inside = sandbox_inside(sandbox_norm(realpath(candidate)), SANDBOX["import_from"])
+            } catch problem {
+                inside = false
+            }
+            if inside {
+                append(granted, candidate)
+            }
+        }
+        if len(granted) == 0 {
+            import_error(raw_path + " is outside the folders this program may use", pos)
+        }
+        candidates = granted
+    }
 
     for candidate in candidates {
         if exists(candidate) {

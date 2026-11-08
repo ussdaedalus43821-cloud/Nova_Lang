@@ -187,7 +187,7 @@ def normalize(engine, expected_error, result):
                 # A labelled failure of the language's own (ImportError,
                 # TypeError) carries its label in the message text.
                 inner, _, rest = message.partition(": ")
-                if inner in ("ImportError", "TypeError", "AssertionError"):
+                if inner in ("ImportError", "TypeError", "AssertionError", "FileError", "FileNotFoundError", "LimitError"):
                     label, message = inner, rest
             result["error"] = label + ": " + message
         result["error_line"] = None
@@ -238,6 +238,10 @@ def judge(case, engine, result):
     return differences(expected, got, engine)
 
 
+def novalang_sandbox_unsupported():
+    return engines.novalang.SANDBOX_UNSUPPORTED
+
+
 def tree_walker_stack_limited():
     """The tree-walker cannot run deep recursion on Windows before Python 3.11:
     it overflows the native stack and ends the process (docs/CI.md). Cases marked
@@ -286,8 +290,13 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if no_links:
         print("  SKIPPED: {} cases that need a symbolic link did not run: this machine cannot make "
               "one.".format(sum(1 for case in cases if case.get("symlinks"))))
+    no_sandbox = novalang_sandbox_unsupported()
+    if no_sandbox:
+        print("  SKIPPED: {} sandbox cases did not run: the restricted profile needs Python 3.8 or later on "
+              "Windows ([sbx.profiles]).".format(sum(1 for case in cases if case["profile"] == "sandbox")))
     for engine in selected:
-        runnable = [case for case in cases if not (no_links and case.get("symlinks"))]
+        runnable = [case for case in cases if not (no_links and case.get("symlinks"))
+                    and not (no_sandbox and case["profile"] == "sandbox")]
         if engine == "tree" and tree_walker_stack_limited():
             runnable = [case for case in runnable if not case.get("deep")]
             nova_cases = [case for case in cases if case["profile"] != "policy"]

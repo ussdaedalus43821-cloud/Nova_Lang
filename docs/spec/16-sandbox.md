@@ -1,9 +1,10 @@
 # 16. The sandbox profile: capabilities and limits
 
 Status: **draft, owner review pending, not independently audited.** This chapter is the
-specification of milestone M11. No implementation follows it yet: every case that cites it
-records, in the divergence log, how the engines still differ (D-040 to D-044), and each
-slice of M11 closes some of them. The threat model is
+specification of milestone M11. **Implemented** on the bytecode VM, the tree-walker and the
+self-hosted interpreter: the profiles, every capability and the path rules (`[sbx.capabilities]`,
+`[sbx.paths]`). **Not yet implemented:** the limits of `[sbx.limits]` that do not already exist
+(D-042, D-043, closed by slice 3 of M11). The threat model is
 [`../design/m11-threat-model.md`](../design/m11-threat-model.md) and the decision behind it is
 [ADR 0003](../decisions/0003-security-stance.md).
 
@@ -31,6 +32,11 @@ created.
   it, and applies every limit of `[sbx.limits]`. It is selected with `--profile restricted`
   on the command line and `Nova(profile="restricted", ...)` in a host program. The grants and
   the limits are the other arguments (below).
+
+**Where the restricted profile starts.** It refuses to start on Windows with Python 3.7, with
+`NovaLangError: the restricted profile needs Python 3.8 or later on Windows`: that Python does not follow
+symbolic links when it resolves a path, so the path rules of `[sbx.paths]` would be weaker there without
+saying so. No other combination is refused.
 
 A profile applies to the whole engine: to the program, to every module it imports and to every
 function the host calls into it. The profile cannot be changed from inside a program, and no
