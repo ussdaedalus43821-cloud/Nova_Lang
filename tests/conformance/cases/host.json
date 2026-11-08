@@ -1,0 +1,664 @@
+{
+ "area": "host",
+ "version": 1,
+ "cases": [
+  {
+   "name": "host-files-write-read-append",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "write(\"a.txt\", \"hello\\nworld\\n\")\nprint(read(\"a.txt\"), exists(\"a.txt\"), exists(\"nope.txt\"), len(read(\"a.txt\")))\nwrite(\"a.txt\", \"\")\nprint(read(\"a.txt\") == \"\", len(read(\"a.txt\")))\nwrite(\"a.txt\", \"x\")\nwrite(\"a.txt\", \"y\")\nprint(read(\"a.txt\"))\nappend(\"b.txt\", \"1\")\nappend(\"b.txt\", \"2\")\nprint(read(\"b.txt\"))",
+   "output": [
+    "hello",
+    "world",
+    " true false 12",
+    "true 0",
+    "y",
+    "12"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-text-is-utf-8",
+   "spec": [
+    "host.files",
+    "port.text"
+   ],
+   "profile": "host",
+   "source": "write(\"u.txt\", \"é😀日本\")\nprint(read(\"u.txt\"), len(read(\"u.txt\")))\nappend(\"u.txt\", \"!\")\nprint(read(\"u.txt\"))",
+   "output": [
+    "é😀日本 4",
+    "é😀日本!"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-read-turns-every-line-end-into-a-line-feed",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "write(\"a\", \"x\\ry\\r\\nz\\n\")\nprint(split(read(\"a\"), \"\\n\"), len(read(\"a\")))\nprint(split_lines(read(\"crlf.txt\")), len(read(\"crlf.txt\")))",
+   "output": [
+    "[\"x\", \"y\", \"z\", \"\"] 6",
+    "[\"a\", \"b\"] 4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "crlf.txt": "a\r\nb\r\n"
+   }
+  },
+  {
+   "name": "host-files-read-a-file-the-case-supplies",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "print(read(\"data.txt\"))\nprint(split_lines(read(\"sub/more.txt\")))",
+   "output": [
+    "line1",
+    "line2",
+    "[\"a\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "data.txt": "line1\nline2",
+    "sub/more.txt": "a\nb\n"
+   }
+  },
+  {
+   "name": "host-files-mkdir-makes-parents-and-is-repeatable",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "mkdir(\"a/b/c\")\nprint(exists(\"a/b/c\"), exists(\"a/b\"), listdir(\"a\"))\nmkdir(\"a/b/c\")\nprint(\"again ok\")",
+   "output": [
+    "true true [\"b\"]",
+    "again ok"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-rename-copy-remove-delete",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "write(\"a\", \"1\")\nrename(\"a\", \"b\")\nprint(exists(\"a\"), read(\"b\"))\ncopy(\"b\", \"c\")\nprint(read(\"c\"), exists(\"b\"))\nremove(\"b\")\nprint(exists(\"b\"))\ndelete(\"c\")\ndelete(\"c\")\ndelete(\"never-existed\")\nprint(exists(\"c\"))\nmkdir(\"d\")\nremove(\"d\")\nprint(exists(\"d\"))",
+   "output": [
+    "false 1",
+    "1 true",
+    "false",
+    "false",
+    "false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-missing-file-is-file-not-found",
+   "spec": [
+    "host.files",
+    "err.model"
+   ],
+   "profile": "host",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\nt(read, \"missing.txt\")\nt(listdir, \"nodir\")\nt(remove, \"nope\")\ntry { write(\"nodir/a\", \"x\") } catch e { print(e) }\ntry { append(\"nodir/a\", \"x\") } catch e { print(e) }\nread(\"last.txt\")",
+   "output": [
+    "FileNotFoundError: missing.txt",
+    "FileNotFoundError: nodir",
+    "FileNotFoundError: nope",
+    "FileNotFoundError: nodir/a",
+    "FileNotFoundError: nodir/a"
+   ],
+   "error": "FileNotFoundError: last.txt",
+   "error_line": 7,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-folder-and-file-mixups-are-file-errors",
+   "spec": [
+    "host.files",
+    "err.model"
+   ],
+   "profile": "host",
+   "source": "mkdir(\"d\")\nwrite(\"f\", \"x\")\ntry { read(\"d\") } catch e { print(e) }\ntry { write(\"d\", \"x\") } catch e { print(e) }\ntry { append(\"d\", \"x\") } catch e { print(e) }\ntry { delete(\"d\") } catch e { print(e) }\ntry { listdir(\"f\") } catch e { print(e) }",
+   "output": [
+    "FileError: d is a directory, not a file",
+    "FileError: d is a directory, not a file",
+    "FileError: d is a directory, not a file",
+    "FileError: d is a directory - delete() only removes files",
+    "FileError: f is a file, not a directory"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-system-failures-keep-the-function-prefix",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "mkdir(\"d\")\nwrite(\"d/x\", \"1\")\nwrite(\"f\", \"x\")\ntry { remove(\"d\") } catch e { print(e[:24]) }\ntry { rename(\"nope\", \"x\") } catch e { print(e[:19]) }\ntry { copy(\"nope\", \"x\") } catch e { print(e[:17]) }\ntry { mkdir(\"f\") } catch e { print(e[:17]) }",
+   "output": [
+    "FileError: remove(): d: ",
+    "FileError: rename()",
+    "FileError: copy()",
+    "FileError: mkdir("
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-cwd-abspath-dirname",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "print(type(cwd()), len(cwd()) > 0, exists(cwd()), abspath(\".\") == cwd())\nprint(dirname(\"a/b/c.txt\"), \"[\" + dirname(\"c.txt\") + \"]\", type(abspath(\"x\")))\ntry { dirname(5) } catch e { print(e) }",
+   "output": [
+    "string true true true",
+    "a/b [] string",
+    "dirname() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-time-clock",
+   "spec": [
+    "host.time"
+   ],
+   "profile": "host",
+   "source": "let a = time()\nlet b = time()\nprint(type(a), a > 1700000000, b >= a)\nprint(type(now()), regex(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?[+]00:00$\", now()))",
+   "output": [
+    "number true true",
+    "string true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-time-sleep",
+   "spec": [
+    "host.time"
+   ],
+   "profile": "host",
+   "source": "let a = time()\nsleep(30)\nprint(time() - a >= 0.025, sleep(0), sleep(0.5))\ndef t(f, a) { try { f(a) } catch e { print(e) } }\nt(sleep, -1)\nt(sleep, \"a\")\nt(sleep, true)",
+   "output": [
+    "true nothing nothing",
+    "TypeError: sleep() cannot pause for a negative time",
+    "TypeError: sleep() needs a number, but got a string",
+    "TypeError: sleep() needs a number, but got a boolean"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-time-format-time-portable-directives",
+   "spec": [
+    "host.time"
+   ],
+   "profile": "host",
+   "source": "print(format_time(15681600, \"%Y\"), format_time(15681600, \"100%%\"), format_time(15681600, \"x\"), \"[\" + format_time(0, \"\") + \"]\", format_time(15681600, \"year %Y!\"))\nprint(len(format_time(15681600, \"%H:%M:%S\")), len(format_time(15681600, \"%Y-%m-%d\")), len(format_time(15681600, \"%j\")), len(format_time(15681600, \"%y\")), format_time(15681600, \"%m\") in [\"06\", \"07\"])",
+   "output": [
+    "1970 100% x [] year 1970!",
+    "8 10 3 2 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-time-format-time-argument-errors",
+   "spec": [
+    "host.time",
+    "err.type"
+   ],
+   "profile": "host",
+   "source": "try { format_time(\"a\", \"%Y\") } catch e { print(e) }\ntry { format_time(1, 5) } catch e { print(e) }\ntry { format_time(num(\"1\" + \"0\" * 30), \"%Y\") } catch e { print(e[:24]) }",
+   "output": [
+    "TypeError: format_time() needs a number, but got a string",
+    "the format for format_time() needs a string, but got a number",
+    "TypeError: format_time()"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-random-random",
+   "spec": [
+    "host.random"
+   ],
+   "profile": "host",
+   "source": "let r = random()\nprint(r >= 0, r < 1, type(r))\nlet ok = true\nfor i = 1 to 200 { let x = random()\nif x < 0 or x >= 1 { ok = false } }\nprint(ok)",
+   "output": [
+    "true true number",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-random-randint-includes-both-ends",
+   "spec": [
+    "host.random"
+   ],
+   "profile": "host",
+   "source": "let seen = {}\nfor i = 1 to 400 { seen[str(randint(1, 3))] = true }\nprint(sorted(keys(seen)), randint(7, 7), type(randint(1, 2)), randint(-2, -2))\nlet ok = true\nfor i = 1 to 300 { let n = randint(-5, 5)\nif n < -5 or n > 5 { ok = false } }\nprint(ok)",
+   "output": [
+    "[\"1\", \"2\", \"3\"] 7 number -2",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-random-randint-errors",
+   "spec": [
+    "host.random",
+    "err.type"
+   ],
+   "profile": "host",
+   "source": "try { randint(5, 3) } catch e { print(e) }\ntry { randint(1.5, 3) } catch e { print(e) }\ntry { randint(\"a\", 3) } catch e { print(e) }\ntry { randint(1) } catch e { print(e) }",
+   "output": [
+    "TypeError: randint() needs its first argument no greater than its second",
+    "randint() needs a whole number, but got 1.5",
+    "randint() needs a whole number, but got a string",
+    "randint() takes 2 argument(s) but got 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-random-choice",
+   "spec": [
+    "host.random"
+   ],
+   "profile": "host",
+   "source": "let l = [1, 2, 3]\nprint(choice(l) in l, choice([\"x\"]), l)\nlet seen = {}\nfor i = 1 to 300 { seen[choice([\"a\", \"b\"])] = true }\nprint(sorted(keys(seen)))\ntry { choice([]) } catch e { print(e) }\ntry { choice(5) } catch e { print(e) }",
+   "output": [
+    "true x [1, 2, 3]",
+    "[\"a\", \"b\"]",
+    "choice() cannot pick from an empty list",
+    "TypeError: choice() needs a list, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-random-shuffle-is-in-place",
+   "spec": [
+    "host.random"
+   ],
+   "profile": "host",
+   "source": "let l = [1, 2, 3, 4, 5]\nlet r = shuffle(l)\nprint(sorted(l), r == l, len(l), sum(l))\nr[0] = 99\nprint(l[0])\nprint(shuffle([]), shuffle([7]))\ntry { shuffle(\"ab\") } catch e { print(e) }",
+   "output": [
+    "[1, 2, 3, 4, 5] true 5 15",
+    "99",
+    "[] [7]",
+    "TypeError: shuffle() needs a list, but got a string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-args",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(args(), len(args()))\nlet a = args()\nappend(a, \"x\")\nprint(args())",
+   "output": [
+    "[] 0",
+    "[]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-args-after-the-file-name",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(args(), len(args()), args()[1])",
+   "output": [
+    "[\"one\", \"two\"] 2 two"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "args": [
+    "one",
+    "two"
+   ]
+  },
+  {
+   "name": "host-process-env",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(env(\"NOVA_C_SET\"), env(\"NOVA_C_UNSET_Q\"), env(\"NOVA_C_EMPTY\") == \"\", type(env(\"NOVA_C_SET\")))\ntry { env(5) } catch e { print(e) }",
+   "output": [
+    "value nothing true string",
+    "env() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "env": {
+    "NOVA_C_SET": "value",
+    "NOVA_C_EMPTY": ""
+   }
+  },
+  {
+   "name": "host-process-platform",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(type(platform()), len(platform()) > 0, platform() in [\"Linux\", \"Windows\", \"Darwin\"])",
+   "output": [
+    "string true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-exit-status",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(\"before\")\nexit(3)\nprint(\"after\")",
+   "output": [
+    "before"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-exit-without-a-code-is-zero",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(\"a\")\nexit()\nprint(\"b\")",
+   "output": [
+    "a"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-exit-from-inside-a-function-and-loop",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "def stop(n) { for i = 1 to 10 { if i == n { exit(n) } print(i) } }\nstop(3)\nprint(\"never\")",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-exit-skips-catch-but-runs-finally",
+   "spec": [
+    "host.process",
+    "err.finally"
+   ],
+   "profile": "host",
+   "source": "try { exit(2) } catch e { print(\"caught\") } finally { print(\"fin\") }\nprint(\"never\")",
+   "output": [
+    "fin"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 2,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-exit-errors",
+   "spec": [
+    "host.process",
+    "err.type"
+   ],
+   "profile": "host",
+   "source": "try { exit(\"a\") } catch e { print(e) }\ntry { exit(1.5) } catch e { print(e) }\ntry { exit(true) } catch e { print(e) }\ntry { exit(1, 2) } catch e { print(e) }\nprint(\"still here\")",
+   "output": [
+    "exit() needs a whole number, but got a string",
+    "exit() needs a whole number, but got 1.5",
+    "exit() needs a whole number, but got a boolean",
+    "exit() takes an optional status code and nothing else",
+    "still here"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-input-reads-lines",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "let a = input(\"name? \")\nprint(\"hi \" + a)\nprint(input(), input())\nprint(\"[\" + input() + \"]\")",
+   "output": [
+    "name? hi Nova",
+    "one two",
+    "[]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "stdin": "Nova\none\ntwo\n\nrest"
+  },
+  {
+   "name": "host-process-input-last-line-without-a-line-end",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(\"[\" + input() + \"]\")",
+   "output": [
+    "[no newline]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "stdin": "no newline"
+  },
+  {
+   "name": "host-process-input-at-the-end-of-input-is-an-error",
+   "spec": [
+    "host.process",
+    "err.try-catch"
+   ],
+   "profile": "host",
+   "source": "print(input())",
+   "output": [],
+   "error": "NovaError: input() found no more input to read",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-input-prompt-is-written-before-the-error",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "print(input(\"p> \"))",
+   "output": [
+    "p> "
+   ],
+   "error": "NovaError: input() found no more input to read",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-input-caught",
+   "spec": [
+    "host.process",
+    "err.try-catch"
+   ],
+   "profile": "host",
+   "source": "try { input() } catch e { print(e) }\nprint(\"after\")",
+   "output": [
+    "input() found no more input to read",
+    "after"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-process-input-argument-errors",
+   "spec": [
+    "host.process",
+    "err.type"
+   ],
+   "profile": "host",
+   "source": "try { input(5) } catch e { print(e) }\ntry { input(\"a\", \"b\") } catch e { print(e) }",
+   "output": [
+    "input() needs a string, but got a number",
+    "input() takes an optional prompt and nothing else"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "stdin": "x\n"
+  },
+  {
+   "name": "host-process-log-goes-to-standard-error",
+   "spec": [
+    "host.process"
+   ],
+   "profile": "host",
+   "source": "log(\"to stderr\", 1, [2])\nprint(\"out\")\nprint(log(), log(\"x\"))",
+   "output": [
+    "out",
+    "nothing nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-argument-errors",
+   "spec": [
+    "host.files",
+    "err.type"
+   ],
+   "profile": "host",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\nt(read, 5)\nt(exists, 5)\nt(listdir, [])\nt(mkdir, 5)\nt(remove, 5)\ntry { delete(5) } catch e { print(e) }\ntry { write(\"a\") } catch e { print(e) }\ntry { write(\"a\", 5) } catch e { print(e) }\ntry { write(5, \"a\") } catch e { print(e) }\ntry { append(\"a\", 5) } catch e { print(e) }\ntry { rename(1, \"a\") } catch e { print(e) }\ntry { copy(\"a\", 1) } catch e { print(e) }",
+   "output": [
+    "read() needs a string, but got a number",
+    "exists() needs a string, but got a number",
+    "listdir() needs a string, but got a list",
+    "mkdir() needs a string, but got a number",
+    "remove() needs a string, but got a number",
+    "delete() needs a file name, but got a number",
+    "write() takes 2 argument(s) but got 1",
+    "the text for write() needs a string, but got a number",
+    "the file name for write() needs a string, but got a number",
+    "the text appended to a file needs a string, but got a number",
+    "the old name for rename() needs a string, but got a number",
+    "the destination for copy() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "host-files-listdir-is-sorted",
+   "spec": [
+    "host.files",
+    "port.order"
+   ],
+   "profile": "host",
+   "source": "mkdir(\"d\")\nprint(exists(\"d\"), listdir(\"d\"))\nwrite(\"d/b.txt\", \"1\")\nwrite(\"d/a.txt\", \"2\")\nwrite(\"d/Z.txt\", \"3\")\nmkdir(\"d/zdir\")\nprint(listdir(\"d\"))\nprint(listdir(\"tree\"), len(listdir(\"tree/inner\")))",
+   "output": [
+    "true []",
+    "[\"Z.txt\", \"a.txt\", \"b.txt\", \"zdir\"]",
+    "[\"inner\", \"x.txt\", \"y.txt\"] 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "tree/y.txt": "1",
+    "tree/x.txt": "2",
+    "tree/inner/c.txt": "3"
+   }
+  }
+ ]
+}

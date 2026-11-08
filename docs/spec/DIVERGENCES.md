@@ -450,6 +450,48 @@ a function out through `json.dumps` instead of refusing it, and reported errors 
 host labels `TypeError` without the label. Fixed; D-001's normalization now also
 reads `Error: TypeError: message` as the label it names.
 
+### D-026 — File errors depended on the operating system
+
+Status: resolved
+Class: implementation bug
+Engines: all three Python engines
+Spec: `[host.files]`
+Cases: `host-files-folder-and-file-mixups-are-file-errors`
+
+`read`, `write` and `append` on a folder, `delete` on a folder and `listdir` on a
+file ended in whatever the operating system's error was: `IsADirectoryError` on
+Linux and macOS, `PermissionError` on Windows, with a different message. The
+specification fixes the messages (`FileError: d is a directory, not a file`), so the
+host now asks first (`os.path.isdir`, `isfile`) and does not leave it to the system.
+The wording of failures the host cannot predict (`remove` of a full folder,
+`rename` of a missing file) stays the operating system's, and only the prefix is
+specified.
+
+### D-027 — Text written to a file was translated on Windows
+
+Status: resolved
+Class: implementation bug
+Engines: all three Python engines
+Spec: `[host.files]`
+Cases: `host-files-read-turns-every-line-end-into-a-line-feed`
+
+`write` and `append` opened the file in Python's text mode, which writes each `\n` as
+`\r\n` on Windows, so the same program made different files and `write("a",
+"x\ry\r\nz\n")` read back with a different length on Windows than on Linux. They
+now write the text exactly (`newline=""`). `read` still turns `\r\n` and `\r` into
+`\n`, which is now written down.
+
+### D-028 — `log` in the self-hosted interpreter
+
+Status: resolved
+Class: implementation bug
+Engines: self-hosted
+Spec: `[host.process]`
+Cases: `host-process-log-goes-to-standard-error`
+
+It logged only its first argument, and `log()` with none read past its arguments.
+It now joins every argument with spaces as `print` does.
+
 ### D-025 — Case conversion beyond ASCII
 
 Status: open

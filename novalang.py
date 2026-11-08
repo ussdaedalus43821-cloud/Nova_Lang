@@ -1790,8 +1790,15 @@ def builtin_append(args, position):
 
 def open_file(path, mode, position):
     """Open a file, turning the operating system's complaint into a NovaError."""
+    if os.path.isdir(path):
+        # Asked first, because Linux and Windows word this refusal differently
+        # (a PermissionError on Windows) and the message is part of the language.
+        raise NovaError("{} is a directory, not a file".format(path), position,
+                        label="FileError")
     try:
-        return open(path, mode, encoding="utf-8")
+        # Written text is never translated: a line feed is one byte on every
+        # platform (open() would write the platform's line end on Windows).
+        return open(path, mode, encoding="utf-8", newline="" if mode != "r" else None)
     except FileNotFoundError:
         raise NovaError(path, position, label="FileNotFoundError")
     except IsADirectoryError:
@@ -1841,6 +1848,9 @@ def builtin_dirname(args, position):
 
 def builtin_listdir(args, position):
     path = text_argument(args[0], "listdir()", position)
+    if os.path.isfile(path):
+        raise NovaError("{} is a file, not a directory".format(path), position,
+                        label="FileError")
     try:
         return sorted(os.listdir(path))             # sorted, so runs match
     except FileNotFoundError:
@@ -3481,6 +3491,11 @@ def delete_file(path, position):
     if not isinstance(path, str):
         raise NovaError(
             "delete() needs a file name, but got {}".format(type_name(path)), position
+        )
+    if os.path.isdir(path):
+        raise NovaError(
+            "{} is a directory - delete() only removes files".format(path),
+            position, label="FileError",
         )
     try:
         os.remove(path)

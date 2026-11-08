@@ -87,6 +87,22 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   formatter follow the same rule. Programs with non-ASCII names fail with
   `unexpected character`; rename them.
 
+### The host library (third slice of M9, second part)
+- `docs/spec/10-host.md`: 4 sections (`host.*`) and 37 cases (567 in all, 95
+  sections) for what reaches outside the program: files and folders, the clock,
+  randomness, the environment and the process (`exit`, `input`, `args`, `log`).
+  The corpus runner gained `stdin`, `env` and `args` fields beside `files`, and
+  every `host` and `modules` case now runs in a folder of its own.
+- What is pinned: `read` turns `\r\n` and `\r` into `\n`; `listdir` is sorted by
+  code point; `randint` includes both ends; `exit` skips `catch` but runs `finally`;
+  `input` writes its prompt before it fails at the end of input; `format_time` is
+  portable for `%Y %m %d %H %M %S %j %y %%` and local time.
+- **File behavior that depended on the operating system is now fixed (D-026,
+  D-027).** Reading, writing or deleting a folder, and listing a file, gave
+  different errors on Windows; they now give the specified `FileError` everywhere.
+  `write` and `append` no longer turn `\n` into `\r\n` on Windows.
+- The self-hosted `log` logs all its arguments (D-028).
+
 ### The core library (third slice of M9, first part)
 - `docs/spec/09-library.md`: 8 sections (`lib.*`) and 59 cases (530 in all, 91
   sections) on the functions that compute without touching the machine: argument

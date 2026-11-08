@@ -18,7 +18,7 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | `repl` | 46 | multiline drafts, error recovery, EOF, session state, `help`, Ctrl-C, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
 | `portability` | 14 | Windows paths, file URIs, newlines, the time limit and the tree-walker skip, simulated on any platform |
-| `conformance` | 530 cases | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter; every spec section cited, every divergence logged. Four parent checks |
+| `conformance` | 567 cases | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter; every spec section cited, every divergence logged. Four parent checks |
 
 The `cli`, `embedding`, `repl` and `input-errors` suites fail against the 2.0.1
 source and pass with the fixes, which are listed under "Unreleased" in the

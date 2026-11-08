@@ -55,7 +55,7 @@ the corpus carries one. The profiles so far:
 | --- | --- |
 | `core` | The language itself, the values and the built-in functions that compute on them. No files, environment, clock, randomness, processes, modules or embedding. Deterministic. |
 | `modules` | `import` and `export`: a program that loads other files. Needs a file system, or something that stands in for one, and a way to find a module relative to the file that imports it. `core` plus this. |
-| `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock and randomness. Present only if the host provides it (`[sec.principles]`). Not yet specified beyond the exit status. |
+| `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
 
 Profiles for embedding (the Python bridge) and the game dialect
 ([ADR 0002](../decisions/0002-game-dialect-and-profiles.md)) are added as their
@@ -74,6 +74,7 @@ sections are written.
 | [`07-statements.md`](07-statements.md) | `stmt.*`: `if`, `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete` |
 | [`08-modules.md`](08-modules.md) | `mod.*`: `import`, `export`, finding files, the module cache, scope, cycles, errors while loading |
 | [`09-library.md`](09-library.md) | `lib.*`: the core library (collections, strings, `regex`, math, `map`/`filter`/`reduce`, JSON, `assert`) |
+| [`10-host.md`](10-host.md) | `host.*`: files, the clock, randomness, the environment and the process (the `host` profile) |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus
