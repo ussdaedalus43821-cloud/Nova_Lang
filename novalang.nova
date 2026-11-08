@@ -2249,7 +2249,11 @@ def exec_member_assign(node, scope) {
 def exec_delete(node, scope) {
     let target = eval_expr(node["target"], scope)
     if type(target) != "dict" {
-        raise_error("delete works on dictionary entries, but this is a " + target_type(target), node["pos"])
+        let hint = ""
+        if type(target) == "list" {
+            hint = " - use pop() to remove a list item"
+        }
+        raise_error("delete works on dictionary entries, but this is " + type_phrase(target) + hint, node["pos"])
     }
     let key = eval_expr(node["key"], scope)
     delete target[key]

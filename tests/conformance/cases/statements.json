@@ -1,0 +1,1083 @@
+{
+ "area": "statements",
+ "version": 1,
+ "cases": [
+  {
+   "name": "stmt-if-runs-only-the-first-true-branch",
+   "spec": [
+    "stmt.if"
+   ],
+   "profile": "core",
+   "source": "let x = 3\nif x == 3 { print(\"eq\") }\nif x != 3 { print(\"ne\") } else if x > 2 { print(\"gt\") } else { print(\"le\") }\nif x > 5 { print(\"a\") } else if x > 4 { print(\"b\") } else { print(\"c\") }",
+   "output": [
+    "eq",
+    "gt",
+    "c"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-if-later-conditions-are-not-evaluated",
+   "spec": [
+    "stmt.if",
+    "expr.logic"
+   ],
+   "profile": "core",
+   "source": "def probe() { print(\"probe\")\nreturn true }\nif true { print(\"first\") } else if probe() { print(\"never\") }\nif false { print(\"never\") } else if probe() { print(\"second\") }",
+   "output": [
+    "first",
+    "probe",
+    "second"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-if-without-else-and-false-does-nothing",
+   "spec": [
+    "stmt.if"
+   ],
+   "profile": "core",
+   "source": "if false { print(\"never\") }\nif true { print(\"t\") } else { print(\"never\") }\nprint(\"end\")",
+   "output": [
+    "t",
+    "end"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-if-nested-in-else-block",
+   "spec": [
+    "stmt.if"
+   ],
+   "profile": "core",
+   "source": "if false { print(1) } else { if true { print(2) } }\nlet a = 1\nif a == 1 { print(\"one\") } else if a == 2 { print(\"two\") }",
+   "output": [
+    "2",
+    "one"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-else-may-start-the-next-line",
+   "spec": [
+    "stmt.if",
+    "expr.newlines"
+   ],
+   "profile": "core",
+   "source": "let x = 5\nif x > 3 {\n print(\"big\")\n}\nelse {\n print(\"small\")\n}",
+   "output": [
+    "big"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-if-condition-must-be-a-boolean",
+   "spec": [
+    "stmt.if",
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let x = 0\nif x { print(\"never\") }",
+   "output": [],
+   "error": "NovaError: a 'if' condition must be true or false, but this is a number",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-if-block-is-a-scope",
+   "spec": [
+    "stmt.if",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "let x = 1\nif true { x = 2\nlet x = 3\nx = 4 }\nprint(x)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-repeats-while-the-condition-is-true",
+   "spec": [
+    "stmt.while"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 3 { n = n + 1\nprint(n) }\nprint(\"done\", n)",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "done 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-condition-is-evaluated-every-time",
+   "spec": [
+    "stmt.while"
+   ],
+   "profile": "core",
+   "source": "let t = [0]\ndef more() { t[0] = t[0] + 1\nreturn t[0] < 4 }\nwhile more() { print(\"body\", t[0]) }\nprint(t[0])",
+   "output": [
+    "body 1",
+    "body 2",
+    "body 3",
+    "4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-false-at-the-start-never-runs",
+   "spec": [
+    "stmt.while"
+   ],
+   "profile": "core",
+   "source": "while false { print(\"never\") }\nprint(\"after\")",
+   "output": [
+    "after"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-condition-must-be-a-boolean-every-time",
+   "spec": [
+    "stmt.while",
+    "expr.logic",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let v = true\nlet n = 0\nwhile v { n = n + 1\nprint(n)\nif n == 2 { v = 1 } }",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "NovaError: a 'while' condition must be true or false, but this is a number",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-body-gets-a-fresh-scope-each-iteration",
+   "spec": [
+    "stmt.while",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 3 { n = n + 1\nlet seen = n * 10\nprint(seen) }",
+   "output": [
+    "10",
+    "20",
+    "30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-while-true-and-break",
+   "spec": [
+    "stmt.while",
+    "stmt.break-continue"
+   ],
+   "profile": "core",
+   "source": "let x = 0\nwhile true { x = x + 1\nif x > 3 { break } }\nprint(x)",
+   "output": [
+    "4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-includes-both-ends",
+   "spec": [
+    "stmt.for-range",
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 3 { print(i) }\nfor i = 3 downto 1 { print(i) }",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "3",
+    "2",
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-step",
+   "spec": [
+    "stmt.for-range"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 10 step 3 { print(i) }\nfor i = 10 downto 1 step 4 { print(i) }\nfor i = 0 to 10 step 100 { print(i) }",
+   "output": [
+    "1",
+    "4",
+    "7",
+    "10",
+    "10",
+    "6",
+    "2",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-single-iteration-and-past-the-end",
+   "spec": [
+    "stmt.for-range"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 1 { print(\"one\", i) }\nfor i = 1 downto 1 { print(\"one\", i) }\nfor i = 5 to 1 { print(\"never\") }\nfor i = 1 downto 5 { print(\"never\") }\nprint(\"end\")",
+   "output": [
+    "one 1",
+    "one 1",
+    "end"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-float-values-are-start-plus-k-times-step",
+   "spec": [
+    "stmt.for-range",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "for x = 0 to 1 step 0.1 { print(x) }\nfor x = 0 to 0.35 step 0.1 { print(x) }\nfor x = 1 downto 0 step 0.25 { print(x) }",
+   "output": [
+    "0",
+    "0.1",
+    "0.2",
+    "0.30000000000000004",
+    "0.4",
+    "0.5",
+    "0.6000000000000001",
+    "0.7000000000000001",
+    "0.8",
+    "0.9",
+    "1",
+    "0",
+    "0.1",
+    "0.2",
+    "0.30000000000000004",
+    "1",
+    "0.75",
+    "0.5",
+    "0.25",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-float-bounds-and-integer-prints",
+   "spec": [
+    "stmt.for-range",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 3.5 { print(i) }\nfor i = 1.5 to 3 { print(i) }\nfor i = 0.5 to 2.5 { print(i, type(i)) }",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "1.5",
+    "2.5",
+    "0.5 number",
+    "1.5 number",
+    "2.5 number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-header-is-evaluated-once",
+   "spec": [
+    "stmt.for-range"
+   ],
+   "profile": "core",
+   "source": "let e = [3]\ndef f() { e[0] = e[0] + 1\nreturn e[0] }\nfor i = 1 to f() { print(i) }\nprint(e[0])",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-header-order-is-start-end-step",
+   "spec": [
+    "stmt.for-range",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "let trail = []\ndef t(v) { append(trail, v)\nreturn v }\nfor i = t(1) to t(5) step t(2) { }\nprint(trail)",
+   "output": [
+    "[1, 5, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-assigning-the-variable-affects-only-that-iteration",
+   "spec": [
+    "stmt.for-range"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 5 { i = i + 10\nprint(i) }",
+   "output": [
+    "11",
+    "12",
+    "13",
+    "14",
+    "15"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-closures-share-the-one-variable",
+   "spec": [
+    "stmt.for-range",
+    "scope.closure"
+   ],
+   "profile": "core",
+   "source": "let fs = []\nfor i = 1 to 3 { def g() { return i }\nappend(fs, g) }\nprint(fs[0](), fs[1](), fs[2]())",
+   "output": [
+    "3 3 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-variable-is-gone-afterwards-and-shadows-outer",
+   "spec": [
+    "stmt.for-range",
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "let i = 100\nfor i = 1 to 2 { }\nprint(i)\nfor j = 1 to 2 { for j = 5 to 6 { print(j) } }",
+   "output": [
+    "100",
+    "5",
+    "6",
+    "5",
+    "6"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-start-must-be-a-number",
+   "spec": [
+    "stmt.for-range",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "for i = \"a\" to 3 { }",
+   "output": [],
+   "error": "NovaError: the start of a 'for' range must be a number, but this is a string",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-range-step-must-be-positive",
+   "spec": [
+    "stmt.for-range",
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "try { for i = 1 to 3 step 0 { } } catch e { print(e) }\nfor i = 1 to 3 step -1 { }",
+   "output": [
+    "a 'for' step must be greater than zero (use 'downto' to count down)"
+   ],
+   "error": "NovaError: a 'for' step must be greater than zero (use 'downto' to count down)",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-list-string-and-dictionary",
+   "spec": [
+    "stmt.for-in",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "for x in [1, 2, 3] { print(x) }\nfor c in \"héy\" { print(c) }\nfor k in {b: 1, a: 2} { print(k) }",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "h",
+    "é",
+    "y",
+    "b",
+    "a"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-two-names",
+   "spec": [
+    "stmt.for-in"
+   ],
+   "profile": "core",
+   "source": "for i, x in [\"a\", \"b\"] { print(i, x) }\nfor i, c in \"ab\" { print(i, c) }\nfor k, v in {b: 1, a: 2} { print(k, v) }",
+   "output": [
+    "0 a",
+    "1 b",
+    "0 a",
+    "1 b",
+    "b 1",
+    "a 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-list-is-a-snapshot",
+   "spec": [
+    "stmt.for-in"
+   ],
+   "profile": "core",
+   "source": "let l = [1, 2, 3]\nfor x in l { if x == 1 { append(l, 9) }\nprint(x) }\nprint(l)\nlet m = [1, 2, 3]\nfor x in m { pop(m)\nprint(x) }\nprint(m)",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "[1, 2, 3, 9]",
+    "1",
+    "2",
+    "3",
+    "[]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-dictionary-is-a-snapshot",
+   "spec": [
+    "stmt.for-in",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1, b: 2, c: 3}\nfor k in d { print(k)\ndelete d.b }\nprint(d)\nlet e = {a: 1, b: 2}\nfor k, v in e { e.b = 99\nprint(k, v) }\nprint(e)\nlet f = {a: 1}\nfor k in f { f[\"n\" + k] = 1\nprint(k) }\nprint(len(f))",
+   "output": [
+    "a",
+    "b",
+    "c",
+    "{a: 1, c: 3}",
+    "a 1",
+    "b 2",
+    "{a: 1, b: 99}",
+    "a",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-items-are-shared-not-copied",
+   "spec": [
+    "stmt.for-in",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let rows = [[1], [2]]\nfor r in rows { append(r, 0) }\nprint(rows)\nlet l = [1, 2, 3]\nfor i, x in l { l[2] = 7\nprint(i, x) }",
+   "output": [
+    "[[1, 0], [2, 0]]",
+    "0 1",
+    "1 2",
+    "2 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-needs-a-list-string-or-dictionary",
+   "spec": [
+    "stmt.for-in",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "for x in 5 { print(x) }",
+   "output": [],
+   "error": "NovaError: 'for ... in' needs a list, a string or a dictionary, but this is a number",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-the-two-names-must-differ",
+   "spec": [
+    "stmt.for-in",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "for x, x in [1] { }",
+   "output": [],
+   "error": "NovaError: both loop variables are called 'x'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-closures-share-the-one-variable",
+   "spec": [
+    "stmt.for-in",
+    "scope.closure"
+   ],
+   "profile": "core",
+   "source": "let fs = []\nfor x in [1, 2, 3] { def g() { return x }\nappend(fs, g) }\nprint(fs[0](), fs[2]())",
+   "output": [
+    "3 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-for-in-nested-loops",
+   "spec": [
+    "stmt.for-in",
+    "stmt.for-range"
+   ],
+   "profile": "core",
+   "source": "let s = \"\"\nfor i = 1 to 3 { for c in \"ab\" { s = s + str(i) + c + \" \" } }\nprint(s)",
+   "output": [
+    "1a 1b 2a 2b 3a 3b "
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-runs-when-the-loop-is-exhausted",
+   "spec": [
+    "stmt.loop-else",
+    "stmt.while",
+    "stmt.for-range",
+    "stmt.for-in"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 3 { n = n + 1 } else { print(\"while else\", n) }\nfor i = 1 to 3 { n = n + 1 } else { print(\"for else\", n) }\nfor x in [7, 8] { n = n + x } else { print(\"in else\", n) }",
+   "output": [
+    "while else 3",
+    "for else 6",
+    "in else 21"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-is-skipped-by-break",
+   "spec": [
+    "stmt.loop-else",
+    "stmt.break-continue"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 5 { n = n + 1\nif n == 2 { break } } else { print(\"else\") }\nfor i = 1 to 5 { if i == 3 { break } } else { print(\"else\") }\nfor x in [1, 2] { break } else { print(\"else\") }\nprint(\"end\", n)",
+   "output": [
+    "end 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-runs-for-a-loop-that-never-ran",
+   "spec": [
+    "stmt.loop-else"
+   ],
+   "profile": "core",
+   "source": "for x in [] { print(\"never\") } else { print(\"empty list\") }\nfor x in {} { } else { print(\"empty dict\") }\nfor x in \"\" { } else { print(\"empty string\") }\nfor i = 5 to 1 { } else { print(\"past the end\") }\nwhile false { } else { print(\"false at once\") }",
+   "output": [
+    "empty list",
+    "empty dict",
+    "empty string",
+    "past the end",
+    "false at once"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-ignores-continue",
+   "spec": [
+    "stmt.loop-else",
+    "stmt.break-continue"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 3 { n = n + 1\ncontinue } else { print(\"else\", n) }\nlet k = 0\nwhile k < 2 { k = k + 1\nif k == 1 { continue }\nprint(\"k\", k) } else { print(\"else\") }",
+   "output": [
+    "else 3",
+    "k 2",
+    "else"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-may-start-the-next-line",
+   "spec": [
+    "stmt.loop-else",
+    "expr.newlines"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 3 { }\nelse { print(\"x\") }",
+   "output": [
+    "x"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-cannot-see-the-loop-variable",
+   "spec": [
+    "stmt.loop-else",
+    "scope.loop-var",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "for x in [1] { } else { print(x) }",
+   "output": [],
+   "error": "NovaError: undefined name 'x'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-loop-else-not-run-when-return-leaves-the-loop",
+   "spec": [
+    "stmt.loop-else",
+    "scope.function"
+   ],
+   "profile": "core",
+   "source": "def f() { for x in [1, 2, 3] { if x == 2 { return x } } else { print(\"else\") }\nreturn -1 }\nprint(f())",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-break-and-continue-apply-to-the-innermost-loop",
+   "spec": [
+    "stmt.break-continue"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 3 { for j = 1 to 3 { if j == 2 { break }\nprint(i, j) } }\nlet r = []\nfor i = 1 to 2 { for j = 1 to 3 { if j == 2 { continue }\nappend(r, [i, j]) } }\nprint(r)",
+   "output": [
+    "1 1",
+    "2 1",
+    "3 1",
+    "[[1, 1], [1, 3], [2, 1], [2, 3]]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-continue-in-while-reevaluates-the-condition",
+   "spec": [
+    "stmt.break-continue",
+    "stmt.while"
+   ],
+   "profile": "core",
+   "source": "let n = 0\nwhile n < 5 { n = n + 1\nif n % 2 == 0 { continue }\nprint(n) }",
+   "output": [
+    "1",
+    "3",
+    "5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-break-and-continue-run-finally-first",
+   "spec": [
+    "stmt.break-continue",
+    "err.finally"
+   ],
+   "profile": "core",
+   "source": "let i = 0\nwhile i < 3 { try { i = i + 1\nif i == 2 { continue }\nprint(\"i\", i) } finally { print(\"fin\", i) } }\nwhile true { try { break } finally { print(\"fin\") } }\nprint(\"out\")",
+   "output": [
+    "i 1",
+    "fin 1",
+    "fin 2",
+    "i 3",
+    "fin 3",
+    "fin",
+    "out"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-continue-in-catch-block",
+   "spec": [
+    "stmt.break-continue",
+    "err.try-catch",
+    "err.finally"
+   ],
+   "profile": "core",
+   "source": "for i = 1 to 2 { try { throw \"x\" } catch e { print(\"caught\", e)\ncontinue } finally { print(\"f\", i) } }",
+   "output": [
+    "caught x",
+    "f 1",
+    "caught x",
+    "f 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-return-from-inside-loops-and-finally",
+   "spec": [
+    "stmt.break-continue",
+    "scope.function",
+    "err.finally"
+   ],
+   "profile": "core",
+   "source": "def f() { for i = 1 to 3 { try { return i } finally { print(\"fin\") } } }\nprint(f())\ndef g() { while true { return 5 } }\nprint(g())",
+   "output": [
+    "fin",
+    "1",
+    "5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-error-leaves-a-loop",
+   "spec": [
+    "stmt.for-range",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { for i = 1 to 3 { if i == 2 { throw \"boom\" }\nprint(i) } } catch e { print(\"caught\", e) }",
+   "output": [
+    "1",
+    "caught boom"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-binds-when-it-runs",
+   "spec": [
+    "stmt.def",
+    "scope.order"
+   ],
+   "profile": "core",
+   "source": "print(h())\ndef h() { return 1 }",
+   "output": [],
+   "error": "NovaError: undefined name 'h'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-body-may-call-a-function-defined-later",
+   "spec": [
+    "stmt.def",
+    "scope.order"
+   ],
+   "profile": "core",
+   "source": "def a() { return b() }\ndef b() { return 2 }\nprint(a())",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-in-a-block-is-local-to-it",
+   "spec": [
+    "stmt.def",
+    "scope.blocks"
+   ],
+   "profile": "core",
+   "source": "if true { def g() { return 7 }\nprint(g()) }\nprint(g())",
+   "output": [
+    "7"
+   ],
+   "error": "NovaError: undefined name 'g'",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-nested-and-recursive",
+   "spec": [
+    "stmt.def",
+    "scope.function"
+   ],
+   "profile": "core",
+   "source": "def outer() { def inner() { return 1 }\nreturn inner() + 1 }\nprint(outer())\ndef f(n) { if n == 0 { return \"done\" }\nreturn f(n - 1) }\nprint(f(10))",
+   "output": [
+    "2",
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-again-replaces-the-function",
+   "spec": [
+    "stmt.def"
+   ],
+   "profile": "core",
+   "source": "def f() { return 1 }\nlet g = f\ndef f() { return 2 }\nprint(f(), g())\nlet h = 5\ndef h() { return 6 }\nprint(h())\ndef k() { }\nlet k = 7\nprint(k)",
+   "output": [
+    "2 1",
+    "6",
+    "7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-is-a-function-value",
+   "spec": [
+    "stmt.def",
+    "val.display",
+    "val.equality"
+   ],
+   "profile": "core",
+   "source": "def f(a, b) { return a + b }\nlet g = f\nprint(g(1, 2), f == g, g)\ndef e() { }\nprint(e(), e)",
+   "output": [
+    "3 true <function f(a, b)>",
+    "nothing <function e()>"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-wrong-argument-count-is-an-error",
+   "spec": [
+    "stmt.def",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "def f(a, b) { return a + b }\nprint(f(1))",
+   "output": [],
+   "error": "NovaError: f() expects 2 argument(s) but got 1",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-def-arguments-are-values-but-containers-are-shared",
+   "spec": [
+    "stmt.def",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "def f(x, l) { x = x + 1\nappend(l, x)\nreturn x }\nlet y = 1\nlet m = []\nf(y, m)\nprint(y, m)",
+   "output": [
+    "1 [2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-removes-an-entry-by-name-or-key",
+   "spec": [
+    "stmt.delete",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1, b: 2, c: 3}\ndelete d.a\nprint(d)\ndelete d[\"c\"]\nprint(d, keys(d))\nd.a = 9\nprint(d)",
+   "output": [
+    "{b: 2, c: 3}",
+    "{b: 2} [\"b\"]",
+    "{b: 2, a: 9}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-of-a-missing-key-is-fine",
+   "spec": [
+    "stmt.delete"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1}\ndelete d.zz\ndelete d.a\ndelete d.a\nprint(d, len(d))",
+   "output": [
+    "{} 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-evaluates-target-then-key",
+   "spec": [
+    "stmt.delete",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "def k() { print(\"key\")\nreturn \"a\" }\ndef t() { print(\"target\")\nreturn {a: 1, b: 2} }\ndelete t()[k()]",
+   "output": [
+    "target",
+    "key"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-on-a-list-is-an-error",
+   "spec": [
+    "stmt.delete",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let l = [1, 2]\ndelete l[0]",
+   "output": [],
+   "error": "NovaError: delete works on dictionary entries, but this is a list - use pop() to remove a list item",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-on-a-string-is-an-error",
+   "spec": [
+    "stmt.delete",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let s = \"x\"\ndelete s.a",
+   "output": [],
+   "error": "NovaError: delete works on dictionary entries, but this is a string",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "stmt-delete-key-must-be-a-string",
+   "spec": [
+    "stmt.delete",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "let d = {a: 1}\ndelete d[1]",
+   "output": [],
+   "error": "NovaError: a dictionary key must be a string, but this is a number",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  }
+ ]
+}

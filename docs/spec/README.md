@@ -70,6 +70,7 @@ sections are written.
 | [`04-errors.md`](04-errors.md) | `err.*`: the error model, `try`/`catch`/`finally`, the message catalogue |
 | [`05-security.md`](05-security.md) | `sec.*`: what the language guarantees (no ambient authority, no dynamic code, no reflection, scope isolation, no host failures leaking) |
 | [`06-portability.md`](06-portability.md) | `port.*`: integers, floats and how they print, text, ordering and determinism, limits |
+| [`07-statements.md`](07-statements.md) | `stmt.*`: `if`, `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete` |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus
