@@ -55,6 +55,8 @@ the corpus carries one. The profiles so far:
 | --- | --- |
 | `core` | The language itself, the values and the built-in functions that compute on them. No files, environment, clock, randomness, processes, modules or embedding. Deterministic. |
 | `modules` | `import` and `export`: a program that loads other files. Needs a file system, or something that stands in for one, and a way to find a module relative to the file that imports it. `core` plus this. |
+| `embedding` | A host program that runs the language inside itself: binds values and functions for the script, runs it, calls into it, and receives its errors (`11-embedding.md`). Needs a host program; the self-hosted interpreter has none. |
+| `python` | The `python.*` bridge to Python, reference host only, off unless asked for (`11-embedding.md`). |
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
 
 Profiles for embedding (the Python bridge) and the game dialect
@@ -75,6 +77,7 @@ sections are written.
 | [`08-modules.md`](08-modules.md) | `mod.*`: `import`, `export`, finding files, the module cache, scope, cycles, errors while loading |
 | [`09-library.md`](09-library.md) | `lib.*`: the core library (collections, strings, `regex`, math, `map`/`filter`/`reduce`, JSON, `assert`) |
 | [`10-host.md`](10-host.md) | `host.*`: files, the clock, randomness, the environment and the process (the `host` profile) |
+| [`11-embedding.md`](11-embedding.md) | `emb.*`: engines, values across the boundary, binding host values, calling in, errors; `py.*`: the Python bridge and what it can reach |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

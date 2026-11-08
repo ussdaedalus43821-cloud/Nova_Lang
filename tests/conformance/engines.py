@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -81,24 +82,25 @@ def patched_environment(env):
                 os.environ[name] = old
 
 
-def run_in_process(source, engine, files=None, env=None, stdin="", args=None):
+def run_in_process(source, engine, files=None, env=None, stdin="", args=None, allow_python=False):
     with patched_environment(env):
         if files is None:
-            return run_in_process_in(source, engine, None, stdin, args)
+            return run_in_process_in(source, engine, None, stdin, args, allow_python)
         with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
             write_files(folder, source, files)
             here = os.getcwd()
             os.chdir(folder)
             try:
-                return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args)
+                return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args,
+                                         allow_python)
             finally:
                 os.chdir(here)
 
 
-def run_in_process_in(source, engine, folder, stdin="", args=None):
+def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=False):
     out = io.StringIO()
     error, line, status = "", None, 0
-    interpreter = novalang.Interpreter(engine)
+    interpreter = novalang.Interpreter(engine, allow_python=allow_python)
     if folder is not None:
         interpreter.file_stack.append(folder)       # as run_source does for a file
     real_stdin, real_args = sys.stdin, novalang.SCRIPT_ARGS
@@ -129,7 +131,7 @@ def run_in_process_in(source, engine, folder, stdin="", args=None):
     return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status}
 
 
-def run_bootstrap(source, files=None, env=None, stdin="", args=None, timeout=120):
+def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_python=False, timeout=120):
     with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
         path = Path(folder) / "case.nova"
         if files is None:
@@ -139,7 +141,8 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, timeout=120
             write_files(folder, source, files)
         try:
             done = subprocess.run(
-                [sys.executable, str(ROOT / "novalang.py"), "--bootstrap", str(path)] + list(args or []),
+                [sys.executable, str(ROOT / "novalang.py")] + (["--allow-python"] if allow_python else [])
+                + ["--bootstrap", str(path)] + list(args or []),
                 cwd=folder, input=(stdin or "").encode("utf-8"), capture_output=True, timeout=timeout,
                 env=dict(os.environ, PYTHONUTF8="1", **(env or {})),
             )
@@ -158,19 +161,136 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, timeout=120
             "error": error, "error_line": None, "exit": done.returncode}
 
 
-def run(source, engine, files=None, env=None, stdin="", args=None):
+def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=False):
     """`files` maps relative paths (with `/`) to text: the modules the program
     imports, or any file it reads, written beside it (as main.nova) in a folder
     of their own that is the working directory. `env` sets environment
     variables, `stdin` is what `input()` reads, `args` is what `args()` returns."""
     if engine == "bootstrap":
-        return run_bootstrap(source, files, env, stdin, args)
-    return run_in_process(source, engine, files, env, stdin, args)
+        return run_bootstrap(source, files, env, stdin, args, allow_python)
+    return run_in_process(source, engine, files, env, stdin, args, allow_python)
 
 
 def run_case(case, engine):
     files = case.get("files")
     if files is None and case.get("profile") in ("host", "modules"):
         files = {}      # these cases touch the file system: a folder of their own
+    if "embedding" in case:
+        return run_embedding(case, engine)
     return run(case["source"], engine, files, case.get("env"),
-               case.get("stdin", ""), case.get("args"))
+               case.get("stdin", ""), case.get("args"), bool(case.get("allow_python")))
+
+
+def render_argument(value):
+    """How a host function's argument is written in `host_calls`: as print writes it,
+    and a function as `<function>` (how a host names its callables is its own)."""
+    if callable(value):
+        return "<function>"
+    return novalang.format_value(novalang.to_nova_value(value))
+
+
+def decode(value):
+    """A fixture value as the host would hold it. `{"$digits": n}` is the integer
+    10 ** (n - 1), which has n digits, so a case can hand over a huge number
+    without writing it out."""
+    if isinstance(value, dict) and list(value) == ["$digits"]:
+        return 10 ** (value["$digits"] - 1)
+    return value
+
+
+def python_object(attributes, methods, name, calls):
+    """A host object: plain attributes, and methods that record their calls."""
+    obj = types.SimpleNamespace(**{key: decode(value) for key, value in attributes.items()})
+    for method, spec in (methods or {}).items():
+        setattr(obj, method, host_function("{}.{}".format(name, method), spec, calls))
+    return obj
+
+
+def host_function(name, spec, calls):
+    """A function the host provides, as the case describes it, that records each call.
+    spec: {"returns": value} | {"echo": true} | {"sum": true} | {"raises": text}
+    | {"apply": n} (calls its first argument on its second, n times, and returns the result)."""
+    def function(*arguments):
+        calls.append("{}({})".format(name, ", ".join(render_argument(a) for a in arguments)))
+        if "raises" in spec:
+            raise RuntimeError(spec["raises"])
+        if spec.get("echo"):
+            return arguments[0] if arguments else None
+        if spec.get("sum"):
+            return sum(arguments)
+        if "apply" in spec:
+            value = arguments[1]
+            for _ in range(spec["apply"]):
+                value = arguments[0](value)
+            return value
+        return spec.get("returns")
+    return function
+
+
+def encode(value):
+    """A result as the case records it: an integer too long to write out becomes
+    `{"$digits": n}`, the counterpart of decode()."""
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) >= 10 ** 30:
+        return {"$digits": len(str(abs(value)))}
+    if isinstance(value, list):
+        return [encode(item) for item in value]
+    if isinstance(value, dict):
+        return {key: encode(item) for key, item in value.items()}
+    return value
+
+
+def nova_error_text(problem):
+    return "{}: {}".format(problem.nova_error.label, problem.nova_error.message)
+
+
+def run_steps(nova, steps, results):
+    """What the host does after the program: call a script function, evaluate source, or
+    run a compiled script several times. Each step adds an entry to `results`."""
+    for step in steps:
+        try:
+            if step[0] == "call":
+                results.append({"value": encode(nova.call(step[1], *[decode(a) for a in step[2:]]))})
+            elif step[0] == "run_compiled":
+                compiled = nova.compile(step[1])
+                results.append({"value": [encode(compiled.run(nova)) for _ in range(step[2])]})
+            else:
+                results.append({"value": encode(nova.eval(step[1]))})
+        except novalang.NovaLangError as problem:
+            results.append({"error": nova_error_text(problem)})
+        except SystemExit as stop:
+            results.append({"exit": stop.code if isinstance(stop.code, int) else 0})
+
+
+def run_embedding(case, engine):
+    """Run a case the way a host that embeds the language would: bind what the
+    case's `embedding` fixture says, run the program, then do what its `after`
+    list says, recording the host functions called and each step's result."""
+    fixture, calls, results = case["embedding"], [], []
+    out = io.StringIO()
+    error, status = "", 0
+    nova = novalang.Nova(engine, allow_python=bool(case.get("allow_python")))
+    try:
+        for name, value in fixture.get("globals", {}).items():
+            nova.expose_global(name, decode(value))
+        for name, spec in fixture.get("functions", {}).items():
+            nova.expose_global(name, host_function(name, spec, calls))
+        for name, item in fixture.get("objects", {}).items():
+            nova.expose_global(name, python_object(item.get("attrs", {}), item.get("methods"), name, calls))
+        for module in fixture.get("modules", []):
+            nova.expose_module(module)
+        for name, item in fixture.get("registry", {}).items():
+            nova.expose(name, python_object(item.get("attrs", {}), item.get("methods"), name, calls))
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            try:
+                nova.exec(case["source"])
+            except novalang.NovaLangError as problem:
+                error, status = nova_error_text(problem), 1
+            except SystemExit as stop:
+                status = stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
+            run_steps(nova, fixture.get("after", []), results)
+            if "other_engine_after" in fixture:
+                run_steps(novalang.Nova(engine), fixture["other_engine_after"], results)
+    except novalang.NovaLangError as problem:
+        error, status = nova_error_text(problem), 1
+    return {"output": lines_of(out.getvalue()), "error": error, "error_line": None, "exit": status,
+            "host_calls": calls, "results": results}

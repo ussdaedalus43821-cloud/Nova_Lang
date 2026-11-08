@@ -1,0 +1,1523 @@
+{
+ "area": "embedding",
+ "version": 1,
+ "cases": [
+  {
+   "name": "emb-eval-returns-the-last-statements-value",
+   "spec": [
+    "emb.model"
+   ],
+   "profile": "embedding",
+   "source": "let first = 1",
+   "output": [
+    "printed"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "1 + 2"
+     ],
+     [
+      "eval",
+      "let a = 5"
+     ],
+     [
+      "eval",
+      "let b = 2\nb * 3"
+     ],
+     [
+      "eval",
+      ""
+     ],
+     [
+      "eval",
+      "# only a comment"
+     ],
+     [
+      "eval",
+      "\"abc\""
+     ],
+     [
+      "eval",
+      "[1, [2, {k: \"v\"}], true]"
+     ],
+     [
+      "eval",
+      "print(\"printed\")"
+     ],
+     [
+      "eval",
+      "a = 7"
+     ],
+     [
+      "eval",
+      "10 / 2"
+     ],
+     [
+      "eval",
+      "2.0"
+     ],
+     [
+      "eval",
+      "if true { 3 }"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 3
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 6
+    },
+    {
+     "value": null
+    },
+    {
+     "value": null
+    },
+    {
+     "value": "abc"
+    },
+    {
+     "value": [
+      1,
+      [
+       2,
+       {
+        "k": "v"
+       }
+      ],
+      true
+     ]
+    },
+    {
+     "value": null
+    },
+    {
+     "value": 7
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 2.0
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "name": "emb-what-a-program-defines-stays-in-the-engine",
+   "spec": [
+    "emb.model"
+   ],
+   "profile": "embedding",
+   "source": "let counter = 10\ndef next() { return counter + 1 }\nlet items = []",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "counter"
+     ],
+     [
+      "call",
+      "next"
+     ],
+     [
+      "eval",
+      "append(items, 1)\nitems"
+     ],
+     [
+      "eval",
+      "len(items)"
+     ],
+     [
+      "eval",
+      "let later = counter * 2"
+     ],
+     [
+      "eval",
+      "later"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 10
+    },
+    {
+     "value": 11
+    },
+    {
+     "value": [
+      1
+     ]
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 20
+    },
+    {
+     "value": 20
+    }
+   ]
+  },
+  {
+   "name": "emb-two-engines-share-nothing",
+   "spec": [
+    "emb.model"
+   ],
+   "profile": "embedding",
+   "source": "let from_first = 5\ndef f() { return 1 }",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "from_first"
+     ]
+    ],
+    "other_engine_after": [
+     [
+      "eval",
+      "from_first"
+     ],
+     [
+      "call",
+      "f"
+     ],
+     [
+      "eval",
+      "1 + 1"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 5
+    },
+    {
+     "error": "NovaError: undefined name 'from_first'"
+    },
+    {
+     "error": "NovaError: undefined name 'f'"
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "name": "emb-a-compiled-script-runs-again-and-again",
+   "spec": [
+    "emb.model"
+   ],
+   "profile": "embedding",
+   "source": "let tally = 0\ndef bump() { return 1 }",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "run_compiled",
+      "bump() + bump()",
+      3
+     ]
+    ],
+    "other_engine_after": [
+     [
+      "run_compiled",
+      "1 + 1",
+      2
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": [
+      2,
+      2,
+      2
+     ]
+    },
+    {
+     "value": [
+      2,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "name": "emb-host-data-becomes-script-values",
+   "spec": [
+    "emb.values",
+    "emb.globals"
+   ],
+   "profile": "embedding",
+   "source": "print(limit, names, cfg, flag, ratio, text, type(limit), type(names), type(cfg), type(flag), type(text))\nprint(missing == missing)\nprint(len(names), cfg.k, cfg.nested.deep)",
+   "output": [
+    "2800 [\"a\", \"b\"] {k: 1, nested: {deep: [1, 2]}} true 2.5 s number list dict boolean string",
+    "true",
+    "2 1 [1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "limit": 2800,
+     "names": [
+      "a",
+      "b"
+     ],
+     "cfg": {
+      "k": 1,
+      "nested": {
+       "deep": [
+        1,
+        2
+       ]
+      }
+     },
+     "flag": true,
+     "ratio": 2.5,
+     "text": "s",
+     "missing": null
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-script-values-become-host-values",
+   "spec": [
+    "emb.values",
+    "emb.calls"
+   ],
+   "profile": "embedding",
+   "source": "def identity(x) { return x }\ndef nothing_fn() { }",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "call",
+      "identity",
+      2.5
+     ],
+     [
+      "call",
+      "identity",
+      true
+     ],
+     [
+      "call",
+      "identity",
+      "s"
+     ],
+     [
+      "call",
+      "identity",
+      [
+       1,
+       [
+        2
+       ]
+      ]
+     ],
+     [
+      "call",
+      "identity",
+      {
+       "a": {
+        "b": 1
+       }
+      }
+     ],
+     [
+      "call",
+      "identity",
+      null
+     ],
+     [
+      "call",
+      "identity",
+      7
+     ],
+     [
+      "call",
+      "nothing_fn"
+     ],
+     [
+      "eval",
+      "[1, 2.5, \"a\", true]"
+     ],
+     [
+      "eval",
+      "{a: 1, b: [2]}"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 2.5
+    },
+    {
+     "value": true
+    },
+    {
+     "value": "s"
+    },
+    {
+     "value": [
+      1,
+      [
+       2
+      ]
+     ]
+    },
+    {
+     "value": {
+      "a": {
+       "b": 1
+      }
+     }
+    },
+    {
+     "value": null
+    },
+    {
+     "value": 7
+    },
+    {
+     "value": null
+    },
+    {
+     "value": [
+      1,
+      2.5,
+      "a",
+      true
+     ]
+    },
+    {
+     "value": {
+      "a": 1,
+      "b": [
+       2
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "emb-lists-and-dictionaries-cross-by-copy",
+   "spec": [
+    "emb.values",
+    "scope.references"
+   ],
+   "profile": "embedding",
+   "source": "append(names, \"c\")\nprint(names, len(names))\nprint(holder.items)\nappend(holder.items, 99)\nprint(holder.items)\nholder.items = [7]\nprint(holder.items)",
+   "output": [
+    "[\"a\", \"b\", \"c\"] 3",
+    "[1, 2]",
+    "[1, 2]",
+    "[7]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "names": [
+      "a",
+      "b"
+     ]
+    },
+    "objects": {
+     "holder": {
+      "attrs": {
+       "items": [
+        1,
+        2
+       ]
+      }
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-live-objects-are-used-by-reference",
+   "spec": [
+    "emb.values",
+    "emb.globals"
+   ],
+   "profile": "embedding",
+   "source": "print(reactor.temp, reactor.limit)\nreactor.temp = 400\nprint(reactor.temp)\nprint(reactor.scram())\nprint(reactor.vent(\"steam\"), reactor.vent(1, 2))\nprint(type(reactor))",
+   "output": [
+    "300 2800",
+    "400",
+    "done",
+    "steam 1",
+    "dict"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "reactor.scram()",
+    "reactor.vent(steam)",
+    "reactor.vent(1, 2)"
+   ],
+   "embedding": {
+    "objects": {
+     "reactor": {
+      "attrs": {
+       "temp": 300,
+       "limit": 2800
+      },
+      "methods": {
+       "scram": {
+        "returns": "done"
+       },
+       "vent": {
+        "echo": true
+       }
+      }
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-live-objects-hide-names-that-start-with-an-underscore",
+   "spec": [
+    "emb.values",
+    "py.access"
+   ],
+   "profile": "embedding",
+   "source": "print(reactor.open, \"open\" in reactor, \"_secret\" in reactor)\nprint(sorted(keys(reactor)))\ntry { print(reactor._secret) } catch e { print(\"hidden\") }\ntry { reactor._secret = 5 } catch e { print(e) }",
+   "output": [
+    "2 true false",
+    "[\"open\"]",
+    "hidden",
+    "PythonError: cannot set private attribute \"_secret\""
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "objects": {
+     "reactor": {
+      "attrs": {
+       "open": 2,
+       "_secret": 1
+      }
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-numbers-beyond-the-bound-are-refused",
+   "spec": [
+    "emb.values",
+    "port.integers"
+   ],
+   "profile": "embedding",
+   "source": "print(len(str(just_fits)))",
+   "output": [
+    "4000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "just_fits": {
+      "$digits": 4000
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-a-number-past-the-bound-cannot-be-bound",
+   "spec": [
+    "emb.values",
+    "emb.errors",
+    "port.integers"
+   ],
+   "profile": "embedding",
+   "source": "print(\"never\")",
+   "output": [],
+   "error": "NovaError: the result has too many digits - an integer cannot have more than 4000 digits",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "too_big": {
+      "$digits": 4001
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-call-arguments-past-the-bound-are-an-error",
+   "spec": [
+    "emb.values",
+    "emb.errors",
+    "port.integers"
+   ],
+   "profile": "embedding",
+   "source": "def identity(x) { return x }",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "call",
+      "identity",
+      {
+       "$digits": 4000
+      }
+     ],
+     [
+      "call",
+      "identity",
+      {
+       "$digits": 4001
+      }
+     ],
+     [
+      "eval",
+      "1"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": {
+      "$digits": 4000
+     }
+    },
+    {
+     "error": "NovaError: the result has too many digits - an integer cannot have more than 4000 digits"
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "name": "emb-host-functions-are-called-like-script-functions",
+   "spec": [
+    "emb.globals"
+   ],
+   "profile": "embedding",
+   "source": "print(add(1, 2, 3), echo(\"x\"), echo([1, 2]), echo(), pi())\nprint(scram(\"TRIP\"))\nlet f = add\nprint(f(10, 20))",
+   "output": [
+    "6 x [1, 2] nothing 3.14",
+    "nothing",
+    "30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "add(1, 2, 3)",
+    "echo(x)",
+    "echo([1, 2])",
+    "echo()",
+    "pi()",
+    "scram(TRIP)",
+    "add(10, 20)"
+   ],
+   "embedding": {
+    "functions": {
+     "add": {
+      "sum": true
+     },
+     "echo": {
+      "echo": true
+     },
+     "pi": {
+      "returns": 3.14
+     },
+     "scram": {
+      "returns": null
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-host-function-results-are-converted",
+   "spec": [
+    "emb.globals",
+    "emb.values"
+   ],
+   "profile": "embedding",
+   "source": "print(names(), cfg(), none(), yes(), ratio(), len(names()))",
+   "output": [
+    "[\"a\", \"b\"] {k: [1, 2]} nothing true 0.5 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "names()",
+    "cfg()",
+    "none()",
+    "yes()",
+    "ratio()",
+    "names()"
+   ],
+   "embedding": {
+    "functions": {
+     "names": {
+      "returns": [
+       "a",
+       "b"
+      ]
+     },
+     "cfg": {
+      "returns": {
+       "k": [
+        1,
+        2
+       ]
+      }
+     },
+     "none": {
+      "returns": null
+     },
+     "yes": {
+      "returns": true
+     },
+     "ratio": {
+      "returns": 0.5
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-a-host-binding-is-an-ordinary-global",
+   "spec": [
+    "emb.globals",
+    "scope.assign",
+    "scope.let"
+   ],
+   "profile": "embedding",
+   "source": "print(limit)\nlimit = 99\nprint(limit)\nlet limit = 5\nprint(limit)\ndef f() { let limit = 1\nreturn limit }\nprint(f(), limit)",
+   "output": [
+    "2800",
+    "99",
+    "5",
+    "1 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "limit": 2800
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-built-in-names-cannot-be-bound",
+   "spec": [
+    "emb.globals",
+    "emb.errors",
+    "scope.reserved"
+   ],
+   "profile": "embedding",
+   "source": "print(\"never\")",
+   "output": [],
+   "error": "NovaError: 'print' is a built-in function and cannot be used as a global name",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "embedding": {
+    "globals": {
+     "print": 1
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-host-functions-may-take-script-functions",
+   "spec": [
+    "emb.globals",
+    "emb.calls"
+   ],
+   "profile": "embedding",
+   "source": "def inc(x) { return x + 1 }\nprint(twice(inc, 5), twice(abs, -5), thrice(inc, 0))",
+   "output": [
+    "7 5 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "twice(<function>, 5)",
+    "twice(<function>, -5)",
+    "thrice(<function>, 0)"
+   ],
+   "embedding": {
+    "functions": {
+     "twice": {
+      "apply": 2
+     },
+     "thrice": {
+      "apply": 3
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-the-host-calls-script-functions",
+   "spec": [
+    "emb.calls"
+   ],
+   "profile": "embedding",
+   "source": "def add(a, b) { return a + b }\ndef total(l) { return sum(l) }\ndef pick(d) { return d.k }\nlet counter = 1",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "call",
+      "add",
+      2,
+      3
+     ],
+     [
+      "call",
+      "total",
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     [
+      "call",
+      "pick",
+      {
+       "k": 5
+      }
+     ],
+     [
+      "call",
+      "add",
+      1.5,
+      2
+     ],
+     [
+      "call",
+      "nope"
+     ],
+     [
+      "call",
+      "counter"
+     ],
+     [
+      "call",
+      "add",
+      1
+     ],
+     [
+      "call",
+      "add",
+      1,
+      2,
+      3
+     ],
+     [
+      "call",
+      "print",
+      "hi"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 5
+    },
+    {
+     "value": 6
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 3.5
+    },
+    {
+     "error": "NovaError: undefined name 'nope'"
+    },
+    {
+     "error": "NovaError: 'counter' is not a function"
+    },
+    {
+     "error": "NovaError: add() expects 2 argument(s) but got 1"
+    },
+    {
+     "error": "NovaError: add() expects 2 argument(s) but got 3"
+    },
+    {
+     "error": "NovaError: undefined name 'print'"
+    }
+   ]
+  },
+  {
+   "name": "emb-a-script-function-given-to-the-host-is-callable",
+   "spec": [
+    "emb.calls",
+    "emb.values"
+   ],
+   "profile": "embedding",
+   "source": "def twice(x) { return x * 2 }\nprint(twice(4))",
+   "output": [
+    "8"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "call",
+      "twice",
+      21
+     ],
+     [
+      "eval",
+      "twice(1.5)"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 42
+    },
+    {
+     "value": 3.0
+    }
+   ]
+  },
+  {
+   "name": "emb-script-errors-reach-the-host-as-one-kind",
+   "spec": [
+    "emb.errors"
+   ],
+   "profile": "embedding",
+   "source": "print(\"start\")\n1 / 0\nprint(\"never\")",
+   "output": [
+    "start"
+   ],
+   "error": "NovaError: division by zero",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "1 / 0"
+     ],
+     [
+      "eval",
+      "assert(false, \"nope\")"
+     ],
+     [
+      "eval",
+      "throw \"from script\""
+     ],
+     [
+      "eval",
+      "undefined_name"
+     ],
+     [
+      "eval",
+      "len(5)"
+     ],
+     [
+      "eval",
+      "sqrt(-1)"
+     ],
+     [
+      "eval",
+      "def r(n) { return r(n + 1) }\nr(0)"
+     ],
+     [
+      "eval",
+      "2 + 2"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "error": "NovaError: division by zero"
+    },
+    {
+     "error": "AssertionError: nope"
+    },
+    {
+     "error": "Error: from script"
+    },
+    {
+     "error": "NovaError: undefined name 'undefined_name'"
+    },
+    {
+     "error": "NovaError: len() needs a list, a string or a dictionary, but got a number"
+    },
+    {
+     "error": "TypeError: sqrt() needs a number that is not negative"
+    },
+    {
+     "error": "NovaError: call depth of 1200 exceeded - is the recursion missing a base case?"
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "name": "emb-a-syntax-error-is-found-before-anything-runs",
+   "spec": [
+    "emb.errors",
+    "err.syntax"
+   ],
+   "profile": "embedding",
+   "source": "print(\"never\")\nlet = 1",
+   "output": [],
+   "error": "NovaError: expected a name after 'let', found '='",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "print(\"also never\")\nlet = "
+     ],
+     [
+      "eval",
+      "1 + 1"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "error": "NovaError: expected a name after 'let', found '='"
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "name": "emb-a-failing-host-function-is-a-python-error-to-the-script",
+   "spec": [
+    "emb.errors",
+    "err.try-catch"
+   ],
+   "profile": "embedding",
+   "source": "try { fail(\"x\") } catch e { print(e[:12], \"boom\" in e) }\nprint(safe())\ntry { fail() } catch e { print(\"second\") }\nfail()",
+   "output": [
+    "PythonError: true",
+    "ok",
+    "second"
+   ],
+   "error": "PythonError: RuntimeError: boom",
+   "error_like": "PythonError: .*boom",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [
+    "fail(x)",
+    "safe()",
+    "fail()",
+    "fail()"
+   ],
+   "embedding": {
+    "functions": {
+     "fail": {
+      "raises": "boom"
+     },
+     "safe": {
+      "returns": "ok"
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-an-error-inside-a-callback-reaches-the-script-through-the-host",
+   "spec": [
+    "emb.errors",
+    "emb.globals"
+   ],
+   "profile": "embedding",
+   "source": "def bad(x) { return x / 0 }\ntry { twice(bad, 5) } catch e { print(e[:12], \"division by zero\" in e) }",
+   "output": [
+    "PythonError: true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "twice(<function>, 5)"
+   ],
+   "embedding": {
+    "functions": {
+     "twice": {
+      "apply": 2
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "emb-exit-is-not-an-error",
+   "spec": [
+    "emb.errors",
+    "host.process"
+   ],
+   "profile": "embedding",
+   "source": "print(\"a\")\nexit(4)\nprint(\"b\")",
+   "output": [
+    "a"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 4,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "1 + 1"
+     ],
+     [
+      "eval",
+      "exit(2)"
+     ],
+     [
+      "eval",
+      "3"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": 2
+    },
+    {
+     "exit": 2
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "name": "emb-exit-runs-finally-blocks-first",
+   "spec": [
+    "emb.errors",
+    "host.process",
+    "err.finally"
+   ],
+   "profile": "embedding",
+   "source": "try { exit(3) } catch e { print(\"caught\") } finally { print(\"fin\") }",
+   "output": [
+    "fin"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": [],
+   "embedding": {},
+   "results": []
+  },
+  {
+   "name": "emb-recursion-is-limited-for-the-host-too",
+   "spec": [
+    "emb.errors",
+    "port.limits"
+   ],
+   "profile": "embedding",
+   "source": "def r(n) { return r(n + 1) }",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "after": [
+     [
+      "eval",
+      "r(0)"
+     ],
+     [
+      "eval",
+      "7"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "error": "NovaError: call depth of 1200 exceeded - is the recursion missing a base case?"
+    },
+    {
+     "value": 7
+    }
+   ]
+  },
+  {
+   "name": "py-the-bridge-is-off-unless-the-host-turns-it-on",
+   "spec": [
+    "py.off"
+   ],
+   "profile": "python",
+   "source": "try { python.import(\"math\") } catch e { print(e[:46]) }\ntry { python.call(\"math.sqrt\", 4) } catch e { print(e[:30]) }\ntry { python.get(\"x\") } catch e { print(e[:30]) }\ntry { python.set(\"x\", 1) } catch e { print(e[:30]) }\nprint(type(python), sorted(keys(python)))",
+   "output": [
+    "PythonError: python.* is disabled: run novalan",
+    "PythonError: python.* is disab",
+    "PythonError: python.* is disab",
+    "PythonError: python.* is disab",
+    "dict [\"call\", \"get\", \"import\", \"set\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "py-the-allowed-modules-work",
+   "spec": [
+    "py.import"
+   ],
+   "profile": "python",
+   "source": "print(python.import(\"math\"), python.call(\"math.sqrt\", 16), python.get(\"math.pi\"), python.call(\"math.pow\", 2, 10))\npython.import(\"json\")\nprint(python.call(\"json.dumps\", [1, 2]), python.call(\"json.loads\", \"[3]\"))\npython.import(\"statistics\")\nprint(python.call(\"statistics.mean\", [1, 2, 3]))\npython.import(\"string\")\nprint(python.get(\"string.ascii_lowercase\"))\npython.import(\"re\")\nprint(python.call(\"re.escape\", \"a.b\"))",
+   "output": [
+    "nothing 4 3.141592653589793 1024",
+    "[1, 2] [3]",
+    "2",
+    "abcdefghijklmnopqrstuvwxyz",
+    "a\\.b"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-only-the-listed-modules-can-be-imported",
+   "spec": [
+    "py.import"
+   ],
+   "profile": "python",
+   "source": "def t(name) { try { python.import(name) } catch e { print(e[:40]) } }\nt(\"os\")\nt(\"subprocess\")\nt(\"sys\")\nt(\"builtins\")\nt(\"json.decoder\")\ntry { python.import(5) } catch e { print(e) }",
+   "output": [
+    "PythonError: \"os\" is not on the list of ",
+    "PythonError: \"subprocess\" is not on the ",
+    "PythonError: \"sys\" is not on the list of",
+    "PythonError: \"builtins\" is not on the li",
+    "PythonError: \"json.decoder\" is not on th",
+    "python.import() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-failures-are-python-errors",
+   "spec": [
+    "py.import",
+    "err.try-catch"
+   ],
+   "profile": "python",
+   "source": "python.import(\"math\")\ntry { python.get(\"math.nope\") } catch e { print(e) }\ntry { python.call(\"math.pi\") } catch e { print(e) }\ntry { python.call(\"math.sqrt\", -1) } catch e { print(e[:27]) }\ntry { python.call(\"math.sqrt\") } catch e { print(e[:23]) }\ntry { python.get(\"nomodule.x\") } catch e { print(e[:30]) }",
+   "output": [
+    "PythonError: \"math.nope\" has no attribute \"nope\"",
+    "PythonError: \"math.pi\" is not callable",
+    "PythonError: ValueError: ma",
+    "PythonError: TypeError:",
+    "PythonError: \"nomodule\" is not"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-names-that-lead-out-of-the-allowed-modules-are-hidden",
+   "spec": [
+    "py.access"
+   ],
+   "profile": "python",
+   "source": "python.import(\"json\")\npython.import(\"re\")\npython.import(\"statistics\")\npython.import(\"collections\")\ndef t(name) { try { python.get(name)\nprint(\"reached\", name) } catch e { print(e[:11]) } }\nt(\"json.__builtins__\")\nt(\"json.decoder\")\nt(\"json.codecs\")\nt(\"re.enum\")\nt(\"statistics.sys\")\nt(\"collections.abc\")\nt(\"json.dumps.__globals__\")\nt(\"math.__class__\")\nt(\"json.__import__\")",
+   "output": [
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError",
+    "PythonError"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-scripts-cannot-write-to-modules",
+   "spec": [
+    "py.write"
+   ],
+   "profile": "python",
+   "source": "python.import(\"math\")\ntry { python.set(\"math.pi\", 3) } catch e { print(e[:28]) }\ntry { python.set(\"math.sqrt\", 3) } catch e { print(e[:28]) }\nprint(python.get(\"math.pi\") > 3, python.call(\"math.sqrt\", 4))",
+   "output": [
+    "PythonError: cannot modify t",
+    "PythonError: cannot modify t",
+    "true 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-registry-entries-without-a-dot-belong-to-the-engine",
+   "spec": [
+    "py.import",
+    "py.registry"
+   ],
+   "profile": "python",
+   "source": "python.set(\"flag\", 5)\nprint(python.get(\"flag\"))\npython.set(\"flag\", [1, 2])\nprint(python.get(\"flag\"))\npython.set(\"nested\", {a: 1})\nprint(python.get(\"nested\"))",
+   "output": [
+    "5",
+    "[1, 2]",
+    "{a: 1}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-a-module-cannot-use-the-bridge-when-the-program-cannot",
+   "spec": [
+    "py.off",
+    "mod.scope",
+    "mod.errors"
+   ],
+   "profile": "python",
+   "source": "try { import \"m.nova\" } catch e { print(\"disabled\" in e, \"ImportError\" in e) }",
+   "output": [
+    "true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "m.nova": "print(python.call(\"math.sqrt\", 9))"
+   }
+  },
+  {
+   "name": "py-exposed-objects-can-be-read-written-and-called",
+   "spec": [
+    "py.import",
+    "py.access",
+    "py.write",
+    "py.registry"
+   ],
+   "profile": "python",
+   "source": "print(python.get(\"obj.v\"), python.get(\"obj.items\"))\npython.set(\"obj.v\", 9)\nprint(python.get(\"obj.v\"))\nprint(python.call(\"obj.double\", 21), python.call(\"obj.double\", \"ab\"))\nprint(python.call(\"obj.double\"))",
+   "output": [
+    "1 [1, 2]",
+    "9",
+    "21 ab",
+    "nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [
+    "obj.double(21)",
+    "obj.double(ab)",
+    "obj.double()"
+   ],
+   "allow_python": true,
+   "embedding": {
+    "registry": {
+     "obj": {
+      "attrs": {
+       "v": 1,
+       "items": [
+        1,
+        2
+       ]
+      },
+      "methods": {
+       "double": {
+        "echo": true
+       }
+      }
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "py-exposed-objects-keep-their-private-names-private",
+   "spec": [
+    "py.access",
+    "py.write"
+   ],
+   "profile": "python",
+   "source": "def t(f) { try { f() } catch e { print(e) } }\ndef read_private() { return python.get(\"obj._p\") }\ndef write_private() { python.set(\"obj._p\", 3) }\ndef read_missing() { return python.get(\"obj.zzz\") }\ndef call_value() { return python.call(\"obj.v\") }\nt(read_private)\nt(write_private)\nt(read_missing)\nt(call_value)",
+   "output": [
+    "PythonError: \"obj._p\" has no attribute \"_p\"",
+    "PythonError: cannot set private attribute \"_p\"",
+    "PythonError: \"obj.zzz\" has no attribute \"zzz\"",
+    "PythonError: \"obj.v\" is not callable"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true,
+   "embedding": {
+    "registry": {
+     "obj": {
+      "attrs": {
+       "v": 1,
+       "_p": 2
+      }
+     }
+    }
+   },
+   "results": []
+  },
+  {
+   "name": "py-a-module-beyond-the-list-needs-the-host-to-grant-it",
+   "spec": [
+    "py.import",
+    "py.registry"
+   ],
+   "profile": "python",
+   "source": "python.import(\"fractions\")\nprint(type(python.get(\"fractions.Fraction\")))",
+   "output": [
+    "function"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true,
+   "embedding": {
+    "modules": [
+     "fractions"
+    ]
+   },
+   "results": []
+  },
+  {
+   "name": "py-a-module-beyond-the-list-is-refused-without-a-grant",
+   "spec": [
+    "py.import",
+    "py.registry"
+   ],
+   "profile": "python",
+   "source": "try { python.import(\"fractions\") } catch e { print(e[:42]) }",
+   "output": [
+    "PythonError: \"fractions\" is not on the lis"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "allow_python": true
+  },
+  {
+   "name": "py-a-module-gets-the-same-switch-as-the-program",
+   "spec": [
+    "py.off",
+    "mod.scope"
+   ],
+   "profile": "python",
+   "source": "import \"m.nova\"\nprint(m.root)",
+   "output": [
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "m.nova": "python.import(\"math\")\nexport let root = python.call(\"math.sqrt\", 9)"
+   },
+   "allow_python": true
+  }
+ ]
+}

@@ -44,7 +44,7 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core", "host", "modules")
+PROFILES = ("core", "host", "modules", "embedding", "python")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
 
 SECTION = re.compile(r"^#{2,4} \[([a-z][a-z0-9.-]*)\] ", re.M)
@@ -174,6 +174,9 @@ def differences(wanted, got, engine):
                 out.append("error: expected a match for {!r}, got {!r}".format(wanted["error_like"], got["error"]))
         elif wanted[key] != got[key]:
             out.append("{}: expected {!r}, got {!r}".format(key, wanted[key], got[key]))
+    for key in ("host_calls", "results"):
+        if key in got and wanted.get(key, []) != got[key]:
+            out.append("{}: expected {!r}, got {!r}".format(key, wanted.get(key, []), got[key]))
     if engine != "bootstrap" and wanted.get("error_line") is not None \
             and wanted["error_line"] != got["error_line"]:
         out.append("error_line: expected {!r}, got {!r}".format(wanted["error_line"], got["error_line"]))
@@ -186,6 +189,8 @@ def judge(case, engine, result):
     spec = {key: case[key] for key in ("output", "error", "exit")}
     spec["error_line"] = case.get("error_line")
     spec["error_like"] = case.get("error_like")
+    spec["host_calls"] = case.get("host_calls", [])
+    spec["results"] = case.get("results", [])
     recorded = case.get("divergences", {}).get(engine)
     if recorded is None:
         return differences(spec, got, engine)
@@ -214,6 +219,7 @@ def tree_walker_stack_limited():
 def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
     if engine == "bootstrap":
+        cases = [case for case in cases if "embedding" not in case]
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {case["name"]: pool.submit(engines.run_case, case, engine) for case in cases}
             return {name: future.result() for name, future in futures.items()}
@@ -237,6 +243,10 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if "bootstrap" in selected:
         pending["bootstrap"] = pool.submit(run_engine, cases, "bootstrap")
     names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter"}
+    hosted = sum(1 for case in cases if "embedding" in case)
+    if hosted and "bootstrap" in selected:
+        print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "
+              "host that binds values and functions for the program, and it has no host.".format(hosted))
     for engine in selected:
         runnable = cases
         if engine == "tree" and tree_walker_stack_limited():

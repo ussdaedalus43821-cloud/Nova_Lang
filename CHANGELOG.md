@@ -87,6 +87,28 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   formatter follow the same rule. Programs with non-ASCII names fail with
   `unexpected character`; rename them.
 
+### Embedding and the Python bridge (third slice of M9, third part)
+- `docs/spec/11-embedding.md`: 10 sections. `emb.*` says, without reference to
+  Python, what a host that embeds the language offers: engines that share nothing,
+  state that stays between runs, a table of how every kind of value crosses (lists
+  and dictionaries by copy, objects by reference, integers within the 4,000-digit
+  bound), binding host values and functions as globals, the host calling script
+  functions, and how errors cross (every script failure is one error kind with its
+  label and message; a failing host function is a `PythonError` to the script;
+  `exit` is not an error). `py.*` specifies the `python.*` bridge: off by default,
+  the import list, the one gate every access passes (names starting with `_`,
+  ungranted modules), writes only to instances the host exposed, and what the host
+  grants.
+- The corpus gains the `embedding` and `python` profiles and 39 cases (606 in all,
+  105 sections). An `embedding` case carries a fixture that says what the host binds
+  and does, and its expected `host_calls` and `results` are compared; the
+  self-hosted interpreter has no host program, so those cases print `NOT APPLICABLE`
+  for it. The `python` cases without a fixture run on all three engines.
+- **Two more raw exceptions fixed at the host boundary (D-029).**
+  `Nova.expose_global` (a reserved name, a number beyond the bound, a module the host
+  did not grant) and `Nova.call` (an argument beyond the bound) let an internal
+  `NovaError` escape instead of `NovaLangError`.
+
 ### The host library (third slice of M9, second part)
 - `docs/spec/10-host.md`: 4 sections (`host.*`) and 37 cases (567 in all, 95
   sections) for what reaches outside the program: files and folders, the clock,

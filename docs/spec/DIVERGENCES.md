@@ -492,6 +492,21 @@ Cases: `host-process-log-goes-to-standard-error`
 It logged only its first argument, and `log()` with none read past its arguments.
 It now joins every argument with spaces as `print` does.
 
+### D-029 — Two embedding calls let an internal error escape
+
+Status: resolved
+Class: implementation bug
+Engines: bytecode VM, tree-walker
+Spec: `[emb.errors]`, `[sec.error-boundary]`
+Cases: `emb-built-in-names-cannot-be-bound`, `emb-a-number-past-the-bound-cannot-be-bound`,
+`emb-call-arguments-past-the-bound-are-an-error`
+
+`Nova.expose_global` with a built-in's name, a number beyond the bound or a module
+the host did not grant, and `Nova.call` with an argument beyond the bound, raised the
+interpreter's internal `NovaError` instead of the `NovaLangError` every other method
+raises, which an embedding program cannot be expected to catch. Both now raise
+`NovaLangError`. (Found by probing the boundary for the embedding chapter.)
+
 ### D-025 — Case conversion beyond ASCII
 
 Status: open

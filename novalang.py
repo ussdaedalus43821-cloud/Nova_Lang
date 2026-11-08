@@ -6701,9 +6701,13 @@ class Nova:
         value; a plain number/string/bool/list/dict converts as usual.
         Reserved built-in names are still protected, same as any other
         NovaLang global."""
-        guard_name(name, None, "a global")
-        self._grant(value)
-        self.interpreter.globals.define(name, to_nova_value(value, self.interpreter))
+        try:
+            guard_name(name, None, "a global")
+            self._grant(value)          # a module handed over on purpose is one the script may hold
+            converted = to_nova_value(value, self.interpreter)
+        except NovaError as error:
+            raise NovaLangError(error) from None
+        self.interpreter.globals.define(name, converted)
 
     def compile(self, code):
         """Lex and parse `code` once, returning a CompiledScript that can
@@ -6757,8 +6761,8 @@ class Nova:
         fn = self.interpreter.globals.get(name)
         if not isinstance(fn, (NovaFunction, BuiltinFunction)):
             raise NovaLangError(NovaError("{!r} is not a function".format(name)))
-        nova_args = [to_nova_value(arg, self.interpreter) for arg in args]
         try:
+            nova_args = [to_nova_value(arg, self.interpreter) for arg in args]
             result = self.interpreter.call_value(fn, nova_args, 0)
         except NovaError as error:
             raise NovaLangError(error) from None
