@@ -1973,6 +1973,11 @@ def loop_number(node, value, role) {
     if type(value) != "number" {
         raise_error(role + " must be a number, but this is a " + target_type(value), node["pos"])
     }
+    # NaN and infinity: x - x is 0 only for a finite number. Matches the host's
+    # loop_number, which refuses them rather than count their iterations.
+    if value - value != 0 {
+        raise_error(role + " must be a finite number, but this is " + str(value), node["pos"])
+    }
     return value
 }
 

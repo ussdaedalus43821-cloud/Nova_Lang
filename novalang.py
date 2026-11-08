@@ -1932,6 +1932,18 @@ def numeric_argument(value, who, position):
     return value
 
 
+def finite_argument(value, who, position):
+    """A number that Python can turn into a whole number or hand to the clock.
+    NaN and infinity are numbers (they come from json.loads, from num() of a
+    very long decimal string and from float overflow), but math.floor, time.sleep
+    and the like answer them with a raw Python ValueError or OverflowError, which
+    try/catch cannot intercept. Refuse them as sqrt(-1) is refused."""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise NovaError("{} needs a finite number, but got {}".format(who, format_value(value)),
+                        position, label="TypeError")
+    return value
+
+
 def list_argument(value, who, position):
     if not isinstance(value, list):
         raise NovaError(
@@ -1947,7 +1959,7 @@ def builtin_time(args, position):
 
 
 def builtin_sleep(args, position):
-    ms = numeric_argument(args[0], "sleep()", position)
+    ms = finite_argument(numeric_argument(args[0], "sleep()", position), "sleep()", position)
     if ms < 0:
         raise NovaError("sleep() cannot pause for a negative time", position, label="TypeError")
     time.sleep(ms / 1000.0)
@@ -2006,16 +2018,18 @@ def builtin_abs(args, position):
 def builtin_round(args, position):
     value = numeric_argument(args[0], "round()", position)
     if len(args) == 1:
-        return round(value)
+        return round(finite_argument(value, "round()", position))
+    # With a digit count Python returns NaN and infinity unchanged and raises
+    # nothing, so that path is left as it was.
     return round(value, whole_number(args[1], "round()", position))
 
 
 def builtin_floor(args, position):
-    return math.floor(numeric_argument(args[0], "floor()", position))
+    return math.floor(finite_argument(numeric_argument(args[0], "floor()", position), "floor()", position))
 
 
 def builtin_ceil(args, position):
-    return math.ceil(numeric_argument(args[0], "ceil()", position))
+    return math.ceil(finite_argument(numeric_argument(args[0], "ceil()", position), "ceil()", position))
 
 
 def builtin_sqrt(args, position):
@@ -2039,16 +2053,25 @@ def builtin_pow(args, position):
     return result
 
 
+def _not_infinite(value, who, position):
+    """sin, cos and tan return NaN for NaN without complaint; only infinity
+    makes Python raise, so only infinity is refused."""
+    if isinstance(value, float) and math.isinf(value):
+        raise NovaError("{} needs a finite number, but got {}".format(who, format_value(value)),
+                        position, label="TypeError")
+    return value
+
+
 def builtin_sin(args, position):
-    return math.sin(numeric_argument(args[0], "sin()", position))
+    return math.sin(_not_infinite(numeric_argument(args[0], "sin()", position), "sin()", position))
 
 
 def builtin_cos(args, position):
-    return math.cos(numeric_argument(args[0], "cos()", position))
+    return math.cos(_not_infinite(numeric_argument(args[0], "cos()", position), "cos()", position))
 
 
 def builtin_tan(args, position):
-    return math.tan(numeric_argument(args[0], "tan()", position))
+    return math.tan(_not_infinite(numeric_argument(args[0], "tan()", position), "tan()", position))
 
 
 def builtin_ln(args, position):
@@ -3200,6 +3223,12 @@ def loop_number(value, role, position):
     if not is_number(value):
         raise NovaError(
             "{} must be a number, but this is {}".format(role, type_name(value)),
+            position,
+        )
+    if isinstance(value, float) and not math.isfinite(value):
+        # range_iterations would otherwise int() a NaN or infinity.
+        raise NovaError(
+            "{} must be a finite number, but this is {}".format(role, format_value(value)),
             position,
         )
     return value
