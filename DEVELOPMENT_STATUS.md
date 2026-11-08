@@ -1,6 +1,6 @@
 # Nova development status
 
-Baseline: NovaLang v2.0.1 (assignment fast paths and dispatch reorder).
+Baseline: NovaLang v2.1.0 (the 2.0.1 engine plus the verification work, the Windows fixes and the closed python.* bridge).
 
 ## What the verification work added
 
@@ -13,8 +13,8 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | Station | Tests | Covers |
 | --- | ---: | --- |
 | `harness` | 8 | timeout rejection, report flushing, station selection, exit status, timezone-portable standard-library checks |
-| `cli` | 34 | formatter, linter, disassembly and bootstrap command lines: modes, diagnostics, exit codes, batch continuation, malformed UTF-8 |
-| `embedding` | 55 | callbacks into Python, value conversion, live-object reads and writes, host errors, import allowlist, bootstrap error-boundary parity |
+| `cli` | 41 | formatter, linter, disassembly and bootstrap command lines: modes, diagnostics, exit codes, batch continuation, malformed UTF-8 |
+| `embedding` | 87 | callbacks into Python, value conversion, live-object reads and writes, host errors, import allowlist, bootstrap error-boundary parity |
 | `repl` | 46 | multiline drafts, error recovery, EOF, session state, `help`, Ctrl-C, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
 | `portability` | 14 | Windows paths, file URIs, newlines, the time limit and the tree-walker skip, simulated on any platform |

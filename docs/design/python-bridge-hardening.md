@@ -1,8 +1,8 @@
 # Design: closing the `python.*` bridge escapes (issue 1)
 
-Status: **Design approved by the owner on 2026-11-08; nothing in this
-document is implemented yet.** Implementation follows the issue 3 change, on
-its own branch.
+Status: **Implemented in 2.1.0** (branch `claude/issue-1-python-bridge`). The
+design was approved by the owner on 2026-11-08; the notes under
+"As implemented" record where the code differs from the plan or adds to it.
 
 Issue 1 reports that `python.get()` can reach Python's `builtins` and so run
 arbitrary code, contradicting the README's description of `python.*` as a
@@ -20,6 +20,13 @@ which were run against `63605ef`, not on the report.
    are blocked for assignment through `PythonObjectProxy` as well as for reads.
 3. **Module objects stay proxies.** They are never converted into recursive
    dictionaries.
+4. **Scripts cannot write to modules, classes or functions** (added on review,
+   2026-11-08). `python.set` and proxy assignment work only on object
+   instances the host exposed, because overwriting `json.dumps` would
+   corrupt the whole process.
+5. **Nothing is exposed automatically.** A module is granted by its exact
+   name; a package's submodules, and `os.path` when only `os` is exposed, stay
+   hidden until the host grants them.
 
 ## What the code does today (verified)
 
@@ -128,6 +135,60 @@ This is a deliberate breaking change for embedders: scripts that read or write
 module attribute, stop working, and every host that uses `python.*` must pass
 `allow_python=True`. It needs a changelog entry, a README correction, and a
 minor version bump (2.1.0).
+
+## As implemented
+
+- **Where the gate lives.** `bridge_lookup(owner, name, interpreter)` in
+  `novalang.py` returns the attribute or a sentinel; `resolve_python_path`,
+  `python.set`, and `PythonObjectProxy` reads, writes, `in` and listing all
+  call it. Writes also pass `bridge_write_check`.
+- **A second choke point (added).** `to_nova_value` refuses a module that is
+  not granted. The attribute gate cannot see a module that arrives inside a
+  dict or a list, or as the result of a call, so conversion checks too.
+- **What "granted" means (owner decision, 2026-11-08).** The module's **exact
+  name** is on `PYTHON_IMPORT_ALLOWLIST`, as `python.import()` requires, or in
+  `interpreter.python_granted`, which `Nova.expose_module`, `expose` and
+  `expose_global` fill when given a module. A package does not carry its
+  submodules with it: `collections.abc`, `json.decoder` and `json.encoder` are
+  hidden although `collections` and `json` are allowed, and exposing `os` does
+  not expose `os.path`. Nothing is exposed automatically. A host that needs
+  `os.path` grants it on purpose, the same way it granted `os`:
+
+  ```python
+  import os
+  nova = Nova(allow_python=True)
+  nova.expose_module(os)         # python.get("os.getcwd") ...
+  nova.expose_module(os.path)    # ... and now python.get("os.path.join") too
+  ```
+
+  (`os.path` is named `posixpath` or `ntpath` by platform; the grant is by
+  that name, which `expose_module` reads from the module.) `os.sys` and the
+  rest of `os`'s module attributes stay hidden unless exposed the same way.
+- **`--bootstrap` needed no change to `novalang.nova`.** Its `python.*`
+  built-ins already call the host's `python`, which is the refusing stub when
+  the switch is off. The flag only had to reach the host interpreter that
+  `bootstrap.run_bootstrap` creates, so `run_bootstrap` takes `allow_python`
+  (the `__main__` copy of `novalang.py` reads the flag, and `bootstrap.py`
+  imports a second copy that never saw it, as with `--tree-walk`).
+- **Flags.** `--allow-python` and `--tree-walk` are both accepted before the
+  file or subcommand, in either order. After the file they belong to the
+  script.
+- **The reachability test** is `tests/embedding/test_python_bridge.py`
+  (`ReachabilityTests`). It walks modules and classes to depth four, with and
+  without the gate; without it the walk finds 22 routes on Python 3.13
+  (`re.enum.bltns`, `json.codecs.builtins`, `statistics.sys`, ...), which is
+  what keeps a pass meaningful.
+- **Writes are narrower than reads (owner decision, 2026-11-08).**
+  `bridge_write_check` refuses an assignment whose target is a **module, a
+  class or a function**, and a name that starts with `_`. A script may set
+  attributes only on an object instance the host handed it. So
+  `python.set("json.dumps", 5)`, `python.set("json.JSONDecoder.decode", ...)`
+  and `tool.dumps = 5` through a proxy of `json` all raise `PythonError`; the
+  last two also cover host-exposed modules and classes, which are shared by
+  the whole process too. A host that wants scripts to write settings exposes
+  an object, not a module. `python.set("name", value)` with no dot still
+  defines a registry entry, which belongs to that one interpreter.
+- **Version.** 2.1.0.
 
 ## What this does not do
 

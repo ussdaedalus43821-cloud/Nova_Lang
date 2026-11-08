@@ -31,7 +31,7 @@ class Host:
 
 
 def main():
-    nova = Nova()
+    nova = Nova(allow_python=True)   # embedding.nova uses python.import/call/get/set
     # embedding.nova reaches this through python.call("host.greet", ...),
     # the explicit-registry form of the bridge, so it needs expose() here
     # rather than expose_global() - see reactor_sim_integration.py for the

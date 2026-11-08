@@ -122,8 +122,8 @@ import runpy, sys
 sys.path.insert(0, sys.argv[1])
 import bootstrap
 real = bootstrap.Interpreter
-def spy(engine=None):
-    made = real(engine)
+def spy(engine=None, allow_python=None):
+    made = real(engine, allow_python=allow_python)
     sys.stderr.write("ENGINE=" + made.engine + "\\n")
     return made
 bootstrap.Interpreter = spy

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v2.0.1 - a small language built from a hand-written lexer,
+# NovaLang v2.1.0 - a small language built from a hand-written lexer,
 # recursive-descent parser, bytecode compiler and virtual machine.
 """
-NovaLang v2.0.1 - a bytecode compiler and VM
+NovaLang v2.1.0 - a bytecode compiler and VM
 
 Since 2.0.0 a program runs as bytecode:
 
@@ -71,6 +71,11 @@ Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
 2.0.1:    fast paths for assignment through an index, a member and
           delete, and a dispatch order that keeps them out of the bottom
           of the ladder (M6). No behavior changed.
+2.1.0:    verification (CI on Linux, macOS and Windows, many new regression
+          stations), portability and error-boundary fixes, and a closed
+          python.* bridge: off unless --allow-python or
+          Nova(allow_python=True), private and module-alias names
+          unreachable (docs/design/python-bridge-hardening.md).
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -87,8 +92,9 @@ import shutil
 import sys
 import time
 from datetime import datetime, timezone
+from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -2192,6 +2198,63 @@ PYTHON_IMPORT_ALLOWLIST = (
 )
 
 
+_MISSING = object()
+
+
+def python_granted(module, interpreter):
+    """Is `module` one a script may be handed? Its exact name must be on
+    PYTHON_IMPORT_ALLOWLIST, as python.import() requires, or the embedding
+    program must have exposed that module (Nova.expose_module/expose/
+    expose_global). Submodules are not granted along with their package: a
+    host that wants `os.path` exposes it, as it exposes `os`. Any other module
+    is a way round the allowlist: `re.enum.bltns` is the builtins module,
+    `json.codecs` reaches builtins and sys, `statistics.sys` is sys."""
+    name = getattr(module, "__name__", "")
+    if name in PYTHON_IMPORT_ALLOWLIST:
+        return True
+    return interpreter is not None and name in interpreter.python_granted
+
+
+def bridge_lookup(owner, name, interpreter):
+    """The one gate every python.* access goes through (docs/design/
+    python-bridge-hardening.md, D1). Returns the attribute, or _MISSING
+    when a script may not see it: a name that starts with "_", an attribute
+    that does not exist, or one whose value is a module that is not
+    granted. A hidden name looks exactly like an absent one."""
+    if not isinstance(name, str) or name.startswith("_"):
+        return _MISSING
+    try:
+        value = getattr(owner, name)
+    except AttributeError:
+        return _MISSING
+    if isinstance(value, ModuleType) and not python_granted(value, interpreter):
+        return _MISSING
+    return value
+
+
+_NOT_WRITABLE = ((ModuleType, "module"), (type, "class"),
+                 ((FunctionType, BuiltinFunctionType, MethodType), "function"))
+
+
+def bridge_write_check(owner, name, interpreter, position=None):
+    """Writes are narrower than reads. A script may set attributes only on
+    an object instance the host handed it, never on a module, a class or a
+    function: those are shared by the whole process, so `python.set(
+    "json.dumps", 5)` would replace json.dumps for the host and every other
+    script. And what a script cannot see it cannot overwrite: names that
+    start with "_" are refused."""
+    for kinds, what in _NOT_WRITABLE:
+        if isinstance(owner, kinds):
+            raise NovaError(
+                'cannot modify the {} "{}": python.set and assignment through a proxy only '
+                'write to objects the host exposed, not to modules, classes or functions'
+                .format(what, getattr(owner, "__name__", "?")),
+                position, label="PythonError",
+            )
+    if isinstance(name, str) and name.startswith("_"):
+        raise NovaError('cannot set private attribute "{}"'.format(name), position, label="PythonError")
+
+
 class PythonObjectProxy(dict):
     """Makes a live Python object look like a NovaLang dictionary.
 
@@ -2212,21 +2275,36 @@ class PythonObjectProxy(dict):
         object.__setattr__(self, "_nova_interpreter", interpreter)
 
     def _visible_keys(self):
-        return [name for name in dir(self._nova_target) if not name.startswith("_")]
+        target = self._nova_target
+        names = []
+        for name in dir(target):
+            if name.startswith("_"):
+                continue
+            try:
+                if isinstance(getattr(target, name), ModuleType) and \
+                        bridge_lookup(target, name, self._nova_interpreter) is _MISSING:
+                    continue
+            except Exception:
+                pass            # a property that raises: listed, as before; reading it will report
+            names.append(name)
+        return names
 
     def __contains__(self, key):
         try:
-            return isinstance(key, str) and hasattr(self._nova_target, key)
+            return bridge_lookup(self._nova_target, key, self._nova_interpreter) is not _MISSING
         except NovaError:
             raise
         except Exception as problem:
             raise NovaError("{}: {}".format(type(problem).__name__, problem), label="PythonError")
 
     def __getitem__(self, key):
-        if key not in self:
-            raise KeyError(key)
         try:
-            return to_nova_value(getattr(self._nova_target, key), self._nova_interpreter)
+            value = bridge_lookup(self._nova_target, key, self._nova_interpreter)
+            if value is _MISSING:
+                raise KeyError(key)
+            return to_nova_value(value, self._nova_interpreter)
+        except KeyError:
+            raise
         except NovaError:
             raise
         except Exception as problem:
@@ -2234,6 +2312,7 @@ class PythonObjectProxy(dict):
 
     def __setitem__(self, key, value):
         try:
+            bridge_write_check(self._nova_target, key, self._nova_interpreter)
             setattr(self._nova_target, key, to_python_value(value, self._nova_interpreter))
         except NovaError:
             raise
@@ -2267,6 +2346,14 @@ def to_nova_value(value, interpreter=None):
         return NOTHING
     if isinstance(value, (bool, int, float, str)):
         return value
+    if isinstance(value, ModuleType) and not python_granted(value, interpreter):
+        # The attribute gate hides these; this catches one that arrives inside
+        # a dict or list, or as the result of a call.
+        raise NovaError(
+            'the module "{}" cannot be handed to a script: it is not on the python.import() '
+            'list and the embedding program did not expose it'.format(value.__name__),
+            label="PythonError",
+        )
     if isinstance(value, dict):
         return {str(key): to_nova_value(item, interpreter) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -2350,11 +2437,12 @@ def resolve_python_path(interpreter, dotted_name, position):
     target = interpreter.python_registry[root]
     try:
         for part in parts[1:]:
-            if not hasattr(target, part):
+            value = bridge_lookup(target, part, interpreter)
+            if value is _MISSING:
                 raise NovaError(
                     '"{}" has no attribute "{}"'.format(dotted_name, part), position, label="PythonError"
                 )
-            target = getattr(target, part)
+            target = value
     except NovaError:
         raise
     except Exception as problem:
@@ -2424,9 +2512,11 @@ def builtin_python_set(args, position, interpreter):
     target = interpreter.python_registry[root]
     try:
         for part in parts[1:-1]:
-            if not hasattr(target, part):
+            step = bridge_lookup(target, part, interpreter)
+            if step is _MISSING:
                 raise NovaError('"{}" has no attribute "{}"'.format(name, part), position, label="PythonError")
-            target = getattr(target, part)
+            target = step
+        bridge_write_check(target, parts[-1], interpreter, position)
         setattr(target, parts[-1], to_python_value(value, interpreter))
     except NovaError:
         raise
@@ -2443,6 +2533,24 @@ PYTHON_NAMESPACE = {
     "call": BuiltinFunction("python.call", None, builtin_python_call, needs_interpreter=True),
     "get": BuiltinFunction("python.get", 1, builtin_python_get, needs_interpreter=True),
     "set": BuiltinFunction("python.set", 2, builtin_python_set, needs_interpreter=True),
+}
+
+
+def _python_disabled(args, position, interpreter):
+    raise NovaError(
+        "python.* is disabled: run novalang.py with --allow-python, or create the "
+        "embedding host with Nova(allow_python=True)",
+        position, label="PythonError",
+    )
+
+
+# What `python` is unless it was asked for. A name, so that scripts, the
+# self-hosted interpreter (which forwards to it) and the linter still see a
+# `python` global; no capability, because every member only refuses. The
+# arity is open so that the refusal, not an arity error, is what a script reads.
+PYTHON_DISABLED_NAMESPACE = {
+    name: BuiltinFunction("python." + name, None, _python_disabled, needs_interpreter=True)
+    for name in ("import", "call", "get", "set")
 }
 
 
@@ -2827,6 +2935,10 @@ def format_value(value, seen=None):
         return "true" if value else "false"
     if value is NOTHING:
         return "nothing"
+    if isinstance(value, PythonObjectProxy):
+        # Shallow on purpose: a live object's attributes lead to other objects,
+        # and a module's lead back to modules, so walking them never ends.
+        return repr(value)
     if isinstance(value, list):
         # A list can contain itself, so remember what we are already inside.
         seen = seen or set()
@@ -3283,10 +3395,14 @@ def imported_name(exports, raw_path, name, position):
 # original tree-walker, kept for comparison - `novalang.py --tree-walk`).
 ENGINES = ("vm", "tree")
 DEFAULT_ENGINE = "vm"
+# Whether a plain Interpreter() gets the python.* namespace. Off; the
+# command line's --allow-python turns it on for the run. Nova() does not read
+# this: an embedding host decides for itself (Nova(allow_python=True)).
+ALLOW_PYTHON = False
 
 
 class Interpreter:
-    def __init__(self, engine=None):
+    def __init__(self, engine=None, allow_python=None):
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
             raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
@@ -3300,7 +3416,11 @@ class Interpreter:
         self.globals.define("PI", math.pi)
         self.globals.define("E", math.e)
         self.globals.define("json", dict(JSON_NAMESPACE))
-        self.globals.define("python", dict(PYTHON_NAMESPACE))
+        # python.* is off unless asked for (docs/design/python-bridge-hardening.md,
+        # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
+        self.allow_python = ALLOW_PYTHON if allow_python is None else allow_python
+        self.globals.define("python", dict(PYTHON_NAMESPACE if self.allow_python
+                                           else PYTHON_DISABLED_NAMESPACE))
 
         # Stage 12: the NovaLang-side half of the embedding bridge. Empty
         # by default - a plain `python3 novalang.py script.nova` run has
@@ -3310,6 +3430,9 @@ class Interpreter:
         # which is the only way a NovaLang script reaches anything here -
         # there is no path from `python.*` to an unregistered object.
         self.python_registry = {}
+        # Names of modules a script may be handed beyond the allowlist: the
+        # ones the embedding program exposed on purpose, each by its own name.
+        self.python_granted = set()
 
         # Module machinery (Stage 9). file_stack tracks the directory of
         # whichever file is currently executing, for resolving a relative
@@ -5942,7 +6065,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v2.0.1            ║
+║       NOVALANG v2.1.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
@@ -6020,6 +6143,8 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
                           built-in or your own
 
   Embedding (Stage 12) - reaching Python from a NovaLang script
+    Off unless asked for: `novalang.py --allow-python ...`, or a host that
+    creates Nova(allow_python=True). Otherwise every python.* call refuses.
     python.import("math")   allow a module from a short, safe allowlist
                           (math, random, statistics, itertools, functools,
                           string, re, datetime, json, collections) - or
@@ -6033,9 +6158,9 @@ HELP = "NovaLang v" + __version__ + """ - commands and syntax
                           examples/reactor_script.nova
     This is a deliberate, narrow bridge, not unrestricted access to the
     process: a script only ever reaches what the embedding program chose
-    to hand it, plus that short allowlist. Nothing here matters when
-    running novalang.py directly - it is for a NovaLang script running
-    inside another Python program. See examples/embedding.nova,
+    to hand it, plus that short allowlist; names starting with _ and module
+    aliases outside the allowlist are never reachable. It is meant for a
+    NovaLang script running inside another Python program. See examples/embedding.nova,
     examples/embedding_demo.py, examples/reactor_sim_integration.py and
     examples/daedalus_integration.py.
 
@@ -6308,9 +6433,12 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self, engine=None):
-        """`engine` is "vm" (the default) or "tree" (the tree-walker)."""
-        self.interpreter = Interpreter(engine)
+    def __init__(self, engine=None, allow_python=False):
+        """`engine` is "vm" (the default) or "tree" (the tree-walker).
+        `allow_python` gives scripts the python.* namespace; without it every
+        python.import/call/get/set refuses. A host that runs scripts it did
+        not write should leave it off and use expose_global instead."""
+        self.interpreter = Interpreter(engine, allow_python=allow_python)
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
@@ -6327,6 +6455,13 @@ class Nova:
         itself a NovaLang global; see expose_global for `reactor.temp`
         written directly, with no python.get wrapper."""
         self.interpreter.python_registry[name] = value
+        self._grant(value)
+
+    def _grant(self, value):
+        """A module the embedding program hands over on purpose is one a
+        script may be given; any other module is not (see python_granted)."""
+        if isinstance(value, ModuleType):
+            self.interpreter.python_granted.add(value.__name__)
 
     def expose_module(self, module):
         """Allow python.import(name) to succeed for a module beyond the
@@ -6335,6 +6470,7 @@ class Nova:
         if isinstance(module, str):
             module = importlib.import_module(module)
         self.interpreter.python_registry[module.__name__] = module
+        self._grant(module)
         return module
 
     def expose_global(self, name, value):
@@ -6346,6 +6482,7 @@ class Nova:
         Reserved built-in names are still protected, same as any other
         NovaLang global."""
         guard_name(name, None, "a global")
+        self._grant(value)
         self.interpreter.globals.define(name, to_nova_value(value, self.interpreter))
 
     def compile(self, code):
@@ -6416,7 +6553,8 @@ def run_bootstrap(args):
         print("usage: novalang.py --bootstrap <target.nova> [script args...]", file=sys.stderr)
         return 2
     import bootstrap
-    return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE)
+    return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE,
+                                   allow_python=ALLOW_PYTHON)
 
 
 def dis_main(paths):
@@ -6467,12 +6605,17 @@ def main(argv):
 
     # `--tree-walk ...` runs anything below on the original tree-walking
     # interpreter instead of the bytecode VM, for comparing the two.
-    if args[0] == "--tree-walk":
-        global DEFAULT_ENGINE
-        DEFAULT_ENGINE = "tree"
+    # `--allow-python ...` gives the program the python.* namespace, which is
+    # off otherwise. Both come before the file or subcommand, in either order.
+    global DEFAULT_ENGINE, ALLOW_PYTHON
+    while args and args[0] in ("--tree-walk", "--allow-python"):
+        if args[0] == "--tree-walk":
+            DEFAULT_ENGINE = "tree"
+        else:
+            ALLOW_PYTHON = True
         args = args[1:]
-        if not args:
-            return repl()
+    if not args:
+        return repl()
 
     if args[0] == "--bootstrap":
         return run_bootstrap(args[1:])
