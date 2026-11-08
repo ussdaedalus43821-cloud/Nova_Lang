@@ -113,7 +113,9 @@ the other kind is: `"n=" + 42` is `n=42`, `"x" + null` is `xnull`, `1 + "a"` is 
 `a12` and `1 + 2 + "a"` is `3a`.
 
 If both are lists, the result is a **new** list with the items of the left and then the
-right (the originals are untouched, and the items themselves are shared). Anything else
+right (the originals are untouched, and the items themselves are shared); if it would have
+more than 1,000,000 items the operator fails with `a list cannot have more than 1000000 items`
+(`[pol.limits]`, no line). Anything else
 is `[pol.arith]`: `[1] + 2`, `{} + {}` and `null + [1]` are `expected a number, got
 list` (or `dict`, `null`: the first operand that is not a number or boolean).
 
@@ -243,7 +245,8 @@ got string` (with the line of the call).
 - `get(d, key, fallback)`: the value for the key, or `fallback` if absent (`get() needs
   a dict`). All three arguments are required.
 - `append(list, x)`: adds `x` at the end of the list **in place** and returns that same
-  list (`append() needs a list`).
+  list (`append() needs a list`); to a list that already has 1,000,000 items it fails with
+  `a list cannot have more than 1000000 items`.
 - `remove_at(list, i)`: removes the item at the whole part of `i` and returns it. The
   index must be inside the list, and **a negative index is not counted from the end**:
   `remove_at() index 1 out of range (size 1)`, `index -1` likewise. `remove_at() needs a
@@ -256,8 +259,9 @@ got string` (with the line of the call).
 - `range(n)` and `range(a, b)`: a new list of numbers, the whole numbers from 0 up to
   but not including `n`, or from `a` up to but not including `b`; empty if there are
   none (`range(5, 2)`, `range(-3)`). Whole parts are used. A third argument is ignored.
-  There is no limit here on the size of the list beyond the host's memory, and the
-  step budget (`[pol.limits]`) does not count the items built.
+  A list cannot have more than 1,000,000 items (`[pol.limits]`): a `range` that would make a longer one
+  fails at once with `a list cannot have more than 1000000 items`, before anything is built.
+  The step budget does not count the items a built-in makes, which is why the size is limited.
 
 ## [pol.lib-text] Text functions
 

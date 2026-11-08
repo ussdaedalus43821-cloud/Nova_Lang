@@ -31,6 +31,8 @@ from nova_lexer import NovaError, number_text
 
 MAX_CALL_DEPTH = 128
 MAX_STEPS = 500000
+LIST_TOO_LONG = "a list cannot have more than 1000000 items"
+MAX_LIST_ITEMS = 1000000      # no list may hold more (docs/spec/12-policy-syntax.md, [pol.limits])
 
 FLOW_RETURN = "return"
 FLOW_BREAK = "break"
@@ -554,6 +556,9 @@ class Evaluator:
             if isinstance(a, str) or isinstance(b, str):
                 return text(a) + text(b)
             if isinstance(a, list) and isinstance(b, list):
+                if len(a) + len(b) > MAX_LIST_ITEMS:
+                    self.fail(line, LIST_TOO_LONG)
+                    return None
                 return a + b
 
         x = self._num(a, line)
@@ -769,6 +774,9 @@ class Evaluator:
             if not isinstance(args[0], list):
                 self.fail(line, "append() needs a list")
                 return None
+            if len(args[0]) >= MAX_LIST_ITEMS:
+                self.fail(line, LIST_TOO_LONG)
+                return None
             args[0].append(args[1])
             return args[0]
         if name == "remove_at":
@@ -798,9 +806,11 @@ class Evaluator:
             start = self._int(args[1], line) if len(args) > 1 else 0
             if self.error:
                 return None
-            if len(args) > 1:
-                return [float(x) for x in range(count, start)]
-            return [float(x) for x in range(count)]
+            first, stop = (count, start) if len(args) > 1 else (0, count)
+            if stop - first > MAX_LIST_ITEMS:       # refuse before building anything
+                self.fail(line, LIST_TOO_LONG)
+                return None
+            return [float(x) for x in range(first, stop)]
         if name == "join":
             if not isinstance(args[0], list):
                 self.fail(line, "join() needs a list")

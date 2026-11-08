@@ -382,7 +382,7 @@ the module and without its name (`line 2: unknown function 'nope'` for line 2 of
 
 ## [pol.limits] Limits
 
-Two guards bound a run so a policy cannot hang or overflow its host.
+Three guards bound a run so a policy cannot hang or exhaust its host.
 
 - **Call depth.** At most 128 user-function calls may be active at once; the 129th
   fails with `call depth limit (128) exceeded -- infinite recursion?`. Built-in and
@@ -397,7 +397,16 @@ Two guards bound a run so a policy cannot hang or overflow its host.
   `let i = 0 while i < N { i = i + 1 } print(i)` takes exactly `6N + 8` steps, so
   `N = 83332` completes and `83333` does not.
 
-The counters start from zero for each run of the program and for each call a host
+- **List size.** No list may hold more than **1,000,000 items**. A call that would make one longer
+  fails at once with `a list cannot have more than 1000000 items`, before the memory is used: `range`
+  (checked from its arguments, before it builds anything), `append` (to a list that already has
+  1,000,000), and `+` on two lists whose items together would pass it. The first two carry the line
+  of the call; the error from `+` is an operator error and has no line (`[pol.errors]`). This also
+  stops a list doubled in a loop (`l = l + l`), which would otherwise use all of the host's memory
+  in about twenty steps. **Strings and dictionaries are not bounded by this rule**: a string can
+  still be doubled by `s + s` (the owner has been asked whether to bound them the same way).
+
+The counters of the first two start from zero for each run of the program and for each call a host
 makes into it. A failure by either guard is an ordinary error (`[pol.errors]`).
 
 ## [pol.errors] Errors

@@ -26,6 +26,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10: list size limit for the policy dialect
+- No list may hold more than 1,000,000 items (owner's decision): `range`, `append` and `+` on two
+  lists fail at once with `a list cannot have more than 1000000 items`, `range` before it builds
+  anything. This closes a memory exhaustion (`range(1000000000)`, or `l = l + l` in a loop) that
+  neither the step budget nor the call depth limit could stop. Spec: `[pol.limits]`,
+  `[pol.lib-collections]`, `[pol.concat]`; 15 cases. Strings are still unbounded (`s + s`).
+
 ### M10 slice 3: the policy dialect's rule engine
 - `docs/spec/14-policy-engine.md`: 15 sections (`pol.*`) on `reactor`, `params`, `effects`,
   `signals`, `rule` (priority, `once`, `edge`), `fault`, `held`, reset, the order of one tick,

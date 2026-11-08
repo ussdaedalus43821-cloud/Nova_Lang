@@ -32,6 +32,7 @@ port**, which the corpus will then check (`docs/design/m10-gdscript-gaps.md`).
 
 | Divergence | Change |
 | --- | --- |
+| (limit) | No list may hold more than 1,000,000 items: `MAX_LIST_ITEMS`, checked by `range`, `append` and list `+` (`nova_evaluator.py`); a decision of the owner, not a divergence. |
 | D-030 | Messages quote names, keys and module paths as `'` text `'`, not with Python's `repr` (`nova_evaluator.py`, `nova_vm.py`). |
 | D-031 | `floor`, `round`, `int` return infinity and NaN unchanged; `pow` is C `pow` (`c_pow`); index, `slice`, `remove_at` and `range` arguments go through `_int`, which refuses infinity and NaN with `expected a finite number, got inf`. |
 | D-032 | `num("text")` reads the one grammar of `[pol.lib-convert]` (`read_number`). |

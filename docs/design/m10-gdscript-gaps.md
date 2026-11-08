@@ -33,8 +33,8 @@ defects fixed here (D-030 to D-032) and must get the same changes
 the GDScript port stay one language. That change is made in the Reactor-Game
 repository, and only when the owner says to touch it.
 
-**Also noted, not a divergence.** `range(n)` builds the whole list however large `n` is,
-and the step budget does not count what a built-in builds, so `range(1000000000)` can
-exhaust a host's memory and a game's frame time before any guard stops it. The
-specification says so (`[pol.lib-collections]`); a bound is a decision for the owner, as
-it would change what a script can do.
+**List size limit (owner's decision, 2026-11-08).** No list may hold more than 1,000,000
+items: `range`, `append` and list `+` fail with `a list cannot have more than 1000000
+items` (`[pol.limits]`). The Python engine and the GDScript port (evaluator and VM2) both
+need it; the port's change is in the Reactor-Game repository. **Still unbounded:** a string
+can be doubled with `s + s`; the owner has been asked whether to bound strings the same way.

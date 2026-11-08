@@ -4280,6 +4280,233 @@
    "error_line": null,
    "exit": 1,
    "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_range_at_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(len(range(1000000)), len(range(0, 1000000)), len(range(-5, 999995)))",
+   "output": [
+    "1000000 1000000 1000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_range_over_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(range(1000001))",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_range_two_arguments_over",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(range(5, 1000006))",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_range_far_over_allocates_nothing",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(range(1e12))",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_range_negative_start_over",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(range(-1000000, 1))",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_concat_at_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let a = range(500000) let b = range(500000) print(len(a + b))",
+   "output": [
+    "1000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_concat_over_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let a = range(500000) let b = range(500001) print(len(a + b))",
+   "output": [],
+   "error": "a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_doubling_stops",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let l = [1] let i = 0 while i < 30 { l = l + l  i = i + 1 }\nprint(len(l))",
+   "output": [],
+   "error": "a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_doubling_keeps_earlier_output",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let l = [1] let i = 0 while i < 30 { l = l + l  i = i + 1  print(i) }",
+   "output": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19"
+   ],
+   "error": "a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_append_at_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let l = range(999999) append(l, 1) print(len(l))",
+   "output": [
+    "1000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_append_over_the_limit",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "let l = range(1000000) append(l, 1)",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_limits_list_small_lists_unaffected",
+   "spec": [
+    "pol.limits"
+   ],
+   "profile": "policy",
+   "source": "print(range(3), [1] + [2], len(append([], 1)))",
+   "output": [
+    "[0, 1, 2] [1, 2] 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "policy_lib_range_over_the_limit_message",
+   "spec": [
+    "pol.lib-collections"
+   ],
+   "profile": "policy",
+   "source": "print(range(2000000))",
+   "output": [],
+   "error": "line 1: a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_lib_append_in_a_loop",
+   "spec": [
+    "pol.lib-collections"
+   ],
+   "profile": "policy",
+   "source": "let l = [] let i = 0 while i < 10 { append(l, i)  i = i + 1 } print(len(l))",
+   "output": [
+    "10"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "policy_concat_list_over_the_limit_has_no_line",
+   "spec": [
+    "pol.concat"
+   ],
+   "profile": "policy",
+   "source": "print(\"before\")\nlet a = range(600000)\nprint(len(a + a))",
+   "output": [
+    "before"
+   ],
+   "error": "a list cannot have more than 1000000 items",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
   }
  ]
 }
