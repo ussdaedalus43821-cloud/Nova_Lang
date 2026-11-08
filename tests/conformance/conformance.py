@@ -44,7 +44,15 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core", "host", "modules", "embedding", "python", "policy")
+PROFILES = ("core", "host", "modules", "embedding", "python", "policy", "sandbox")
+
+# docs/spec/16-sandbox.md [sbx.config]: what a `sandbox` object may hold. The engines do not
+# enforce it yet (D-040 to D-044); the corpus records what they do instead.
+SANDBOX_SETTINGS = {"profile": str, "read": list, "write": list, "import_from": list, "env": list,
+                    "clock": bool, "random": bool, "stdin": bool, "process": bool, "regex": bool,
+                    "python": list, "limits": dict}
+SANDBOX_PROFILES = ("trusted", "restricted")
+SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
 
 SECTION = re.compile(r"^#{2,4} \[([a-z][a-z0-9.-]*)\] ", re.M)
@@ -110,6 +118,23 @@ def validate(cases, sections, log):
             problems.append("{} has profile {!r}".format(where, case.get("profile")))
         if not case.get("spec"):
             problems.append("{} cites no spec section".format(where))
+        if case.get("profile") == "sandbox" and "sandbox" not in case:
+            problems.append("{} is a sandbox case with no 'sandbox' object".format(where))
+        for cell in case.get("matrix", []):
+            if not re.fullmatch(r"[a-z]+(\.[a-z-]+)*:(deny|grant|trip|uncatchable|within)", cell):
+                problems.append("{} has matrix cell {!r} that is not 'cell:kind'".format(where, cell))
+        if "sandbox" in case:
+            config = case["sandbox"]
+            if case.get("profile") != "sandbox":
+                problems.append("{} has a 'sandbox' object but is not profile 'sandbox'".format(where))
+            if config.get("profile") not in SANDBOX_PROFILES:
+                problems.append("{} has sandbox profile {!r}".format(where, config.get("profile")))
+            for key, value in config.items():
+                if key not in SANDBOX_SETTINGS or not isinstance(value, SANDBOX_SETTINGS[key]):
+                    problems.append("{} has sandbox setting {!r}={!r} that is not valid".format(where, key, value))
+            for key in config.get("limits", {}):
+                if key not in SANDBOX_LIMITS:
+                    problems.append("{} has sandbox limit {!r}, which is not one of {}".format(where, key, SANDBOX_LIMITS))
         for name, text in (case.get("files") or {}).items():
             if not isinstance(text, str) or name.startswith("/") or "\\" in name or ":" in name \
                     or name == "main.nova" or any(part in ("", ".", "..") for part in name.split("/")):

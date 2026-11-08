@@ -62,8 +62,8 @@ Not established:
 | M7 | Continuous verification | Done | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
 | M9 | Language specification and conformance corpus | In progress (first slice) | M7 | L |
-| M10 | One language: dialects become profiles | Planned | M8, M9 | L |
-| M11 | Security model and sandbox | Planned, **Decision** | M9 | XL |
+| M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
+| M11 | Security model and sandbox | **Plan drafted** ([design](design/m11-security-plan.md)), awaiting decisions | M9 | XL |
 | M12 | Runtime: bytecode format and performance | Planned | M9 | L |
 | M13 | Platform libraries, registry and API stability | Planned | M9, M11 | L |
 | M14 | Product pilots | Horizon | M10, M11, M13 | per product |

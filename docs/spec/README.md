@@ -60,6 +60,7 @@ the corpus carries one. The profiles so far:
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
 
 | `policy` | The game's policy dialect, a separate language specified in `12-policy-syntax.md` onwards ([ADR 0004](../decisions/0004-policy-dialect-after-measurement.md)). Its cases run on the policy engine (`dialects/policy/`) and never on NovaLang's engines. |
+| `sandbox` | The `restricted` profile of `16-sandbox.md`: capabilities denied unless granted, and resource limits. **Draft: not implemented yet** (D-040 to D-044). |
 
 ## Files
 
@@ -80,6 +81,7 @@ the corpus carries one. The profiles so far:
 | [`15-policy-reactor.md`](15-policy-reactor.md) | `pol.*`: the reactor game's host: the inputs a policy is given, the eight host functions and their effects, the scram latch between ticks, and the 900-step trace |
 | [`14-policy-engine.md`](14-policy-engine.md) | `pol.*`: the rule engine: `reactor`, `params`, `effects`, `signals`, `rule`, `fault`, `held`, reset, one tick, the fault scheduler and the host's operations |
 | [`13-policy-values.md`](13-policy-values.md) | `pol.*`: the policy dialect's values, number text, truthiness, equality, operators, indexing and its 33 built-in functions |
+| [`16-sandbox.md`](16-sandbox.md) | `sbx.*`: the sandbox profile: capabilities, path rules, limits, error shapes and exactly what is claimed (draft; owner review and independent audit pending) |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

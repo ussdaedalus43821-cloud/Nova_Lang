@@ -31,7 +31,7 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | --- | --- |
 | `name` | unique |
 | `spec` | the spec sections the case tests (`docs/spec/`, the ids in square brackets) |
-| `profile` | the feature set a host needs to run it: `core`, `modules`, `host`, `embedding`, `python` or `policy` (`docs/spec/README.md`) |
+| `profile` | the feature set a host needs to run it: `core`, `modules`, `host`, `embedding`, `python`, `policy` or `sandbox` (`docs/spec/README.md`) |
 | `source` | the program |
 | `output` | the lines `print` writes, in order, before the program ends |
 | `error` | `Label: message` of the error that ends the program, or `""` |
@@ -47,6 +47,8 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | `files` | optional; module files the program imports: a map from a relative path (with `/`) to its text. They are written, with the program as `main.nova`, into a folder of their own that the engine runs in, so `import "sub/util.nova"` finds `sub/util.nova`. For the `modules` profile (`docs/spec/08-modules.md`) |
 | `error_like` | optional regular expression the error must match instead of equalling `error`, for a message that contains a host-defined limit (the call depth) |
 | `deep` | optional; the program recurses until the host's call-depth limit, so it is not run on the tree-walker where that would crash the process (Windows before Python 3.11; a `SKIPPED:` line says so) |
+| `sandbox` | `sandbox` profile cases only: the engine's configuration (`docs/spec/16-sandbox.md`, `[sbx.profiles]`): `profile` (`trusted` or `restricted`), grants `read`, `write`, `import_from` (folders relative to the case's folder), `env` (names), `clock`, `random`, `stdin`, `process`, `regex` (booleans), `python` (module names) and `limits` (`steps`, `time`, `output`, `list`, `string`, `dict`, `depth`). The engines do not enforce it yet, so every case records the divergence (D-040 to D-044) until the engine follows the spec; a grant of Python modules turns the bridge on |
+| `matrix` | optional; the coverage-matrix cells the case proves, `"files.read:deny"`, `"list.plus:trip"` (`tests/security/matrix.py`); each must be a cell the specification asks for |
 | `divergences` | optional; see below |
 
 `output`, `error` and `exit` are what **the specification says**. They were

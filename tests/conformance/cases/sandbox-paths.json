@@ -1,0 +1,397 @@
+{
+ "area": "sandbox-paths",
+ "version": 1,
+ "cases": [
+  {
+   "name": "sbx-paths-inside-works",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "print(read(\"data/sub/deep.txt\"))\nprint(read(\"./data/in.txt\"))\nprint(read(\"data/sub/../in.txt\"))",
+   "output": [
+    "deep",
+    "hello",
+    "hello"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.inside:grant"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   }
+  },
+  {
+   "name": "sbx-paths-dotdot-leaves-the-folder",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"data/../secret.txt\")) } catch e { print(e) }\ntry { print(read(\"data/sub/../../secret.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: data/../secret.txt is outside the folders this program may use",
+    "FileError: data/sub/../../secret.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.dotdot:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "top secret"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "top secret"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "top secret"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-absolute-outside",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"/nova-sandbox-outside/x.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: /nova-sandbox-outside/x.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.absolute:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: /nova-sandbox-outside/x.txt"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: /nova-sandbox-outside/x.txt"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: /nova-sandbox-outside/x.txt"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-missing-is-judged-by-its-parent",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { write(\"newdir/new.txt\", \"x\") } catch e { print(e) }\ntry { write(\"../new.txt\", \"x\") } catch e { print(e) }\nwrite(\"data/new/new.txt\", \"x\")\nprint(read(\"data/new/new.txt\"))",
+   "output": [
+    "FileError: newdir/new.txt is outside the folders this program may use",
+    "FileError: ../new.txt is outside the folders this program may use",
+    "x"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "write": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.missing:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: newdir/new.txt"
+     ],
+     "error": "FileNotFoundError: data/new/new.txt",
+     "exit": 1,
+     "error_line": 3
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: newdir/new.txt"
+     ],
+     "error": "FileNotFoundError: data/new/new.txt",
+     "exit": 1,
+     "error_line": 3
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: newdir/new.txt"
+     ],
+     "error": "FileNotFoundError: data/new/new.txt",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-denial-does-not-reveal-existence",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"secret.txt\")) } catch e { print(e) }\ntry { print(read(\"missing.txt\")) } catch e { print(e) }\ntry { print(exists(\"secret.txt\")) } catch e { print(e) }\ntry { print(exists(\"missing.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: secret.txt is outside the folders this program may use",
+    "FileError: missing.txt is outside the folders this program may use",
+    "FileError: secret.txt is outside the folders this program may use",
+    "FileError: missing.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.same-error:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "FileNotFoundError: missing.txt",
+      "true",
+      "false"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "FileNotFoundError: missing.txt",
+      "true",
+      "false"
+     ],
+     "error": "",
+     "exit": 0
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "top secret",
+      "FileNotFoundError: missing.txt",
+      "true",
+      "false"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-import-outside-the-grant",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities",
+    "mod.import"
+   ],
+   "profile": "sandbox",
+   "source": "import \"other/o.nova\" as o\nprint(o.y)",
+   "output": [],
+   "error": "ImportError: other/o.nova is outside the folders this program may use",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "lib"
+    ]
+   },
+   "matrix": [
+    "paths.import:deny"
+   ],
+   "files": {
+    "lib/m.nova": "export let x = 1",
+    "other/o.nova": "export let y = 2"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-import-dotdot-outside-the-grant",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities",
+    "mod.import"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib/../other/o.nova\" as o\nprint(o.y)",
+   "output": [],
+   "error": "ImportError: lib/../other/o.nova is outside the folders this program may use",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "lib"
+    ]
+   },
+   "matrix": [
+    "paths.import:deny"
+   ],
+   "files": {
+    "lib/m.nova": "export let x = 1",
+    "other/o.nova": "export let y = 2"
+   },
+   "divergences": {
+    "vm": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "tree": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0,
+     "error_line": null
+    },
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "2"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  }
+ ]
+}

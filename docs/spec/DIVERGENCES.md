@@ -25,7 +25,7 @@ agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
 host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message) and D-025 and D-033 (case conversion beyond ASCII,
+difference in one error message), D-040 to D-044 (the sandbox profile of `16-sandbox.md`, written before it is implemented) and D-025 and D-033 (case conversion beyond ASCII,
 an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
 policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
 `13-policy-values.md`.
@@ -608,6 +608,88 @@ Spec: `[pol.lib-text]`
 `upper` and `lower` follow Python's full Unicode case mapping (`upper("ß")` is `"SS"`);
 a port's engine maps each character on its own. The same decision as D-025 for the
 NovaLang functions: it stays host-defined, and the cases use ASCII only.
+
+### D-040 — No capability gating: every host function is defined for every program
+
+Status: open
+Class: implementation bug
+Engines: bytecode VM, tree-walker, self-hosted
+Spec: `[sbx.capabilities]`, `[sbx.profiles]`
+
+There is no `restricted` profile. `read`, `write`, `exists`, `listdir`, `mkdir`, `remove`,
+`rename`, `copy`, the file form of `append`, `delete` of a file, `env`, `time`, `now`,
+`sleep`, `format_time`, `random` and its three companions, `input`, `exit`, `args`,
+`platform`, `cwd`, `abspath`, `regex` and `replace_all` are built-ins of every engine, in
+every program and in an embedded `Nova()`. `import` reads any module. A grant of `env`
+names does not hide the others. The cases run a `restricted` program on engines that
+ignore the `sandbox` object and record what each does instead of the specified
+`undefined name 'read'`. Found by the measurements for the M11 plan (a script run by
+`Nova()` read `/etc/hostname`). Closed by slice 2 of M11.
+
+Fix: a `Capabilities` object chosen when the engine is created; a denied name is not
+defined.
+
+### D-041 — No path confinement
+
+Status: open
+Class: implementation bug
+Engines: bytecode VM, tree-walker, self-hosted
+Spec: `[sbx.paths]`
+
+A program can read, write or import any path the process can reach: through `..`, an
+absolute path, or a name that does not exist yet. A module is found outside its own
+folder (`import "../outside.nova"` ran). There is no `FileError: <path> is outside the
+folders this program may use`. Closed by slice 2 of M11.
+
+Fix: resolve every path to its real path and compare it with the granted folders before
+touching the file system.
+
+### D-042 — Size, depth and nesting limits are missing, or end in the host's failure
+
+Status: open
+Class: implementation bug
+Engines: bytecode VM, tree-walker, self-hosted
+Spec: `[sbx.limits]`, `[sbx.errors]`
+
+The fixed limits of `[port.limits]` exist for `*`, `append` and `range`, and the depth and
+integer-digit limits match the specification. Missing: a size limit on `+` of lists and
+strings, `join`, `pad`, `replace_all`, `str` of a structure, `split`, `read` and `input`,
+and any limit on dictionary entries; none of the limits can be set lower. `s = s + s`
+forty times, or the same with a list, ends with a raw Python `MemoryError`. A program
+nested 20,000 brackets deep ends with Python's `RecursionError`: the command line turns
+it into `the interpreter ran out of stack - recursion too deep`, the library does not, and
+the self-hosted interpreter reports `InternalError: RecursionError`. Closed by slice 3 of M11.
+
+Fix: check each size from the operands before the memory is used, with the error of the
+row; turn `RecursionError` and `MemoryError` into the error of the nearest row.
+
+### D-043 — No step budget, time limit or output limit
+
+Status: open
+Class: implementation bug
+Engines: bytecode VM, tree-walker, self-hosted
+Spec: `[sbx.limits]`
+
+`while true { }` never ends, a program can write output without bound, and nothing can
+stop a run after a time; `sleep` sleeps for as long as it was told. The game port and the
+policy dialect already have a step budget. The three limits do not exist as
+`LimitError` and none of them is uncatchable. Closed by slice 3 of M11.
+
+Fix: count steps and check the clock in the same place; the three errors are of kind
+`fatal` and `try` does not see them.
+
+### D-044 — Sandbox settings are not read; a Python grant does not replace the default list
+
+Status: open
+Class: implementation bug
+Engines: bytecode VM, tree-walker, self-hosted
+Spec: `[sbx.capabilities]`, `[sbx.profiles]`
+
+An engine has no `profile` and no grants. With `allow_python` the bridge accepts the whole
+default list of `[py.import]`, which holds `re`, `random` and `datetime`: three modules
+that would give back the `regex`, `random` and `clock` capabilities. Closed by slice 2 of M11.
+
+Fix: `python=[...]` names the only modules `python.import` accepts.
 
 ## Not divergences, but worth knowing
 
