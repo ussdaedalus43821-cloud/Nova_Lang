@@ -26,6 +26,19 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10: the game dialect, measured (no language change)
+- `docs/design/m10-dialect-inventory.md`: a count of how the game dialect differs
+  from NovaLang 2.1.0, from the game's own lexer, parser, evaluator and host and
+  from running its 51 recorded oracle programs. About 60 independent behaviours
+  plus the rule engine, against 11 in ADR 0002's tables; only 12 of the 51
+  programs agree after a purely syntactic translation.
+- `tools/dialect_probe.py`: reproduces those numbers from a Reactor-Game
+  checkout. Not part of the test suite.
+- ADR 0004 (**proposed**): asks the owner whether to supersede ADR 0002, since
+  both of its reconsideration triggers are met. The recommendation is to specify
+  the dialect as its own language that shares the corpus, runner and security
+  stance. No behaviour of `novalang.py` or `novalang.nova` changed.
+
 ### M9: language specification and conformance corpus (first slice)
 - `docs/spec/`: the first written specification of NovaLang, normative per
   ADR 0001. 68 sections, each with an id such as `[lex.numbers]`, covering
