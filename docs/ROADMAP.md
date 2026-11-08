@@ -261,6 +261,16 @@ enumerated list of individually tested switches. The ADR's tables are the
 starting inventory of switches; if that list outgrows what can be tested
 exhaustively, the ADR says to revisit.
 
+**Measured (2026-11-08).** The inventory
+([`design/m10-dialect-inventory.md`](design/m10-dialect-inventory.md)) found
+about 60 independent differences plus the rule engine, not the 11 in the ADR's
+tables, and only 12 of the 51 recorded oracle programs agree with NovaLang after
+a purely syntactic translation. That meets ADR 0002's reconsideration trigger.
+[ADR 0004](decisions/0004-policy-dialect-after-measurement.md) (**proposed**)
+recommends specifying the policy dialect as its own language that shares the
+corpus, runner and security stance (Option C). Work that depends on the answer
+does not start until the owner decides.
+
 **Deliverables**
 
 - The chosen mechanism implemented in the Python engine (for example a named
@@ -390,7 +400,7 @@ in this roadmap commits to building them.
 | # | Decision | Needed by | Record |
 | --- | --- | --- | --- |
 | 1 | Is the written specification or the reference implementation normative? | Start of M9 | [ADR 0001](decisions/0001-specification-is-normative.md): **accepted**, the specification |
-| 2 | How the game dialect relates to NovaLang | Start of M10 | [ADR 0002](decisions/0002-game-dialect-and-profiles.md): **accepted**, a profile |
+| 2 | How the game dialect relates to NovaLang | Start of M10 | [ADR 0002](decisions/0002-game-dialect-and-profiles.md): **accepted**, a profile; **re-opened** by measurement, see [ADR 0004](decisions/0004-policy-dialect-after-measurement.md) (proposed) |
 | 3 | What NovaLang claims about security | Start of M11 | [ADR 0003](decisions/0003-security-stance.md): **accepted**, capability gating and limits, not isolation |
 | 4 | Python support floor | M7 | Decided in M7 by what CI shows |
 
