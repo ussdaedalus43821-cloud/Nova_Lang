@@ -198,7 +198,10 @@ everything that can run for long is a loop or a recursion. The bytecode VM, the 
 the self-hosted interpreter count exactly this. Another host may count something else (the game
 port's bytecode VM counts instructions, `[pol.limits]`), so the number of steps a program takes is
 **not** portable across hosts, and what a host guarantees is a bound on work: with the default
-budget, a loop of 20,000 simple passes completes and an endless loop always trips the limit. The
+step budget, a loop of 20,000 simple passes is within it and an endless loop always trips it. Whether
+a run also finishes inside the default time limit depends on the machine and on the engine (the
+self-hosted interpreter is the slowest, a few thousand passes a second on a small CI machine), so
+an embedder who runs real work in the self-hosted engine sets `time` to suit. The
 budget is per run, and per call a host makes into the program; a host function that calls back
 into the script is part of the same run and cannot reset it.
 

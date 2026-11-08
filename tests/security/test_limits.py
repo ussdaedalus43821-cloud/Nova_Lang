@@ -17,6 +17,13 @@ sys.path.insert(0, str(ROOT))
 import novalang as nl  # noqa: E402
 
 ENGINES = ("vm", "tree")
+
+
+def setUpModule():
+    if nl.SANDBOX_UNSUPPORTED:
+        raise unittest.SkipTest("the restricted profile needs Python 3.8 or later on Windows")
+
+
 LOOP = "let i = 0\nwhile i < {n} {{\n  i = i + 1\n}}\ni"
 
 
