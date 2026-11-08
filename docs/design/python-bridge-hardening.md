@@ -1,7 +1,8 @@
 # Design: closing the `python.*` bridge escapes (issue 1)
 
-Status: **Proposed. Nothing in this document is implemented.** Written
-2026-11-08 from the owner's decisions below; one question is still open.
+Status: **Design approved by the owner on 2026-11-08; nothing in this
+document is implemented yet.** Implementation follows the issue 3 change, on
+its own branch.
 
 Issue 1 reports that `python.get()` can reach Python's `builtins` and so run
 arbitrary code, contradicting the README's description of `python.*` as a
@@ -11,8 +12,10 @@ which were run against `63605ef`, not on the report.
 
 ## Decisions already made
 
-1. **Standalone runs do not get `python` by default.** An explicit
-   `--allow-python` flag, or a call in the embedding API, turns it on.
+1. **`python` is off by default everywhere.** Standalone runs need an
+   explicit `--allow-python` flag. An embedding host needs
+   `Nova(allow_python=True)` (this was open question O1; the owner chose
+   option A). A minor-version bump (2.1.0) is accepted.
 2. **A script cannot write what it cannot read.** Names that start with `_`
    are blocked for assignment through `PythonObjectProxy` as well as for reads.
 3. **Module objects stay proxies.** They are never converted into recursive
@@ -89,7 +92,9 @@ to its target, so that direction is unchanged.
 - `novalang.py --allow-python` sets it for a file, the REPL and code on the
   command line. `--bootstrap` passes the flag through, and `novalang.nova`
   binds its own `python` global only when the host's is enabled.
-- `Nova(engine=None, allow_python=...)` sets it for an embedding host.
+- `Nova(engine=None, allow_python=False)` is the embedding switch: a host
+  that wants `python.import`, `python.call`, `python.get` and `python.set`
+  passes `allow_python=True`.
 - `expose_global` is unaffected: it binds an object directly and does not need
   `python`. D1 still applies to the proxy it creates.
 
@@ -120,9 +125,9 @@ source:
 
 This is a deliberate breaking change for embedders: scripts that read or write
 `_`-prefixed attributes of exposed objects, or that walk to modules through a
-module attribute, stop working, and (see O1) a host may need to ask for
-`python`. It needs a changelog entry, a README correction, and a minor version
-bump (2.1.0).
+module attribute, stop working, and every host that uses `python.*` must pass
+`allow_python=True`. It needs a changelog entry, a README correction, and a
+minor version bump (2.1.0).
 
 ## What this does not do
 
@@ -138,19 +143,12 @@ bump (2.1.0).
   Pyodide's stack, is a separate issue.
 - Nothing here has had an independent review.
 
-## Open question for the owner
+## Decision record for the default
 
-**O1. Should `Nova()` also default to no `python`?** Decision 1 settles
-standalone runs. For embedding hosts there are two choices:
-
-- **A. Off everywhere (recommended).** A host that wants `python.import`,
-  `python.call` and the rest writes `Nova(allow_python=True)`. This matches
-  ADR 0003's deny-by-default and the report's embedder, who deletes `python`
-  after every `Nova()`. Every existing embedder of `python.*` breaks until it
-  adds the argument, which is why this needs the minor-version bump and a
-  prominent changelog entry.
-- **B. On for `Nova()`, off for the command line.** No embedder breaks, but a
-  host that runs untrusted scripts has to know to turn it off, which is the
-  opposite of secure by default.
-
-The in-repo examples and tests that use `python.*` would be updated either way.
+The choice for embedding hosts was between **A, off everywhere**, and **B, on
+for `Nova()` and off for the command line**. The owner chose A on 2026-11-08.
+It matches ADR 0003's deny-by-default and the issue reporter's own host, which
+deletes `python` after every `Nova()`. Every existing embedder of `python.*`
+breaks until it passes `allow_python=True`, which is why the change needs the
+minor-version bump and a prominent changelog entry. The in-repo examples and
+tests that use `python.*` are updated to pass it.
