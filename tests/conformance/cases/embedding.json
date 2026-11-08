@@ -1028,7 +1028,8 @@
     {
      "value": 4
     }
-   ]
+   ],
+   "deep": true
   },
   {
    "name": "emb-a-syntax-error-is-found-before-anything-runs",
@@ -1219,7 +1220,8 @@
     {
      "value": 7
     }
-   ]
+   ],
+   "deep": true
   },
   {
    "name": "py-the-bridge-is-off-unless-the-host-turns-it-on",
