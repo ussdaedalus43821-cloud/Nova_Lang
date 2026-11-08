@@ -200,9 +200,85 @@ def run_policy(case):
             "exit": 0 if ok else 1, "host_calls": calls}
 
 
+def policy_value(value):
+    """A policy value as JSON: a function is its display text, nothing else changes."""
+    import nova_evaluator
+    if isinstance(value, nova_evaluator.NovaFunction):
+        return nova_evaluator.text(value)
+    if isinstance(value, list):
+        return [policy_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: policy_value(item) for key, item in value.items()}
+    return value
+
+
+def run_policy_engine(case):
+    """A policy-dialect case that drives the rule engine step by step
+    (docs/spec/14-policy-engine.md). `engine` is {"seed": n, "watch": [global names],
+    "steps": [...]}; a step is one of
+        {"tick": {"dt": s, "inputs": {...}, "faults": bool}}
+        {"inject_fault": name}   {"clear_fault": true}   {"reset": seed}
+        {"call": [name, args...]}   {"set": {name: value}}   {"describe": true}
+    and the case's `results` has one entry per step:
+        {"ok": bool, "error": text, "output": [...], "host_calls": [...],
+         "watch": {name: value}, "value": result of a call}
+    The case's own output, error, exit and host_calls are those of loading the program."""
+    import copy
+    import random
+    if str(POLICY_DIRECTORY) not in sys.path:
+        sys.path.insert(0, str(POLICY_DIRECTORY))
+    import nova_evaluator
+    import nova_vm
+    spec = copy.deepcopy(case["engine"])   # scripts change the lists and dictionaries they are given
+    files = case.get("files") or {}
+    machine = nova_vm.NovaVM(random.Random(spec.get("seed", 12345)), module_reader=files.get)
+    calls = []
+    for name in case.get("host_functions", []):
+        machine.register_function(
+            name, (lambda n: lambda args: calls.append(
+                n + "(" + ", ".join(nova_evaluator.text(a) for a in args) + ")"))(name))
+    ok = machine.eval(case["source"], case["name"])
+    result = {"output": machine.drain_output(), "error": machine.error, "error_line": None,
+              "exit": 0 if ok else 1, "host_calls": list(calls)}
+    del calls[:]
+    results = []
+    if ok:
+        for step in spec.get("steps", []):
+            entry = {"ok": True, "value": None}
+            if "tick" in step:
+                tick = step["tick"]
+                entry["ok"] = machine.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
+                                           tick.get("faults", True))
+            elif "inject_fault" in step:
+                entry["ok"] = machine.inject_fault(step["inject_fault"])
+            elif "clear_fault" in step:
+                machine.clear_fault()
+            elif "reset" in step:
+                entry["ok"] = machine.reset(step["reset"])
+            elif "call" in step:
+                machine.error = ""
+                entry["value"] = policy_value(machine.call_function(step["call"][0], list(step["call"][1:])))
+                entry["ok"] = machine.error == ""
+            elif "describe" in step:
+                entry["value"] = policy_value(machine.describe())
+            elif "set" in step:
+                for name, value in step["set"].items():
+                    machine.set_global(name, value)
+            entry["error"] = "" if entry["ok"] else machine.error
+            entry["output"] = machine.drain_output()
+            entry["host_calls"] = list(calls)
+            del calls[:]
+            entry["watch"] = {name: policy_value(machine.get_global(name)) for name in spec.get("watch", [])}
+            if "value" in entry and "call" not in step and "describe" not in step:
+                del entry["value"]
+            results.append(entry)
+    result["results"] = results
+    return result
+
+
 def run_case(case, engine):
     if engine == "policy":
-        return run_policy(case)
+        return run_policy_engine(case) if "engine" in case else run_policy(case)
     files = case.get("files")
     if files is None and case.get("profile") in ("host", "modules"):
         files = {}      # these cases touch the file system: a folder of their own

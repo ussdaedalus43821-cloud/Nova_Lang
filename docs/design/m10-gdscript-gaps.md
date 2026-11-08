@@ -21,6 +21,11 @@ every failure should be one of these or a new finding. Fix the port, not the cas
 | 6 | `pick`, `rand` sequences (`pol.lib-random`) | Python's generator | Godot's generator | not comparable; the cases test the range only |
 | 7 | `floor`, `round`, `pow`, `exp` at the edges (`pol.lib-math`) | now as the specification | `floor`, `round`, `pow` are already the same by reading; `exp` clamps the same way | `policy_math_*` |
 | 8 | Dictionary key and module path in messages (`pol.index`, `pol.import`) | now `'text'` | `'%s'` already | `policy_index_dict_missing_key_with_quote` |
+| 9 | Rules of equal priority run in written order (`pol.decl-rule`) | Python's sort is stable | `Array.sort_custom` in `nova_parser.gd` is not guaranteed stable, so ties can run in another order | `policy_rules_ties_keep_declaration_order` |
+| 10 | An error in a signal (`pol.decl-signals`, D-034) | now the signal's own error | the tree-walker backend (`_tick_tree_walker`) still blames the next rule's condition or loses it; the bytecode backend (`_tick_vm2`) already reports it plainly | `policy_signals_error_*` |
+| 11 | The engine reading `t`, a fault duration, `fault_*` parameters as numbers (`pol.engine-errors`, D-035) | `expected a number, got string` | `float(...)` of a string is 0.0 and of `null` is an error or 0 | `policy_fault_duration_not_a_number`, `policy_fault_timing_param_not_a_number`, `policy_fault_time_input_not_a_number` |
+| 12 | `inject_fault` of a fault whose duration fails (`pol.fault-api`) | returns false, fault does not start | not read | `policy_fault_inject_duration_error` |
+| 13 | `fault_first_min_s` etc. defaults, the draw order at reset (`pol.reset`) | one `uniform` draw at reset | not read | not comparable across generators; cases use equal bounds |
 
 **The Reactor-Game Python reference** (`reference/nova_*.py`) has the Python-side
 defects fixed here (D-030 to D-032) and must get the same changes

@@ -26,6 +26,22 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10 slice 3: the policy dialect's rule engine
+- `docs/spec/14-policy-engine.md`: 15 sections (`pol.*`) on `reactor`, `params`, `effects`,
+  `signals`, `rule` (priority, `once`, `edge`), `fault`, `held`, reset, the order of one tick,
+  the fault scheduler, starting and ending a fault from outside, the host's operations and the
+  engine's errors.
+- `tests/conformance/cases/policy-engine.json`: 168 cases that drive the engine step by step (a
+  new `engine` field: ticks, reset, inject and clear a fault, call a function, set a global,
+  describe) and record, after each step, success, error, output, host calls and the globals the case
+  watches. The policy corpus is now 710 cases. The engine's random generator is not portable, so
+  cases that involve it use equal bounds or only the properties the specification promises.
+- Two more divergences found and fixed in `dialects/policy/` (D-034 an error in a signal was
+  blamed on a rule or lost; D-035 a non-number where the engine needs one was a raw Python
+  exception, and `inject_fault` of a fault whose duration failed started it anyway).
+- `docs/design/m10-gdscript-gaps.md` gains the engine items (unstable rule sort, the tree-walker
+  backend's signal errors, number reads). NovaLang is unchanged.
+
 ### M10 slice 2: policy dialect values, operators and built-ins
 - `docs/spec/13-policy-values.md`: 18 sections (`pol.*`) on the dialect's values, how a
   number is written, truthiness, equality, arithmetic (division by zero is zero),

@@ -569,6 +569,34 @@ port's `to_float` accepts none of those and reads a leading number out of text s
 point, an optional exponent, ASCII spaces around it) and makes anything else `0`; the
 engine now follows it.
 
+### D-034 — Policy dialect: an error in a signal was blamed on a rule, or lost
+
+Status: resolved
+Class: implementation bug
+Engines: the policy dialect engine
+Spec: `[pol.decl-signals]`, `[pol.engine-errors]`
+
+The engine did not look for an error after evaluating the signals. If any rule followed, the
+signal's error was found while evaluating that rule's condition and reported as that rule's
+(`rule 'r': line 1: unknown identifier 'nope'`, naming a rule that had nothing wrong); with no
+rule the error was never reported and the tick succeeded. The GDScript port's bytecode backend
+already stops the tick with the signal's own error. The specification says that, and the
+engine now does.
+
+### D-035 — Policy dialect: a non-number where the engine needs one
+
+Status: resolved
+Class: implementation bug
+Engines: the policy dialect engine
+Spec: `[pol.engine-errors]`, `[pol.fault-schedule]`, `[pol.fault-api]`
+
+A fault `duration` that was not a number (`duration "long"`, or an unknown name), or a
+`t` input or `fault_*` timing parameter that was not a number, ended in a raw Python
+`TypeError` or `ValueError`, and `inject_fault` of a fault whose duration failed
+started the fault with duration 0 and reported success. All now fail with the
+ordinary `expected a number, got string` or the expression's own error; a fault that
+cannot work out its duration does not start; `inject_fault` returns false.
+
 ### D-033 — Policy dialect: case conversion beyond ASCII
 
 Status: open
