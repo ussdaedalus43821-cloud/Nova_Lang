@@ -1,6 +1,6 @@
 # 0003: What NovaLang claims about security
 
-Status: **Proposed**. Needed by the start of M11.
+Status: **Accepted** on 2026-11-08. Needed by the start of M11.
 
 ## Context
 
@@ -45,4 +45,31 @@ agent and connectivity products; Option 1 puts users at risk.
 
 ## Decision
 
-_Not yet decided._
+Accepted as recommended, by the project owner, on 2026-11-08: Option 2.
+NovaLang claims **capability gating and resource limits, not isolation**.
+Deny by default, grant explicitly, bound resources, test every denial and every
+limit, and say plainly that code you did not write should also run in a
+separate process or container. An optional subprocess runner is provided.
+Nothing is described as a security boundary until an independent review of the
+model has taken place.
+
+Binding consequences for M11, in addition to those above:
+
+- The threat model is written first, and states what is *not* defended.
+- Each capability (file read and write by path, network, clock, environment,
+  process, the Python bridge) has a test that proves it is denied and a test
+  that proves a grant works, on every engine.
+- Each resource limit (steps, call depth, collection and string size, output
+  size, wall-clock time) has a test that it trips with the specified error on
+  every engine.
+- The existing, unrestricted behavior stays available as an explicit "trusted"
+  profile.
+
+Already done in line with this decision (NovaLang 2.1.0): the Python bridge is
+off unless asked for (`--allow-python`, `Nova(allow_python=True)`), every access
+to a Python object passes one gate that hides private names and modules that
+were not granted, scripts cannot write to modules, classes or functions, and a
+test walks every path the gate allows to look for a way out
+([`../design/python-bridge-hardening.md`](../design/python-bridge-hardening.md)).
+The call-depth limit exists on every engine; a step budget and a wall-clock
+limit do not yet exist outside the game port.

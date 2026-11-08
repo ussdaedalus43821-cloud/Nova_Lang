@@ -26,6 +26,38 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M9: language specification and conformance corpus (first slice)
+- `docs/spec/`: the first written specification of NovaLang, normative per
+  ADR 0001. 57 sections, each with an id such as `[lex.numbers]`, covering
+  lexical structure, the value model, expressions, names and scopes, and the
+  error catalogue with its message text. A versioning rule says what a major,
+  minor and patch release may change in the language.
+- `tests/conformance/`: a host-neutral corpus of 297 cases (source, expected
+  output, error, line and exit status, the spec sections tested, a profile),
+  in the shape the game port already uses, and a `conformance` station that
+  runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
+  The station fails if a spec section is cited by no case, a case cites a
+  section that does not exist, or a divergence is not in the log. The full
+  suite is now 1,925 parent checks; the quick tier 1,852.
+- `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
+  follow the text. 11 entries from this slice. The bytecode VM and the
+  tree-walker agree with the spec and each other on every case but one
+  decision (D-002, non-ASCII letters and digits in names and numbers, which the
+  spec forbids and `novalang.py` accepts). The self-hosted interpreter has nine
+  open implementation bugs (D-003 to D-011), among them scoping that leaks a
+  name out of a block, built-in names that can be redefined, duplicate
+  parameters accepted, top-level `return`/`break`/`continue` ignored, and
+  function equality that overflows its stack, plus a systematic difference in
+  how it words error headlines (D-001, normalized in the station).
+- ADR 0003 (security stance) is accepted: capability gating and resource
+  limits, not isolation.
+
+### Fixed
+- `print(²)` and `num("²")` (a superscript digit, which Python's `isdigit`
+  accepts but `int()` does not) ended in a raw Python `ValueError`. They now
+  report `unexpected character '²'` and `num() cannot read a number from "²"`.
+  Found by writing the lexical chapter of the specification.
+
 ## [2.1.0] - 2026-11-08 — Verification, portability, and a closed `python.*` bridge
 
 ### Security

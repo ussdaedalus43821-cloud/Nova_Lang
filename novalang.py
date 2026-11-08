@@ -389,7 +389,7 @@ class Lexer:
                     self.advance()
                 continue
 
-            if char.isdigit() or (char == "." and (self.peek(1) or "").isdigit()):
+            if char.isdecimal() or (char == "." and (self.peek(1) or "").isdecimal()):
                 tokens.append(self.read_number())
                 continue
 
@@ -463,7 +463,7 @@ class Lexer:
         digits = ""
         seen_dot = False
 
-        while self.peek() is not None and (self.peek().isdigit() or self.peek() == "."):
+        while self.peek() is not None and (self.peek().isdecimal() or self.peek() == "."):
             char = self.advance()
             if char == ".":
                 if seen_dot:
@@ -1906,8 +1906,8 @@ def builtin_num(args, position):
     readable = (
         digits
         and digits.count(".") <= 1
-        and any(char.isdigit() for char in digits)
-        and all(char.isdigit() or char == "." for char in digits)
+        and any(char.isdecimal() for char in digits)
+        and all(char.isdecimal() or char == "." for char in digits)
     )
     if not readable:
         raise NovaError('num() cannot read a number from "{}"'.format(value), position)

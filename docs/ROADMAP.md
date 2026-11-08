@@ -29,7 +29,7 @@ use NovaLang as an embedded policy and scripting layer:
 
 ## Where we are
 
-Established, with evidence (the full suite is 1,921 checks, passing locally and, as of its last run, on Linux and macOS in CI):
+Established, with evidence (the full suite is 1,925 checks, passing locally and in CI on Linux, macOS and Windows):
 
 - One language implemented three ways that must agree: the Python bytecode VM
   (default), the Python tree-walker (reference), and `novalang.nova`
@@ -61,7 +61,7 @@ Not established:
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
 | M7 | Continuous verification | Done | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
-| M9 | Language specification and conformance corpus | Planned | M7 | L |
+| M9 | Language specification and conformance corpus | In progress (first slice) | M7 | L |
 | M10 | One language: dialects become profiles | Planned | M8, M9 | L |
 | M11 | Security model and sandbox | Planned, **Decision** | M9 | XL |
 | M12 | Runtime: bytecode format and performance | Planned | M9 | L |
@@ -220,6 +220,21 @@ checked against, instead of "whatever `novalang.py` does".
 implementation is the first conforming host
 ([ADR 0001](decisions/0001-specification-is-normative.md), accepted).
 
+**Status (2026-11-08).** First slice written: [`spec/`](spec/README.md) has 57
+sections covering lexical structure, values, expressions, scoping and the error
+catalogue, and [`tests/conformance/`](../tests/conformance/README.md) has 297
+cases citing them, run by the `conformance` station on the VM, the tree-walker
+and the self-hosted interpreter. The station enforces that every section is
+cited and every divergence is logged. The log
+([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) has 11 entries from this slice,
+ten open: one the host's (non-ASCII letters and digits, a decision for the
+owner) and nine the self-hosted interpreter's, plus its error headlines handled
+by a documented normalization. Two host crashes the spec work exposed are
+fixed (`print(²)` and `num("²")` leaked a raw Python `ValueError`). Not yet
+written: statements beyond `let`/assignment/blocks/loops/functions/`try`,
+the standard library as profiles, modules, type annotations, the embedding
+profile, and the `Reactor-Game` oracle cases as a profile.
+
 **Risks.** Writing the spec will expose undocumented behavior and inconsistent
 error text. That cost is the value of the milestone.
 
@@ -365,7 +380,7 @@ in this roadmap commits to building them.
 | --- | --- | --- | --- |
 | 1 | Is the written specification or the reference implementation normative? | Start of M9 | [ADR 0001](decisions/0001-specification-is-normative.md): **accepted**, the specification |
 | 2 | How the game dialect relates to NovaLang | Start of M10 | [ADR 0002](decisions/0002-game-dialect-and-profiles.md): **accepted**, a profile |
-| 3 | What NovaLang claims about security | Start of M11 | [ADR 0003](decisions/0003-security-stance.md): proposed |
+| 3 | What NovaLang claims about security | Start of M11 | [ADR 0003](decisions/0003-security-stance.md): **accepted**, capability gating and limits, not isolation |
 | 4 | Python support floor | M7 | Decided in M7 by what CI shows |
 
 ## Maintaining this document

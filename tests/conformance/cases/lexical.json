@@ -1,0 +1,1065 @@
+{
+ "area": "lexical",
+ "version": 1,
+ "cases": [
+  {
+   "name": "lex-empty-program",
+   "spec": [
+    "lex.source"
+   ],
+   "profile": "core",
+   "source": "",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-only-whitespace-and-comment",
+   "spec": [
+    "lex.source",
+    "lex.comments"
+   ],
+   "profile": "core",
+   "source": "   \t \n# nothing here\n   \n",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-utf8-text-in-strings",
+   "spec": [
+    "lex.source",
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "print(len(\"héllo\"), upper(\"é\"), \"日本語\"[1], len(\"😀\"))",
+   "output": [
+    "5 É 本 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-utf8-text-in-comments",
+   "spec": [
+    "lex.source",
+    "lex.comments"
+   ],
+   "profile": "core",
+   "source": "# héllo wörld 日本語\nprint(\"ok\")",
+   "output": [
+    "ok"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-newline-lf",
+   "spec": [
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": "print(1)\nprint(2)",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-newline-crlf",
+   "spec": [
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": "print(1)\r\nprint(2)",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-newline-lone-cr",
+   "spec": [
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": "print(1)\rprint(2)",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-semicolon-separates",
+   "spec": [
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": "print(1); print(2)",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-semicolons-and-blank-lines-are-empty-statements",
+   "spec": [
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": ";;print(1);;\n\n\nprint(2);\n",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-two-statements-on-one-line-error",
+   "spec": [
+    "lex.newlines",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1) print(2)",
+   "output": [],
+   "error": "NovaError: expected a new line between statements, found 'print'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a new line between statements, found print",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-semicolon-inside-string-is-text",
+   "spec": [
+    "lex.newlines",
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "let s = \"a;b\"\nprint(s, len(s))",
+   "output": [
+    "a;b 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-whitespace-is-space-and-tab",
+   "spec": [
+    "lex.whitespace"
+   ],
+   "profile": "core",
+   "source": "print(  1 \t+\t 2  )",
+   "output": [
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-indentation-is-not-significant",
+   "spec": [
+    "lex.whitespace"
+   ],
+   "profile": "core",
+   "source": "if true {\nprint(\"a\")\n        print(\"b\")\n\t}",
+   "output": [
+    "a",
+    "b"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-comment-to-end-of-line",
+   "spec": [
+    "lex.comments"
+   ],
+   "profile": "core",
+   "source": "print(1) # trailing\n# full line\nprint(2) # end",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-hash-inside-string-is-text",
+   "spec": [
+    "lex.comments",
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "print(\"# not a comment\", '# nor this')",
+   "output": [
+    "# not a comment # nor this"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-comment-ends-at-cr",
+   "spec": [
+    "lex.comments",
+    "lex.newlines"
+   ],
+   "profile": "core",
+   "source": "print(1) # c\rprint(2)",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-identifier-forms",
+   "spec": [
+    "lex.identifiers"
+   ],
+   "profile": "core",
+   "source": "let a = 1\nlet _b = 2\nlet c_3 = 3\nlet D4 = 4\nprint(a, _b, c_3, D4)",
+   "output": [
+    "1 2 3 4"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-identifiers-are-case-sensitive",
+   "spec": [
+    "lex.identifiers"
+   ],
+   "profile": "core",
+   "source": "let x = 1\nlet X = 2\nprint(x, X)",
+   "output": [
+    "1 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-identifier-cannot-start-with-digit",
+   "spec": [
+    "lex.identifiers",
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let 1a = 2",
+   "output": [],
+   "error": "NovaError: expected a name after 'let', found 1",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-f-alone-is-an-identifier",
+   "spec": [
+    "lex.identifiers",
+    "lex.fstrings"
+   ],
+   "profile": "core",
+   "source": "let f = 3\nprint(f)",
+   "output": [
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-non-ascii-letter-in-identifier",
+   "spec": [
+    "lex.identifiers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "let é = 1\nprint(é)",
+   "output": [],
+   "error": "NovaError: unexpected character 'é'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "vm": {
+     "id": "D-002",
+     "output": [
+      "1"
+     ],
+     "error": "",
+     "error_line": null,
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-002",
+     "output": [
+      "1"
+     ],
+     "error": "",
+     "error_line": null,
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "lex-non-ascii-digit-is-not-a-number",
+   "spec": [
+    "lex.numbers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(١٢٣)",
+   "output": [],
+   "error": "NovaError: unexpected character '١'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "vm": {
+     "id": "D-002",
+     "output": [
+      "123"
+     ],
+     "error": "",
+     "error_line": null,
+     "exit": 0
+    },
+    "tree": {
+     "id": "D-002",
+     "output": [
+      "123"
+     ],
+     "error": "",
+     "error_line": null,
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "lex-superscript-digit-is-an-error-not-a-crash",
+   "spec": [
+    "lex.numbers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(²)",
+   "output": [],
+   "error": "NovaError: unexpected character '²'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-keywords-are-reserved-as-names",
+   "spec": [
+    "lex.keywords",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let if = 1",
+   "output": [],
+   "error": "NovaError: expected a name after 'let', found 'if'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a name after 'let', found if",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-true-and-false-are-keywords",
+   "spec": [
+    "lex.keywords",
+    "lex.identifiers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let true = 1",
+   "output": [],
+   "error": "NovaError: expected a name after 'let', found 'true'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a name after 'let', found true",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-keywords-as-dictionary-keys",
+   "spec": [
+    "lex.keywords",
+    "expr.dicts",
+    "expr.member"
+   ],
+   "profile": "core",
+   "source": "let d = {if: 1, else: 2, to: 3}\nprint(d.if, d[\"else\"], d.to)",
+   "output": [
+    "1 2 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-capitalized-keyword-is-just-a-name",
+   "spec": [
+    "lex.keywords",
+    "lex.identifiers",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(True)",
+   "output": [],
+   "error": "NovaError: undefined name 'True'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-there-is-no-null-literal",
+   "spec": [
+    "lex.keywords",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(null)",
+   "output": [],
+   "error": "NovaError: undefined name 'null'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-integer-literal",
+   "spec": [
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(0, 42, 007)",
+   "output": [
+    "0 42 7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-float-literal",
+   "spec": [
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(3.14, 2.50, 5.0)",
+   "output": [
+    "3.14 2.5 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-leading-dot-and-trailing-dot",
+   "spec": [
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(.5, 5.)",
+   "output": [
+    "0.5 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-two-decimal-points-error",
+   "spec": [
+    "lex.numbers",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(1.2.3)",
+   "output": [],
+   "error": "NovaError: a number cannot have two decimal points",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-004",
+     "output": [],
+     "error": "NovaError: expected a ')' to close the argument list, found 0.3",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-no-underscore-separators",
+   "spec": [
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1_000)",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found '_000'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a ')' to close the argument list, found _000",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-no-hex-literals",
+   "spec": [
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(0x10)",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found 'x10'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a ')' to close the argument list, found x10",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-no-exponent-literals",
+   "spec": [
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1e3)",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found 'e3'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a ')' to close the argument list, found e3",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-space-splits-a-number",
+   "spec": [
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 .5)",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found 0.5",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-minus-is-an-operator-not-part-of-a-number",
+   "spec": [
+    "lex.numbers",
+    "lex.operators"
+   ],
+   "profile": "core",
+   "source": "print(-5, - 5, 3 -2, 3- 2)",
+   "output": [
+    "-5 -5 1 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-big-integers-are-exact",
+   "spec": [
+    "lex.numbers"
+   ],
+   "profile": "core",
+   "source": "print(1000000 * 1000000 * 1000000, 99999999999 + 1)",
+   "output": [
+    "1000000000000000000 100000000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-string-quotes",
+   "spec": [
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "print(\"double\", 'single', \"it's\", 'say \"hi\"')",
+   "output": [
+    "double single it's say \"hi\""
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-empty-string",
+   "spec": [
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "print(len(\"\"), \"\" == \"\")",
+   "output": [
+    "0 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-escape-newline-and-tab",
+   "spec": [
+    "lex.strings",
+    "lex.escapes"
+   ],
+   "profile": "core",
+   "source": "print(\"a\\nb\")\nprint(\"a\\tb\" == \"a\" + \"\\t\" + \"b\")",
+   "output": [
+    "a",
+    "b",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-escape-quote-and-backslash",
+   "spec": [
+    "lex.escapes"
+   ],
+   "profile": "core",
+   "source": "print(\"q\\\"q\", 's\\'s', \"back\\\\slash\")",
+   "output": [
+    "q\"q s's back\\slash"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-escape-cr-and-nul-are-one-character",
+   "spec": [
+    "lex.escapes"
+   ],
+   "profile": "core",
+   "source": "print(len(\"\\r\"), len(\"\\0\"), len(\"\\n\"))",
+   "output": [
+    "1 1 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-unknown-escape-error",
+   "spec": [
+    "lex.escapes",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"\\q\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\q'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-no-unicode-escapes",
+   "spec": [
+    "lex.escapes",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"a\\u00e9\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\u'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-unclosed-string-error",
+   "spec": [
+    "lex.strings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"abc",
+   "output": [],
+   "error": "NovaError: this string is never closed",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-newline-inside-string-error",
+   "spec": [
+    "lex.strings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"a\nb\")",
+   "output": [],
+   "error": "NovaError: this string is never closed",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-adjacent-strings-are-not-joined",
+   "spec": [
+    "lex.strings",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print('it''s')",
+   "output": [],
+   "error": "NovaError: expected a ')' to close the argument list, found the string 's'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: expected a ')' to close the argument list, found the string s",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-fstring-placeholder",
+   "spec": [
+    "lex.fstrings"
+   ],
+   "profile": "core",
+   "source": "let n = 3\nprint(f\"n is {n}, double is {n * 2}\")",
+   "output": [
+    "n is 3, double is 6"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-literal-braces",
+   "spec": [
+    "lex.fstrings"
+   ],
+   "profile": "core",
+   "source": "print(f\"{{x}} and {{}}\")",
+   "output": [
+    "{x} and {}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-either-quote",
+   "spec": [
+    "lex.fstrings",
+    "lex.strings"
+   ],
+   "profile": "core",
+   "source": "print(f'{1 + 1}', f\"{'a' + 'b'}\")",
+   "output": [
+    "2 ab"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-nested-string-in-placeholder",
+   "spec": [
+    "lex.fstrings"
+   ],
+   "profile": "core",
+   "source": "print(f\"x{\"a\" + \"b\"}y\")",
+   "output": [
+    "xaby"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-escapes",
+   "spec": [
+    "lex.fstrings",
+    "lex.escapes"
+   ],
+   "profile": "core",
+   "source": "print(f\"a\\tb{1}\")",
+   "output": [
+    "a\tb1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-lone-close-brace-error",
+   "spec": [
+    "lex.fstrings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(f\"a}b\")",
+   "output": [],
+   "error": "NovaError: a '}' inside an f-string must be written '}}'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-empty-placeholder-error",
+   "spec": [
+    "lex.fstrings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(f\"{}\")",
+   "output": [],
+   "error": "NovaError: this f-string placeholder is empty",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-unclosed-placeholder-error",
+   "spec": [
+    "lex.fstrings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(f\"{1\")",
+   "output": [],
+   "error": "NovaError: this f-string placeholder needs a closing '}'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-unclosed-error",
+   "spec": [
+    "lex.fstrings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(f\"abc",
+   "output": [],
+   "error": "NovaError: this f-string is never closed",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-fstring-undefined-name-in-placeholder",
+   "spec": [
+    "lex.fstrings",
+    "err.name"
+   ],
+   "profile": "core",
+   "source": "print(f\"{f}\")",
+   "output": [],
+   "error": "NovaError: undefined name 'f'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-operator-tokens",
+   "spec": [
+    "lex.operators"
+   ],
+   "profile": "core",
+   "source": "print(7 // 2, 7 % 3, 1 != 2, 1 <= 1, 2 >= 3, 1 == 1)",
+   "output": [
+    "3 1 true true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lex-bang-alone-error",
+   "spec": [
+    "lex.operators",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(1 !)",
+   "output": [],
+   "error": "NovaError: '!' on its own is not an operator - did you mean '!=' or 'not'?",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-unexpected-character-error",
+   "spec": [
+    "lex.operators",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(@)",
+   "output": [],
+   "error": "NovaError: unexpected character '@'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-no-diamond-operator",
+   "spec": [
+    "lex.operators",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(1 <> 2)",
+   "output": [],
+   "error": "NovaError: unexpected '>'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: unexpected >",
+     "exit": 1
+    }
+   }
+  },
+  {
+   "name": "lex-no-power-operator",
+   "spec": [
+    "lex.operators",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "print(2 ** 2)",
+   "output": [],
+   "error": "NovaError: unexpected '*'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-003",
+     "output": [],
+     "error": "NovaError: unexpected *",
+     "exit": 1
+    }
+   }
+  }
+ ]
+}

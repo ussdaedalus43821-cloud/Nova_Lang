@@ -21,6 +21,11 @@ Stations, in order:
                     paths, file URIs, newlines, the time limit), tested on
                     every platform by simulating the one that differs.
 
+  12. conformance   the host-neutral corpus in tests/conformance/ (cases that
+                    cite the sections of docs/spec/) run on the VM, the
+                    tree-walker and the self-hosted interpreter; every spec
+                    section must be cited, every divergence logged.
+
   1. fmt golden     tests/fmt/X.nova formats to exactly X.expected.nova,
                     and every expected file is already a fixed point.
   2. lint golden    tests/lint/X.nova lints to exactly X.expected.
@@ -818,6 +823,13 @@ def station_portability(line):
                done.stdout + done.stderr)
 
 
+def station_conformance(line):
+    print("12. conformance (the specification's corpus on every engine)")
+    sys.path.insert(0, os.path.join(HERE, "conformance"))
+    import conformance
+    conformance.check_all(line.check)
+
+
 STATIONS = [
     ("harness", station_harness),
     ("cli", station_cli),
@@ -836,6 +848,7 @@ STATIONS = [
     ("editor", station_editor),
     ("compiler", station_compiler),
     ("differential", station_differential),
+    ("conformance", station_conformance),
 ]
 
 
