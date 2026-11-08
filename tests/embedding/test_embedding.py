@@ -260,8 +260,10 @@ class EmbeddingContract:
 
     def test_nan_and_infinity_reach_the_host_as_nova_errors(self):
         """floor/ceil/round/sleep/sin of NaN or infinity once leaked a raw
-        ValueError or OverflowError to the host (issue 3)."""
-        nan, inf = 'json.loads("NaN")', 'json.loads("1e999")'
+        ValueError or OverflowError to the host (issue 3). The values come from
+        num() of a decimal too long for a float; json.loads refuses them (D-022)."""
+        inf = 'num("1" + "0" * 400 + ".0")'
+        nan = '({0} - {0})'.format(inf)
         for call in ("floor", "ceil", "round", "sleep"):
             for value, shown in ((nan, "nan"), (inf, "inf")):
                 with self.subTest(call=call, value=shown):

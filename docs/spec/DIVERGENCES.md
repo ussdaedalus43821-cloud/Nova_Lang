@@ -23,10 +23,10 @@ change would break existing programs).
 The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
-accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; D-002, D-012 to
-D-014, D-018 and D-023 are the host's own, and D-019 to D-022 are open decisions
-about behavior that is Python's. Everything else is resolved except D-001
-(normalized) and D-015 (a cosmetic difference in one error message).
+accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
+host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
+difference in one error message) and D-025 (case conversion beyond ASCII, an open
+decision).
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -357,65 +357,68 @@ reach a program did not have.
 
 ### D-019 — What `sorted` does with items that are not all numbers or all strings
 
-Status: open
-Untested: the behavior is Python's and not meant to be copied
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: booleans count as 0 and 1; mixed kinds are refused)
 Engines: all three Python engines
 Spec: `[lib.collections]`
-Cases: none
+Cases: `lib-sorted-treats-booleans-as-zero-and-one`, `lib-sorted-refuses-what-cannot-be-ordered`
 
-`sorted` orders numbers by value and strings by code point. Given lists of lists
-it orders them item by item, given booleans it puts `false` before `true`, and
-given a NaN among numbers the order is whatever Python's sort leaves, while `<` on
-two lists is an error (`[expr.ordering]`). The specification says only what is
-portable. The decision: make `sorted` refuse everything except all-numbers or
-all-strings (and NaN), as `<` does; or define list and boolean ordering.
+`sorted` ordered lists of lists item by item and put `false` before `true`, while
+`<` on two lists is an error, and a NaN among numbers left the order to Python's
+sort. It now sorts numbers and booleans together by value (`false` is 0, `true` is
+1) and strings by code point, and refuses a mixture of the two, any other kind of
+item, and NaN with `TypeError: sorted() needs items that can be compared with each
+other`.
 
-### D-020 — Unicode behavior of `upper`, `lower`, `trim`, `split` and `split_lines`
+### D-020 — Whitespace and line ends followed Python's Unicode tables
 
-Status: open
-Untested: it depends on Python's Unicode tables
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: ASCII only)
 Engines: all three Python engines
-Spec: `[lib.text]`
-Cases: none beyond ASCII
+Spec: `[lib.text]`, `[val.types]`
+Cases: `lib-trim-and-split-use-ascii-whitespace-only`,
+`lib-num-skips-only-ascii-whitespace`,
+`lib-split-lines-ends-lines-only-at-line-feeds-and-returns`
 
-`upper("ß")` is `"SS"`; `trim` and `split` with no separator remove the characters
-Python calls whitespace, which include no-break space, the Unicode spaces and the
-information separators U+001C to U+001F; `split_lines` also splits on form feed,
-U+0085, U+2028 and U+2029. A port to another language would need Python's tables.
-The decision: keep the host's Unicode behavior as host-defined, or fix ASCII-only
-whitespace and line ends (the language already restricts names and digits to ASCII,
-D-002) and leave case conversion to an explicit Unicode version.
+`trim`, `split` with no separator and `num` skipped whatever Python calls
+whitespace (no-break space, the Unicode spaces, U+001C to U+001F), and
+`split_lines` also split on form feed, vertical tab, U+0085, U+2028 and U+2029, so
+a text meant different things on hosts with different tables. Whitespace is now the
+six ASCII characters space, tab, line feed, carriage return, vertical tab and form
+feed, and a line ends only at a line feed, a carriage return or both together.
+A program that relied on trimming a no-break space now keeps it.
 
 ### D-021 — Regular-expression classes beyond ASCII
 
-Status: open
-Untested: it depends on Python's `re` module
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: ASCII only)
 Engines: all three Python engines
 Spec: `[lib.regex]`
-Cases: none beyond ASCII
+Cases: `lib-regex-classes-are-ascii`
 
-`\d`, `\w`, `\s` and `\b` follow Unicode in Python, so `regex("^\\d+$", "١٢٣")` (Arabic-Indic
-digits) is `true`, against the language's ASCII-only digits (D-002). The decision:
-restrict the classes to ASCII, or leave them to the host. `$` before a final line
-feed and everything beyond the specified subset are in the same position, and a
-pattern that backtracks badly can run for a very long time (`[sec.limits]`).
+`\d`, `\w`, `\s` and `\b` followed Unicode in Python, so `regex("^\\d+$", "١٢٣")`
+(Arabic-Indic digits) was `true`, against the language's ASCII-only digits (D-002).
+They now mean `0`-`9`; `A`-`Z`, `a`-`z`, `0`-`9` and `_`; the ASCII whitespace; and the edge
+of those (`re.ASCII`). `$` before a final line feed, everything beyond the specified
+subset, and a pattern that backtracks badly (`[sec.limits]`) are unchanged.
 
 ### D-022 — `json.dumps` and `json.loads` of infinity and NaN
 
-Status: open
-Untested: the output is not valid JSON, and the decision is the owner's
-Class: decision needed
+Status: resolved
+Class: decision needed (decided 2026-11-08: refuse both)
 Engines: all three Python engines
 Spec: `[lib.json]`
-Cases: none
+Cases: `lib-json-dumps-refuses-nan-and-infinity`,
+`lib-json-loads-refuses-nan-infinity-and-overflow`
 
-`json.dumps` writes infinity and NaN as `Infinity`, `-Infinity` and `NaN`, and
-`json.loads` accepts them. RFC 8259 has no such values, so other readers refuse the
-text. The decision: refuse them in both directions with an error, or keep Python's
-extension and specify it.
+`json.dumps` wrote `Infinity`, `-Infinity` and `NaN`, and `json.loads` accepted
+them and numbers like `1e999`, though JSON has no such values. `json.dumps` now
+raises `TypeError: json.dumps() cannot represent NaN or infinity`, and `json.loads`
+raises `TypeError: json.loads(): NaN is not valid JSON` (or `Infinity`,
+`-Infinity`) and `TypeError: json.loads(): that number is too large`. The decision
+asked for a `ValueError` from `json.loads`; NovaLang has no such label (the labels
+are in `[err.model]`), so it carries `TypeError` like every other `json.loads`
+error.
 
 ### D-023 — Variable-argument built-ins leaked a raw Python exception
 
@@ -446,6 +449,21 @@ extra ones), did not validate the arguments of `map`, `filter` and `reduce`, wro
 a function out through `json.dumps` instead of refusing it, and reported errors the
 host labels `TypeError` without the label. Fixed; D-001's normalization now also
 reads `Error: TypeError: message` as the label it names.
+
+### D-025 — Case conversion beyond ASCII
+
+Status: open
+Untested: it depends on the Unicode tables of the Python underneath
+Class: decision needed
+Engines: all three Python engines
+Spec: `[lib.text]`
+Cases: none beyond ASCII
+
+`upper` and `lower` follow Python's full Unicode case mapping: `upper("ß")` is
+`"SS"`, `lower("İ")` is two characters. A port needs those tables, and a newer
+Unicode version can change a result. The decision: keep it host-defined, restrict
+the two functions to ASCII (as D-020 did for whitespace), or name a Unicode version
+and ship the mapping.
 
 ## Not divergences, but worth knowing
 

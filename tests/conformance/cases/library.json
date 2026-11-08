@@ -1088,6 +1088,163 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "lib-sorted-treats-booleans-as-zero-and-one",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "print(sorted([true, false, true]), sorted([3, true, 0, false, 2]), sorted([true, 1.5, 0], true), sorted([false, true], true))\nprint(sorted([2, true, 1.5]), sorted([true]), sorted([-1, false]))",
+   "output": [
+    "[false, true, true] [0, false, true, 2, 3] [1.5, true, 0] [true, false]",
+    "[true, 1.5, 2] [true] [-1, false]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-refuses-what-cannot-be-ordered",
+   "spec": [
+    "lib.collections",
+    "err.type",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "def nan() { let inf = num(\"1\" + \"0\" * 400 + \".0\")\nreturn inf - inf }\ndef t(l) { try { print(sorted(l)) } catch e { print(e) } }\nt([1, \"a\"])\nt([\"a\", true])\nt([[2], [1]])\nt([{a: 1}])\nt([1, nan()])\nt([len, len])\ndef f() { }\nt([f(), f()])\nt([1, [2]])\nt([\"b\", \"a\"])",
+   "output": [
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "[\"a\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-trim-and-split-use-ascii-whitespace-only",
+   "spec": [
+    "lib.text",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let nb = \" \"\nlet em = \" \"\nprint(\"[\" + trim(nb + \" x \" + nb) + \"]\", \"[\" + trim(em + \"x\") + \"]\", len(trim(nb)), len(trim(\" \" + nb + \" \")))\nprint(split(\"a\" + nb + \"b c\"), split(\"a\" + em + \"b\"), len(split(nb)), split(\" \" + nb + \" \"))\nprint(\"[\" + trim(\"\\t\\n x \\r\\n\") + \"]\", split(\" a\\tb\\nc\\rd \"))",
+   "output": [
+    "[  x  ] [ x] 1 1",
+    "[\"a b\", \"c\"] [\"a b\"] 1 [\" \"]",
+    "[x] [\"a\", \"b\", \"c\", \"d\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-num-skips-only-ascii-whitespace",
+   "spec": [
+    "lib.text",
+    "val.types"
+   ],
+   "profile": "core",
+   "source": "print(num(\" 5 \"), num(\"\\t7\\n\"), num(\"  -2.5  \"))\ntry { print(num(\" 5\")) } catch e { print(e[:30]) }",
+   "output": [
+    "5 7 -2.5",
+    "num() cannot read a number fro"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-lines-ends-lines-only-at-line-feeds-and-returns",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "let ls = \" \"\nlet nel = \"\"\nprint(split_lines(\"a\" + ls + \"b\"), split_lines(\"a\" + nel + \"b\"), len(split_lines(\"x\" + ls + \"y\" + nel + \"z\")))\nprint(split_lines(\"a\\nb\\r\\nc\\rd\"), split_lines(\"a\\n\"), split_lines(\"\\r\\n\"), split_lines(\"\\r\\r\"), split_lines(\"a\\r\\n\\r\\nb\"))",
+   "output": [
+    "[\"a b\"] [\"ab\"] 1",
+    "[\"a\", \"b\", \"c\", \"d\"] [\"a\"] [\"\"] [\"\", \"\"] [\"a\", \"\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-classes-are-ascii",
+   "spec": [
+    "lib.regex",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let arabic = \"١٢٣\"\nlet nb = \" \"\nprint(regex(\"^\\\\d+$\", arabic), regex(\"\\\\d\", \"x\" + arabic), regex(\"^\\\\w+$\", \"café\"), regex(\"^\\\\w+$\", \"abc_9\"), regex(\"\\\\s\", \"a\" + nb + \"b\"), regex(\"\\\\s\", \"a b\"))\nprint(regex(\"\\\\bcaf\\\\b\", \"café\"), regex(\"\\\\bcafe\\\\b\", \"x cafe y\"), regex(\"^[0-9]+$\", arabic), regex(\"^\\\\d{3}$\", \"123\"))",
+   "output": [
+    "false false false true false true",
+    "true true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-refuses-nan-and-infinity",
+   "spec": [
+    "lib.json",
+    "err.type",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\nlet nan = inf - inf\ndef t(v) { try { print(json.dumps(v)) } catch e { print(e) } }\nt(inf)\nt(-inf)\nt(nan)\nt([1, nan])\nt({a: {b: inf}})\ntry { json.pretty([inf]) } catch e { print(e) }\nt(2.5)",
+   "output": [
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "2.5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-refuses-nan-infinity-and-overflow",
+   "spec": [
+    "lib.json",
+    "err.type",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "def t(text) { try { print(json.loads(text)) } catch e { print(e) } }\nt(\"NaN\")\nt(\"Infinity\")\nt(\"-Infinity\")\nt(\"[1, NaN]\")\nt(\"{\\\"a\\\": Infinity}\")\nt(\"1e999\")\nt(\"-1e999\")\nt(\"[1e308]\")\nt(\"1e-999\")",
+   "output": [
+    "TypeError: json.loads(): NaN is not valid JSON",
+    "TypeError: json.loads(): Infinity is not valid JSON",
+    "TypeError: json.loads(): -Infinity is not valid JSON",
+    "TypeError: json.loads(): NaN is not valid JSON",
+    "TypeError: json.loads(): Infinity is not valid JSON",
+    "TypeError: json.loads(): that number is too large",
+    "TypeError: json.loads(): that number is too large",
+    "[100000000000000001097906362944045541740492309677311846336810682903157585404911491537163328978494688899061249669721172515611590283743140088328307009198146046031271664502933027185697489699588559043338384466165001178426897626212945177628091195786707458122783970171784415105291802893207873272974885715430223118336]",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

@@ -88,7 +88,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `unexpected character`; rename them.
 
 ### The core library (third slice of M9, first part)
-- `docs/spec/09-library.md`: 8 sections (`lib.*`) and 59 cases (522 in all, 91
+- `docs/spec/09-library.md`: 8 sections (`lib.*`) and 59 cases (530 in all, 91
   sections) on the functions that compute without touching the machine: argument
   counts and the two error labels, lists/dictionaries/ranges/`sorted`, strings,
   `regex` (a portable subset), math (round half to even, exact `pow`, which
@@ -104,11 +104,23 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `split` and the other variable-count built-ins, validates what `map`, `filter`
   and `reduce` are given, refuses to write a function out through `json.dumps`,
   and labels those errors `TypeError` as the host does (D-024).
-- Four open decisions written down rather than guessed (D-019 to D-022): what
-  `sorted` does with lists, booleans and NaN; Unicode behavior of `upper`/`trim`/
-  `split`/`split_lines`; `\d` and friends beyond ASCII in `regex`; `json` of
-  infinity and NaN. None changes behavior yet; the corpus tests only the
-  portable part.
+- **Four decisions made (D-019 to D-022) and implemented, two of them breaking:**
+  - `sorted` treats booleans as 0 and 1 and refuses a mixture of kinds, lists,
+    dictionaries and NaN with a `TypeError`.
+  - **Whitespace is ASCII only.** `trim`, `split()` with no separator and `num()`
+    skip space, tab, line feed, carriage return, vertical tab and form feed; a
+    no-break space or an em space is now an ordinary character (`trim` keeps it,
+    `num("\u00a05")` is an error). `split_lines` ends a line only at a line
+    feed, a carriage return or both; form feed, `U+0085` and `U+2028` no longer
+    split.
+  - **`regex`'s `\d`, `\w`, `\s` and `\b` are ASCII only**, as names and digits
+    are: Arabic-Indic digits no longer match `\d`.
+  - **`json.dumps` refuses NaN and infinity** (`TypeError: json.dumps() cannot
+    represent NaN or infinity`) and **`json.loads` refuses** `NaN`, `Infinity`,
+    `-Infinity` and numbers too large for a float such as `1e999`. The owner asked
+    for a `ValueError` from `json.loads`; NovaLang has no such label, so it is a
+    `TypeError` like its other errors.
+  - Case conversion beyond ASCII stays the host's (D-025, open).
 
 ### Statements and modules (second slice of M9)
 - `docs/spec/07-statements.md` and `08-modules.md`: 8 + 6 sections on `if`,

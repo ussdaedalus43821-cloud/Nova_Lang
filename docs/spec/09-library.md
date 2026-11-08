@@ -62,26 +62,32 @@ bare message for the second (`[err.try-catch]`).
   reverse() needs a string or a list, but got a number`).
 - `sorted(list)` is a new list in ascending order and `sorted(list, true)` in
   descending order; the argument itself is not changed.
-  Numbers are ordered by value, strings by code point (`[port.text]`). A list that
-  mixes numbers and strings is `TypeError: sorted() needs items that can be
-  compared with each other`, a second argument that is not a boolean is `TypeError:
-  sorted()'s second argument must be true or false`, and a first that is not a list
-  is `TypeError: sorted() needs a list, but got a number`. What `sorted` does with
-  lists, dictionaries, booleans or NaN as items is not specified (D-019).
+  Numbers are ordered by value, strings by code point (`[port.text]`), and a boolean
+  counts as 0 (`false`) or 1 (`true`) so booleans and numbers sort together; the
+  items stay what they were. A list that mixes strings with numbers or booleans,
+  that holds any other kind of item (a list, a dictionary, a function, `nothing`),
+  or that holds a NaN, is `TypeError: sorted() needs items that can be compared
+  with each other` (the same things `<` refuses, `[expr.ordering]`, apart from the
+  booleans). A second argument that is not a boolean is `TypeError: sorted()'s
+  second argument must be true or false`, and a first that is not a list is
+  `TypeError: sorted() needs a list, but got a number`.
 
 ## [lib.text] Strings
 
-- `upper(s)` and `lower(s)` convert case, `trim(s)` removes whitespace from both
-  ends. For ASCII text these are exact: the letters `a`-`z` and `A`-`Z` change,
-  and the whitespace is space, tab, line feed, carriage return, vertical tab and
-  form feed. What they do to other characters (`upper("ß")`, a no-break space) is
-  the host's Unicode behavior and is not specified (D-020).
+- `upper(s)` and `lower(s)` convert case: the letters `a`-`z` and `A`-`Z` change.
+  What they do to other characters (`upper("ß")`, `lower("É")`) is the host's
+  Unicode behavior and is not specified (D-025).
+- `trim(s)` removes **whitespace** from both ends. **Whitespace is ASCII only**: space,
+  tab, line feed, carriage return, vertical tab and form feed. A no-break space, an
+  em space or any other Unicode space is an ordinary character, so every host
+  trims the same text the same way (D-020). `num()` skips the same whitespace
+  around a number (`[val.types]`).
 - `split(s, sep)` is the list of the pieces of `s` between non-overlapping
   occurrences of `sep`, scanning from the left; there is a piece (possibly `""`)
   on each side of every separator, so `split("a,b,,c", ",")` is `["a", "b", "",
   "c"]` and `split("", ",")` is `[""]`. `sep` MUST NOT be empty (`split() cannot use
-  an empty separator`). `split(s)` with no separator splits on runs of whitespace
-  and drops the empty pieces at the ends, so `split("  a  b ")` is `["a", "b"]` and
+  an empty separator`). `split(s)` with no separator splits on runs of that ASCII
+  whitespace and drops the empty pieces at the ends, so `split("  a  b ")` is `["a", "b"]` and
   `split("   ")` is `[]`.
 - `join(list, sep)` is the items written as `str` writes them (`[val.display]`),
   separated by `sep`. `join([], ",")` is `""`. The first argument MUST be a list
@@ -95,10 +101,11 @@ bare message for the second (`[err.try-catch]`).
   from the left with `new`. An empty `old` matches between every character and at
   both ends: `replace_all("abc", "", "-")` is `-a-b-c-`.
 - `split_lines(s)` is the lines of `s` without their line ends. A line ends at a
-  line feed, a carriage return or a carriage return followed by a line feed, and a
-  line end at the very end of the text does not start another line:
-  `split_lines("a\nb\r\nc\n")` is `["a", "b", "c"]` and `split_lines("")` is `[]`.
-  Other separators (form feed, `U+2028`) are the host's (D-020).
+  line feed, a carriage return, or a carriage return followed by a line feed
+  (one line end), and **nothing else** does: form feed, vertical tab, `U+0085` and
+  `U+2028` stay inside the line. A line end at the very end of the text does not
+  start another line: `split_lines("a\nb\r\nc\n")` is `["a", "b", "c"]` and
+  `split_lines("")` is `[]`.
 
 A string argument of the wrong kind is `upper() needs a string, but got a number`;
 for the second and later arguments the message names the role (`the separator of
@@ -111,8 +118,10 @@ The language specifies this much of the pattern syntax, which every host MUST
 support with its usual meaning: literal characters; `.` (any one character except
 a line feed); `[abc]`, `[a-z]` and `[^0-9]`; `*`, `+` and `?`; `|`; `(` `)`
 grouping; `^` and `$` for the start and end of the text (`$` MAY also match just before a
-final line feed). `\d`, `\w`, `\s` and `\b`
-are supported for ASCII text; on other text they follow the host (D-021). More of
+final line feed). `\d`, `\w`, `\s` and `\b`,
+which are **ASCII only**: `\d` is `0`-`9`, `\w` is `A`-`Z`, `a`-`z`, `0`-`9` and `_`, `\s` is
+the six ASCII whitespace characters of `[lib.text]`, and `\b` is the edge between a
+`\w` character and anything else (so `regex("^\\d+$", "١٢٣")` is `false`, D-021). More of
 the host's regular-expression dialect may work but is not portable. A bad pattern
 is `TypeError: regex(): bad pattern: <the host's reason>`, and only the part up to
 the reason is specified. A pattern can take exponential time on some texts; the
@@ -189,8 +198,9 @@ values and JSON text.
   `"é😀"`. A float is written as in `[port.floats]` using the digits
   rule and the layout *positional from 0.0001 up to 1e16*, but a float with a
   whole value keeps a `.0`: `json.dumps(2.0)` is `2.0` and `json.dumps(1e22)` is
-  `1e+22`. A function is `TypeError: json.dumps() cannot represent a function`.
-  What it writes for infinity and NaN is not specified (D-022).
+  `1e+22`. A function is `TypeError: json.dumps() cannot represent a function`,
+  and infinity or NaN is `TypeError: json.dumps() cannot represent NaN or infinity`,
+  because JSON has no such numbers (D-022).
 - `json.pretty(value)` is the same text with a line to every item and two spaces of
   indent per level; `[]` and `{}` stay on one line.
 - Reading. `json.loads` accepts standard JSON: whitespace is space, tab, line feed
@@ -199,7 +209,11 @@ values and JSON text.
   exponent is a float (`json.loads("1.0")` is the float `1.0`, which prints `1`);
   `null` is `nothing`. A repeated key keeps its first position and its last value.
   A number of more than 4,000 digits is `TypeError: json.loads(): that number has
-  too many digits` (`[port.integers]`). Text that is not JSON, or has anything after
+  too many digits` (`[port.integers]`), and one too large for a float (`1e999`) is
+  `TypeError: json.loads(): that number is too large`. `NaN`, `Infinity` and
+  `-Infinity`, which Python's reader would accept, are refused: `TypeError:
+  json.loads(): NaN is not valid JSON` (NovaLang has no `ValueError`; the errors of
+  `json.loads` all carry the `TypeError` label). Text that is not JSON, or has anything after
   the value, is `TypeError: json.loads(): <the host's reason>` and only the prefix
   is specified. `json.loads(5)` is `json.loads() needs a string, but got a number`.
 

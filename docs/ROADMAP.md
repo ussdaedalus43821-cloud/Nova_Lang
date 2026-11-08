@@ -224,11 +224,11 @@ implementation is the first conforming host
 sections in nine chapters: lexical structure, values, expressions, scoping, the
 error catalogue, the security properties of the language, the rules a portable
 host must follow, statements, modules, and the core library. [`tests/conformance/`](../tests/conformance/README.md)
-has 522 cases citing them, run by the `conformance` station on the VM, the
+has 530 cases citing them, run by the `conformance` station on the VM, the
 tree-walker and the self-hosted interpreter; a case can ship its own module files
 (the `modules` profile). The station enforces that every section is cited and
 every divergence is logged. The log ([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md))
-has 24 entries; 18 are resolved and four (D-019 to D-022) are open decisions about behavior that is Python's. Non-ASCII names and digits are refused by the
+has 25 entries; all but three are resolved, and the open one that is a real decision is D-025 (case conversion beyond ASCII). Non-ASCII names and digits are refused by the
 host (decided 2026-11-08); the self-hosted interpreter was brought into line on
 nine implementation bugs (scoping, reserved names, duplicate parameters, top-level
 control flow, function equality, argument counts, message wording) and on its

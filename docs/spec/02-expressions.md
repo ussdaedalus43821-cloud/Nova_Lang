@@ -24,8 +24,8 @@ Lists, dictionaries and functions are *references*: giving one a second name
 does not copy it (`[scope.references]`). Numbers, strings and booleans behave as
 values.
 
-`num(text)` reads a number from a string (leading and trailing spaces are
-ignored) and `str(x)` converts any value to a string. `num` of something that
+`num(text)` reads a number from a string (leading and trailing ASCII whitespace,
+`[lib.text]`, is ignored) and `str(x)` converts any value to a string. `num` of something that
 is not a number is an error: `num() cannot read a number from "x"`.
 
 ## [val.numbers] Numbers
