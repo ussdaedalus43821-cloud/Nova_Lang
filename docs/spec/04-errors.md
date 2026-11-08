@@ -7,8 +7,9 @@ program, a **position**. Its text is `Label: message`, for example
 `NovaError: division by zero`. The label is `NovaError` unless the error
 belongs to a family that names itself: `TypeError` for built-in functions
 given a value they cannot use (`TypeError: sqrt() needs a number that is not
-negative`), `FileError` and `PythonError` for the host, and `Error` for a
-program's own `throw`.
+negative`), `FileError` and `PythonError` for the host, `ImportError` for a module that
+cannot be found or loaded (`[mod.errors]`), and `Error` for a program's own
+`throw`.
 
 The message text in the catalogue below is part of the contract: a conforming
 host reports these messages, with the dynamic parts filled in, character for

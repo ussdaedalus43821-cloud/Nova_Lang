@@ -220,27 +220,28 @@ checked against, instead of "whatever `novalang.py` does".
 implementation is the first conforming host
 ([ADR 0001](decisions/0001-specification-is-normative.md), accepted).
 
-**Status (2026-11-08).** First slice written: [`spec/`](spec/README.md) has 68
-sections covering lexical structure, values, expressions, scoping, the error
-catalogue, the security properties of the language and the rules a portable host
-must follow, and [`tests/conformance/`](../tests/conformance/README.md) has 359
-cases citing them, run by the `conformance` station on the VM, the tree-walker
-and the self-hosted interpreter. The station enforces that every section is
-cited and every divergence is logged. The log
-([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) had 15 entries from this slice;
-13 are closed. Non-ASCII names and digits are now refused by the host (decided
-2026-11-08), and the self-hosted interpreter was brought into line on all nine
-of its implementation bugs (scoping, reserved names, duplicate parameters,
-top-level control flow, function equality, argument counts, message wording).
-The integer limit is now the language's own, 4,000 digits on every host
-(D-012, D-013), and floats print by a written rule instead of Python's `repr`
-(D-014). Two self-hosted differences remain: error headlines, handled by a documented
-normalization (D-001), and how one syntax error names a whole float (D-015). Host failures the spec work exposed are fixed: `print(²)`,
-`num("²")`, integers too large for a float, and numbers with thousands of digits
-leaked a raw Python exception. Not yet
-written: statements beyond `let`/assignment/blocks/loops/functions/`try`,
-the standard library as profiles, modules, type annotations, the embedding
-profile, and the `Reactor-Game` oracle cases as a profile.
+**Status (2026-11-08).** Two slices written. [`spec/`](spec/README.md) has 83
+sections in eight chapters: lexical structure, values, expressions, scoping, the
+error catalogue, the security properties of the language, the rules a portable
+host must follow, statements, and modules. [`tests/conformance/`](../tests/conformance/README.md)
+has 463 cases citing them, run by the `conformance` station on the VM, the
+tree-walker and the self-hosted interpreter; a case can ship its own module files
+(the `modules` profile). The station enforces that every section is cited and
+every divergence is logged. The log ([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md))
+has 18 entries and 16 are resolved. Non-ASCII names and digits are refused by the
+host (decided 2026-11-08); the self-hosted interpreter was brought into line on
+nine implementation bugs (scoping, reserved names, duplicate parameters, top-level
+control flow, function equality, argument counts, message wording) and on its
+imports and `delete`; the integer limit is the language's own, 4,000 digits on
+every host (D-012, D-013); floats print by a written rule instead of Python's
+`repr` (D-014); and modules start with the same predefined names as a program
+(D-018). Two self-hosted differences remain: error headlines, handled by a
+documented normalization (D-001), and how one syntax error names a whole float
+(D-015). Host failures the spec work exposed are fixed: `print(²)`, `num("²")`,
+integers too large for a float, and numbers with thousands of digits leaked a raw
+Python exception. Not yet written: packages (`nova.json`, `.nova_modules`), the
+standard library as profiles, type annotations, the embedding profile, and the
+`Reactor-Game` oracle cases as a profile.
 
 **Risks.** Writing the spec will expose undocumented behavior and inconsistent
 error text. That cost is the value of the milestone.

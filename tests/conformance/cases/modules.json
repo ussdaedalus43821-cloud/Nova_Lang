@@ -1,0 +1,827 @@
+{
+ "area": "modules",
+ "version": 1,
+ "cases": [
+  {
+   "name": "mod-import-binds-the-exports-under-the-file-name",
+   "spec": [
+    "mod.import",
+    "mod.export"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\"\nprint(util.double(4), util.LIMIT)\nprint(keys(util), type(util))",
+   "output": [
+    "util loaded",
+    "8 10",
+    "[\"double\", \"LIMIT\"] dict"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-as-chooses-the-name",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\" as u\nprint(u.double(5))\nprint(u.LIMIT)",
+   "output": [
+    "util loaded",
+    "10",
+    "10"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-with-binds-the-names-directly",
+   "spec": [
+    "mod.import",
+    "mod.export"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\" with double, LIMIT\nprint(double(2), LIMIT)",
+   "output": [
+    "util loaded",
+    "4 10"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-with-a-missing-name-is-an-error",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\" with double, triple",
+   "output": [
+    "util loaded"
+   ],
+   "error": "NovaError: module \"util.nova\" has no exported 'triple' - it exports double, LIMIT",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-with-nothing-exported",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"empty.nova\" with x",
+   "output": [],
+   "error": "NovaError: module \"empty.nova\" has no exported 'x' - it exports nothing",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "empty.nova": "let x = 1"
+   }
+  },
+  {
+   "name": "mod-import-with-the-same-name-twice-is-a-syntax-error",
+   "spec": [
+    "mod.import",
+    "err.syntax"
+   ],
+   "profile": "modules",
+   "source": "print(\"never\")\nimport \"util.nova\" with double, double",
+   "output": [],
+   "error": "NovaError: 'double' is imported twice",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-with-and-as-do-not-combine",
+   "spec": [
+    "mod.import",
+    "err.syntax"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\" with double as d",
+   "output": [],
+   "error": "NovaError: expected a new line between statements, found 'as'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-needs-a-quoted-path",
+   "spec": [
+    "mod.import",
+    "err.syntax"
+   ],
+   "profile": "modules",
+   "source": "let p = \"util.nova\"\nimport p",
+   "output": [],
+   "error": "NovaError: expected a quoted module path after 'import', found 'p'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "util.nova": "print(\"util loaded\")\nexport def double(x) { return x * 2 }\nexport let LIMIT = 10\nlet hidden = 1"
+   }
+  },
+  {
+   "name": "mod-import-name-must-be-a-valid-name",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"my-mod.nova\"",
+   "output": [],
+   "error": "NovaError: \"my-mod.nova\" does not make a valid module name - import it with 'as' and choose one",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "my-mod.nova": "export let v = 1"
+   }
+  },
+  {
+   "name": "mod-import-name-cannot-start-with-a-digit",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"1st.nova\"",
+   "output": [],
+   "error": "NovaError: \"1st.nova\" does not make a valid module name - import it with 'as' and choose one",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "1st.nova": "export let v = 1"
+   }
+  },
+  {
+   "name": "mod-import-as-needs-no-valid-file-name",
+   "spec": [
+    "mod.import"
+   ],
+   "profile": "modules",
+   "source": "import \"my-mod.nova\" as m\nimport \"1st.nova\" as first\nprint(m.v, first.w)",
+   "output": [
+    "1 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "my-mod.nova": "export let v = 1",
+    "1st.nova": "export let w = 2"
+   }
+  },
+  {
+   "name": "mod-import-name-cannot-be-a-built-in",
+   "spec": [
+    "mod.import",
+    "scope.reserved"
+   ],
+   "profile": "modules",
+   "source": "import \"print.nova\"",
+   "output": [],
+   "error": "NovaError: 'print' is a built-in function and cannot be used as a module name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "print.nova": "export let v = 1"
+   }
+  },
+  {
+   "name": "mod-import-uses-the-file-name-without-folders-or-extension",
+   "spec": [
+    "mod.import",
+    "mod.resolution"
+   ],
+   "profile": "modules",
+   "source": "import \"sub/deep/tool.nova\"\nprint(tool.v)",
+   "output": [
+    "deep"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "sub/deep/tool.nova": "export let v = \"deep\""
+   }
+  },
+  {
+   "name": "mod-import-binds-in-the-current-scope",
+   "spec": [
+    "mod.import",
+    "scope.blocks",
+    "scope.let"
+   ],
+   "profile": "modules",
+   "source": "def f() { import \"a.nova\"\nreturn a.x }\nprint(f())\ntry { print(a.x) } catch e { print(e) }\nif true { import \"a.nova\" as inner\nprint(inner.x) }\ntry { print(inner.x) } catch e { print(e) }",
+   "output": [
+    "1",
+    "undefined name 'a'",
+    "1",
+    "undefined name 'inner'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let x = 1"
+   }
+  },
+  {
+   "name": "mod-import-rebinds-an-existing-name",
+   "spec": [
+    "mod.import",
+    "scope.let"
+   ],
+   "profile": "modules",
+   "source": "let a = 5\nimport \"a.nova\"\nprint(a.x)",
+   "output": [
+    "1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let x = 1"
+   }
+  },
+  {
+   "name": "mod-export-private-names-stay-private",
+   "spec": [
+    "mod.export",
+    "mod.scope"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"\nprint(a.get(), a.get())\ntry { print(own) } catch e { print(e) }\nprint(keys(a))",
+   "output": [
+    "42 42",
+    "undefined name 'own'",
+    "[\"get\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "let own = 41\nexport def get() { own = own + 1\nreturn own }"
+   }
+  },
+  {
+   "name": "mod-export-must-precede-def-or-let",
+   "spec": [
+    "mod.export",
+    "err.syntax",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "try { import \"a.nova\" } catch e { print(\"caught\", \"export\" in e) }",
+   "output": [
+    "caught true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export x"
+   }
+  },
+  {
+   "name": "mod-export-in-the-program-is-ignored",
+   "spec": [
+    "mod.export"
+   ],
+   "profile": "modules",
+   "source": "export let y = 2\nprint(y)",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let x = 1"
+   }
+  },
+  {
+   "name": "mod-exports-are-one-dictionary-for-every-importer",
+   "spec": [
+    "mod.export",
+    "mod.cache",
+    "scope.references"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\" as p\nimport \"a.nova\" as q\np.box.n = 5\nprint(q.box.n)\np.x = 9\nprint(q.x, p == q)",
+   "output": [
+    "5",
+    "9 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let box = {n: 0}\nexport let x = 1"
+   }
+  },
+  {
+   "name": "mod-resolution-is-relative-to-the-importing-file",
+   "spec": [
+    "mod.resolution"
+   ],
+   "profile": "modules",
+   "source": "import \"sub/m.nova\"\nimport \"n.nova\" as top\nprint(m.r, top.v)",
+   "output": [
+    "sub-n top-n"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "sub/m.nova": "import \"n.nova\"\nexport let r = n.v",
+    "sub/n.nova": "export let v = \"sub-n\"",
+    "n.nova": "export let v = \"top-n\""
+   }
+  },
+  {
+   "name": "mod-resolution-parent-and-current-folder",
+   "spec": [
+    "mod.resolution"
+   ],
+   "profile": "modules",
+   "source": "import \"sub/m.nova\"\nprint(m.r)",
+   "output": [
+    "top+peer"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "sub/m.nova": "import \"../top.nova\"\nimport \"./peer.nova\"\nexport let r = top.v + peer.v",
+    "top.nova": "export let v = \"top\"",
+    "sub/peer.nova": "export let v = \"+peer\""
+   }
+  },
+  {
+   "name": "mod-resolution-does-not-add-an-extension",
+   "spec": [
+    "mod.resolution"
+   ],
+   "profile": "modules",
+   "source": "import \"util.nova\" as ok\nprint(ok.v)\ntry { import \"util\" as bad } catch e { print(\"util\" in e) }",
+   "output": [
+    "1",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "export let v = 1"
+   }
+  },
+  {
+   "name": "mod-resolution-missing-module-is-an-import-error",
+   "spec": [
+    "mod.resolution",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "import \"nothing.nova\"",
+   "output": [],
+   "error": "ImportError: cannot find module \"nothing.nova\" - looked in:",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "mod-resolution-missing-module-can-be-caught",
+   "spec": [
+    "mod.resolution",
+    "err.try-catch"
+   ],
+   "profile": "modules",
+   "source": "try { import \"nothing.nova\" } catch e { print(\"cannot find module\" in e, e[:11]) }",
+   "output": [
+    "true ImportError"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "mod-cache-a-module-runs-once",
+   "spec": [
+    "mod.cache"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"\nimport \"a.nova\" as again\nimport \"a.nova\" with v\nprint(a.v, again.v, v, a == again)",
+   "output": [
+    "a runs",
+    "1 1 1 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "print(\"a runs\")\nexport let v = 1"
+   }
+  },
+  {
+   "name": "mod-cache-is-keyed-by-the-file-not-the-spelling",
+   "spec": [
+    "mod.cache",
+    "mod.resolution"
+   ],
+   "profile": "modules",
+   "source": "import \"sub/a.nova\" as x\nimport \"./sub/../sub/a.nova\" as y\nimport \"sub/b.nova\"\nprint(b.bump(), b.bump())\nprint(x.counter.n, y.counter.n)",
+   "output": [
+    "a runs",
+    "1 2",
+    "2 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "sub/a.nova": "print(\"a runs\")\nexport let counter = {n: 0}",
+    "sub/b.nova": "import \"a.nova\"\nexport def bump() { a.counter.n = a.counter.n + 1\nreturn a.counter.n }"
+   }
+  },
+  {
+   "name": "mod-cache-state-is-shared-between-importers",
+   "spec": [
+    "mod.cache",
+    "mod.scope"
+   ],
+   "profile": "modules",
+   "source": "import \"counter.nova\"\nimport \"one.nova\"\nprint(counter.next(), one.go(), counter.next())",
+   "output": [
+    "1 1 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "counter.nova": "let n = 0\nexport def next() { n = n + 1\nreturn n }",
+    "one.nova": "import \"counter.nova\"\nexport def go() { return counter.next() }"
+   }
+  },
+  {
+   "name": "mod-cache-a-failed-load-is-not-kept",
+   "spec": [
+    "mod.cache",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "try { import \"bad.nova\" } catch e { print(\"first\") }\ntry { import \"bad.nova\" } catch e { print(\"second\") }",
+   "output": [
+    "before",
+    "first",
+    "before",
+    "second"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "bad.nova": "print(\"before\")\nprint(1 / 0)"
+   }
+  },
+  {
+   "name": "mod-scope-a-module-cannot-see-the-importers-names",
+   "spec": [
+    "mod.scope",
+    "err.name",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "let secret = 1\ntry { import \"a.nova\" } catch e { print(\"undefined name 'secret'\" in e) }",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "print(secret)"
+   }
+  },
+  {
+   "name": "mod-scope-top-level-return-in-a-module-is-an-error",
+   "spec": [
+    "mod.scope",
+    "scope.toplevel",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "try { import \"a.nova\" } catch e { print(\"only makes sense inside a function\" in e) }",
+   "output": [
+    "runs",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "print(\"runs\")\nreturn 5"
+   }
+  },
+  {
+   "name": "mod-scope-top-level-break-in-a-module-is-an-error",
+   "spec": [
+    "mod.scope",
+    "scope.toplevel",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "try { import \"a.nova\" } catch e { print(\"is not inside a loop\" in e) }",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "break"
+   }
+  },
+  {
+   "name": "mod-scope-output-goes-to-the-same-place",
+   "spec": [
+    "mod.scope"
+   ],
+   "profile": "modules",
+   "source": "print(\"start\")\nimport \"a.nova\"\na.hello()\nprint(\"end\")",
+   "output": [
+    "start",
+    "from a",
+    "hello from a",
+    "end"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "print(\"from a\")\nexport def hello() { print(\"hello from a\") }"
+   }
+  },
+  {
+   "name": "mod-cycle-is-an-import-error",
+   "spec": [
+    "mod.cycles",
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"",
+   "output": [],
+   "error": "ImportError: while loading module \"a.nova\":",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "a.nova": "import \"b.nova\"\nexport let a = 1",
+    "b.nova": "import \"a.nova\"\nexport let b = 2"
+   }
+  },
+  {
+   "name": "mod-cycle-names-the-modules",
+   "spec": [
+    "mod.cycles",
+    "err.try-catch"
+   ],
+   "profile": "modules",
+   "source": "try { import \"a.nova\" } catch e { print(\"circular import: a.nova -> b.nova -> c.nova -> a.nova\" in e) }",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "import \"b.nova\"\nexport let a = 1",
+    "b.nova": "import \"c.nova\"\nexport let b = 2",
+    "c.nova": "import \"a.nova\"\nexport let c = 3"
+   }
+  },
+  {
+   "name": "mod-cycle-importing-itself",
+   "spec": [
+    "mod.cycles"
+   ],
+   "profile": "modules",
+   "source": "try { import \"loop.nova\" } catch e { print(\"circular import: loop.nova -> loop.nova\" in e) }",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "loop.nova": "import \"loop.nova\""
+   }
+  },
+  {
+   "name": "mod-errors-a-runtime-error-reaches-the-importer-wrapped",
+   "spec": [
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "import \"bad.nova\"",
+   "output": [
+    "before"
+   ],
+   "error": "ImportError: while loading module \"bad.nova\":",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "bad.nova": "print(\"before\")\nprint(1 / 0)"
+   }
+  },
+  {
+   "name": "mod-errors-a-syntax-error-in-a-module-is-caught-at-import",
+   "spec": [
+    "mod.errors",
+    "err.syntax"
+   ],
+   "profile": "modules",
+   "source": "print(\"program starts\")\ntry { import \"bad.nova\" } catch e { print(\"caught\", \"expected a name after 'let'\" in e) }",
+   "output": [
+    "program starts",
+    "caught true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "bad.nova": "let = 1"
+   }
+  },
+  {
+   "name": "mod-errors-an-error-in-an-exported-function-is-not-an-import-error",
+   "spec": [
+    "mod.errors",
+    "err.arithmetic"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"\ntry { a.boom() } catch e { print(e) }",
+   "output": [
+    "division by zero"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export def boom() { return 1 / 0 }"
+   }
+  },
+  {
+   "name": "mod-errors-label-is-import-error",
+   "spec": [
+    "mod.errors",
+    "err.model"
+   ],
+   "profile": "modules",
+   "source": "try { import \"bad.nova\" } catch e { print(e[:28]) }\ntry { import \"missing.nova\" } catch e { print(e[:12]) }",
+   "output": [
+    "ImportError: while loading m",
+    "ImportError:"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "bad.nova": "throw \"x\""
+   }
+  },
+  {
+   "name": "mod-export-records-the-value-at-that-moment",
+   "spec": [
+    "mod.export"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"\nprint(a.x, a.get(), a.z)\nprint(keys(a))",
+   "output": [
+    "1 5 2",
+    "[\"x\", \"get\", \"z\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let x = 1\nx = 5\nexport def get() { return x }\nexport let z = 1\nexport let z = 2"
+   }
+  },
+  {
+   "name": "mod-scope-a-module-has-the-built-ins-and-predefined-names",
+   "spec": [
+    "mod.scope",
+    "scope.global"
+   ],
+   "profile": "modules",
+   "source": "import \"a.nova\"\nprint(a.n, a.big, a.pi, a.e, a.text)",
+   "output": [
+    "3 9 true true [1, \"a\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.nova": "export let n = len([1, 2, 3])\nexport let big = max(2, 9)\nexport let pi = PI > 3\nexport let e = E > 2\nexport let text = json.dumps([1, \"a\"])"
+   }
+  },
+  {
+   "name": "mod-errors-the-caught-text-carries-the-modules-message",
+   "spec": [
+    "mod.errors",
+    "err.try-catch"
+   ],
+   "profile": "modules",
+   "source": "try { import \"bad.nova\" } catch e { print(e[:33])\nprint(\"boom from the module\" in e) }",
+   "output": [
+    "ImportError: while loading module",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "bad.nova": "throw \"boom from the module\""
+   }
+  },
+  {
+   "name": "mod-errors-are-wrapped-once-per-level",
+   "spec": [
+    "mod.errors"
+   ],
+   "profile": "modules",
+   "source": "try { import \"outer.nova\" } catch e { print(e[:47])\nprint(\"while loading module \\\"inner.nova\\\"\" in e, \"division by zero\" in e) }",
+   "output": [
+    "ImportError: while loading module \"outer.nova\":",
+    "true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "outer.nova": "import \"inner.nova\"",
+    "inner.nova": "print(1 / 0)"
+   }
+  }
+ ]
+}

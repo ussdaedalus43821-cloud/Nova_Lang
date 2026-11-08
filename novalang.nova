@@ -933,6 +933,9 @@ def parse_import(p) {
         while true {
             let name = p_expect(p, "IDENT", "a name to import")
             p_guard_name(name["value"], name["pos"], "an imported name")
+            if name["value"] in names {
+                p_error("'" + name["value"] + "' is imported twice", name["pos"])
+            }
             append(names, name["value"])
             if p_current(p)["kind"] != "COMMA" {
                 break
@@ -1356,6 +1359,13 @@ def sig_continue() {
 
 def raise_error(message, pos) {
     throw(message)
+}
+
+# The host's ImportError label. A label other than NovaError is part of the
+# message text a `catch` binds ("ImportError: cannot find module ..."), so it
+# is written into the thrown text.
+def import_error(message, pos) {
+    throw("ImportError: " + message)
 }
 
 # ---- built-ins --------------------------------------------------------
@@ -2249,7 +2259,11 @@ def exec_member_assign(node, scope) {
 def exec_delete(node, scope) {
     let target = eval_expr(node["target"], scope)
     if type(target) != "dict" {
-        raise_error("delete works on dictionary entries, but this is a " + target_type(target), node["pos"])
+        let hint = ""
+        if type(target) == "list" {
+            hint = " - use pop() to remove a list item"
+        }
+        raise_error("delete works on dictionary entries, but this is " + type_phrase(target) + hint, node["pos"])
     }
     let key = eval_expr(node["key"], scope)
     delete target[key]
@@ -2407,10 +2421,10 @@ def check_installed(base, pos) {
     let hint = " - run `python3 tools/nova-pkg.py install`"
     let lead = "the packages in " + modules + " cannot be used: "
     if not exists(base + "nova.lock") {
-        raise_error(lead + "there is no nova.lock beside them" + hint, pos)
+        import_error(lead + "there is no nova.lock beside them" + hint, pos)
     }
     if not exists(base + "nova.json") {
-        raise_error(lead + "there is no nova.json beside them" + hint, pos)
+        import_error(lead + "there is no nova.json beside them" + hint, pos)
     }
     let lock_text = read(base + "nova.lock")
     let lock = json.loads(lock_text)
@@ -2420,11 +2434,11 @@ def check_installed(base, pos) {
         wanted = manifest["dependencies"]
     }
     if not ("requires" in lock) or lock["requires"] != wanted {
-        raise_error(lead + "nova.json has changed since nova.lock was written" + hint, pos)
+        import_error(lead + "nova.json has changed since nova.lock was written" + hint, pos)
     }
     let installed = modules + "/.installed.lock"
     if not exists(installed) or read(installed) != lock_text {
-        raise_error(lead + "they were not installed from the current nova.lock" + hint, pos)
+        import_error(lead + "they were not installed from the current nova.lock" + hint, pos)
     }
     CHECKED_PROJECTS[base] = true
 }
@@ -2451,11 +2465,11 @@ def resolve_package(name, pos) {
                 main = manifest["main"]
             }
             if type(main) != "string" or len(main) < 5 or main[len(main) - 5:] != ".nova" {
-                raise_error("package \"" + name + "\": \"main\" in its nova.json must name a .nova file", pos)
+                import_error("package \"" + name + "\": \"main\" in its nova.json must name a .nova file", pos)
             }
             let entry = abspath(package + "/" + main)
             if not exists(entry) {
-                raise_error("package \"" + name + "\" has no entry file " + main, pos)
+                import_error("package \"" + name + "\" has no entry file " + main, pos)
             }
             return entry
         }
@@ -2466,7 +2480,7 @@ def resolve_package(name, pos) {
             if len(searched) > 6 {
                 shown = shown + "\n  ..."
             }
-            raise_error("cannot find package \"" + name + "\" - looked in:\n  " + shown + "\nIs it in nova.json, and has `python3 tools/nova-pkg.py install` been run?", pos)
+            import_error("cannot find package \"" + name + "\" - looked in:\n  " + shown + "\nIs it in nova.json, and has `python3 tools/nova-pkg.py install` been run?", pos)
         }
         directory = parent
     }
@@ -2487,7 +2501,21 @@ def resolve_import(raw_path, pos) {
             return abspath(candidate)
         }
     }
-    raise_error("cannot find module \"" + raw_path + "\" - looked in:\n  " + join(candidates, "\n  "), pos)
+    import_error("cannot find module \"" + raw_path + "\" - looked in:\n  " + join(candidates, "\n  "), pos)
+}
+
+# os.path.basename: "/" always separates, and so does "\\" on Windows.
+def basename(path) {
+    let windows = platform() == "Windows"
+    let i = len(path) - 1
+    while i >= 0 {
+        let ch = path[i:i + 1]
+        if ch == "/" or (windows and ch == "\\") {
+            return path[i + 1:]
+        }
+        i = i - 1
+    }
+    return path
 }
 
 def default_module_name(raw_path, pos) {
@@ -2506,22 +2534,7 @@ def default_module_name(raw_path, pos) {
         }
         return bound
     }
-    let name = raw_path
-    let slash = -1
-    # os.path.basename: "/" always separates, and so does "\\" on Windows.
-    let windows = platform() == "Windows"
-    let i = len(name) - 1
-    while i >= 0 {
-        let ch = name[i:i + 1]
-        if ch == "/" or (windows and ch == "\\") {
-            slash = i
-            break
-        }
-        i = i - 1
-    }
-    if slash >= 0 {
-        name = name[slash + 1:]
-    }
+    let name = basename(raw_path)
     let dot = len(name)
     let j = len(name) - 1
     while j >= 0 {
@@ -2566,7 +2579,7 @@ def module_label(path, pos) {
     if at >= 0 {
         return replace_all(path[at + len(marker):], sep, "/")
     }
-    return default_module_name(path, pos)
+    return basename(path)
 }
 
 def run_module(resolved_path, raw_path, pos) {
@@ -2588,7 +2601,7 @@ def run_module(resolved_path, raw_path, pos) {
             }
         }
         names = names + " -> " + module_label(resolved_path, pos)
-        raise_error("circular import: " + names, pos)
+        import_error("circular import: " + names, pos)
     }
 
     let source = read(resolved_path)
@@ -2599,11 +2612,17 @@ def run_module(resolved_path, raw_path, pos) {
 
     let exports = {}
     try {
-        let ast = parse_program(source)
-        let module_env = make_env(false, true, true)
-        define_stdlib_globals(module_env)
-        exec_block(ast["statements"], module_env)
-        exports = current_exports()
+        try {
+            let ast = parse_program(source)
+            let module_env = make_env(false, true, true)
+            define_stdlib_globals(module_env)
+            check_toplevel(exec_block(ast["statements"], module_env))
+            exports = current_exports()
+        } catch inner {
+            # Whatever went wrong while the module ran reaches the importer
+            # as an ImportError that names the module and carries the report.
+            import_error("while loading module \"" + raw_path + "\":\n  " + replace_all(inner, "\n", "\n  "), pos)
+        }
     } finally {
         pop(FILE_STACK)
         pop(MODULE_LOADING)
@@ -2621,16 +2640,22 @@ def exec_import(node, scope) {
     if node["mode"] == "with" {
         for name in node["names"] {
             if not (name in exports) {
-                raise_error("module \"" + node["path"] + "\" has no exported '" + name + "'", node["pos"])
+                let available = "nothing"
+                if len(exports) > 0 {
+                    available = join(keys(exports), ", ")
+                }
+                raise_error("module \"" + node["path"] + "\" has no exported '" + name + "' - it exports " + available, node["pos"])
             }
             env_define(scope, name, exports[name])
         }
         return sig_normal()
     }
 
-    let module_name = default_module_name(node["path"], node["pos"])
+    let module_name = ""
     if node["mode"] == "as" {
         module_name = node["alias"]
+    } else {
+        module_name = default_module_name(node["path"], node["pos"])
     }
     if node["mode"] != "as" and module_name in BUILTIN_NAMES {
         raise_error("'" + module_name + "' is a built-in function and cannot be used as a module name", node["pos"])
@@ -2648,7 +2673,12 @@ def run_program(source, path) {
     let ast = parse_program(source)
     let scope = make_env(false, true, true)
     define_stdlib_globals(scope)
-    let result = exec_block(ast["statements"], scope)
+    check_toplevel(exec_block(ast["statements"], scope))
+}
+
+# A `return`, `break` or `continue` that reaches the top of a program or of a
+# module is an error.
+def check_toplevel(result) {
     if result["kind"] == "return" {
         raise_error("'return' only makes sense inside a function", 0)
     }

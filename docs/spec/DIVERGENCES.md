@@ -23,9 +23,9 @@ change would break existing programs).
 The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
-accounted for D-001 and D-003 to D-011; D-002 and D-012 to D-014 are the host's
-own. Every entry but D-001 (normalized) and D-015 (a cosmetic difference in one
-error message) is now resolved.
+accounted for D-001, D-003 to D-011, D-015, D-016 and D-017; D-002, D-012 to D-014
+and D-018 are the host's own. Every entry but D-001 (normalized) and D-015 (a
+cosmetic difference in one error message) is resolved.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -295,6 +295,64 @@ Accepted as a known cosmetic difference (owner, 2026-11-08) and not worth
 holding up the slice. It goes away when the self-hosted interpreter stops being
 a second implementation of the numbers, as it will once it targets the bytecode
 the VM runs.
+
+### D-016 — `delete` on a list lacked the host's hint
+
+Status: resolved
+Class: implementation bug
+Engines: self-hosted
+Spec: `[stmt.delete]`
+Cases: `stmt-delete-on-a-list-is-an-error`
+
+The host adds ` - use pop() to remove a list item` when `delete` is given a list;
+the self-hosted interpreter did not, and named a boolean or `nothing` without its
+article. Found by the statements probes and fixed in the same change.
+
+### D-017 — Importing: the self-hosted interpreter differed in seven ways
+
+Status: resolved
+Class: implementation bug
+Engines: self-hosted
+Spec: `[mod.import]`, `[mod.errors]`, `[mod.cycles]`, `[mod.scope]`
+Cases: `mod-import-as-needs-no-valid-file-name`, `mod-import-with-a-missing-name-is-an-error`,
+`mod-import-with-the-same-name-twice-is-a-syntax-error`,
+`mod-scope-top-level-return-in-a-module-is-an-error`,
+`mod-scope-a-module-cannot-see-the-importers-names`, `mod-cycle-is-an-import-error`,
+`mod-errors-a-runtime-error-reaches-the-importer-wrapped`,
+`mod-errors-a-syntax-error-in-a-module-is-caught-at-import`, `mod-resolution-missing-module-can-be-caught`
+
+Found by the first module probes, and fixed with them:
+
+- an error inside a module reached the importer bare; the host wraps it as
+  `ImportError: while loading module "<path>":` with the report indented;
+- import failures (not found, not installed, circular) had no `ImportError`
+  label, so a `catch` saw a different text;
+- `import "1st.nova" as ok` was refused because the default name was computed
+  even when an alias made it unnecessary;
+- a `return`, `break` or `continue` at the top of a module was ignored;
+- `import "m.nova" with x, x` was accepted (`'x' is imported twice`);
+- the missing-export message omitted `- it exports a, b`;
+- a circular import named the files without their extension (`a -> b -> a`).
+
+The label difference is part of D-001's normalization: the self-hosted
+interpreter writes `Error: ImportError: message`, which the station reads as the
+label it names.
+
+### D-018 — Modules did not get `PI`, `E`, `json` and `python`
+
+Status: resolved
+Class: decision needed (decided 2026-11-08 by the maintainer's brief: a module is a fresh program)
+Engines: bytecode VM, tree-walker
+Spec: `[mod.scope]`, `[scope.global]`
+Cases: `mod-scope-a-module-has-the-built-ins-and-predefined-names`
+
+The host defined `PI`, `E`, `json` and `python` only in the scope of the program
+it started, so a module that used `json.dumps` or `PI` failed with `undefined
+name`, while the self-hosted interpreter gave modules all four. A module now
+starts with the same predefined names as a program (`Interpreter.new_global_scope`).
+`python` follows the host's switch exactly as in the program: it is the refusing
+stub unless `--allow-python` or `allow_python=True` was given, so a module gains no
+reach a program did not have.
 
 ## Not divergences, but worth knowing
 
