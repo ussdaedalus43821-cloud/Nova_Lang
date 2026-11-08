@@ -35,7 +35,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   900-step reactor trace, and a 500-tick run with the operator's SCRAM). The trace holds the plant's
   recorded measurements; the host's own inputs are computed by the host model (`ReactorModel` in
   `tests/conformance/engines.py`), which reproduces the real Python host's results on all 900 ticks.
-  The policy corpus is 769 cases.
+  The policy corpus is 768 cases.
+- Three exact-behaviour claims in the policy spec were relaxed after the GDScript port ran the corpus:
+  the step count of `[pol.limits]` is the reference engine's, not portable (the cases now test a 20,000-pass
+  loop, a 1,000,000-pass loop and a loop with no end); which error `nope(also_nope)` reports first is the
+  host's (`[pol.calls]`; that case is removed); digits after the 15th of a non-whole number are the host's
+  (`[pol.num-display]`; `999999999999999.5` left the boundary case).
 - `tools/export_policy_corpus.py` copies the corpus to the game repository, where `corpus_check.gd`
   (Reactor-Game, `godot/scripts/nova/`) runs it on the GDScript interpreter, on both backends.
 

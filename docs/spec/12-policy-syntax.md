@@ -336,7 +336,10 @@ function. Built-in functions are not values: `let g = len` is `unknown identifie
 When the callee is anything else (a call result, an index, a parenthesised
 expression), it is evaluated and must be a function, else `cannot call a list`.
 All the arguments are evaluated, left to right, before the call; if one fails,
-the function is not called. A host function receives the argument values and its
+the function is not called. (When the name resolves to no function at all, which of
+the two errors is reported, `unknown function` or the argument's, is the host's:
+the reference engine reports the unknown function first, the bytecode engine of the
+Godot port evaluates the arguments first.) A host function receives the argument values and its
 result is its return value (`null` if it has none); how many arguments a host
 function accepts is its own business.
 
@@ -393,9 +396,13 @@ Four guards bound a run so a policy cannot hang or exhaust its host.
   addition to the condition's own steps), and for every expression evaluated
   except the literals (numbers, strings, `true`, `false`, `null`): a name, an
   operator, a call, an index or member access, a list, a dictionary or a function
-  expression is one step each, and its operands add theirs. The program
-  `let i = 0 while i < N { i = i + 1 } print(i)` takes exactly `6N + 8` steps, so
-  `N = 83332` completes and `83333` does not.
+  expression is one step each, and its operands add theirs. The reference engine
+  counts this way: the program `let i = 0 while i < N { i = i + 1 } print(i)` takes
+  `6N + 8` steps there. **The exact count is not portable.** A host may count other
+  units (the bytecode engine of the Godot port counts instructions), so a program
+  near the limit may pass on one host and fail on another. What every host
+  guarantees: that loop completes for `N = 20000`, fails for `N = 1000000`, and a
+  loop that never ends always fails; the budget is per run, `[pol.tick]`.
 
 - **List size.** No list may hold more than **1,000,000 items**. A call that would make one longer
   fails at once with `a list cannot have more than 1000000 items`, before the memory is used: `range`
