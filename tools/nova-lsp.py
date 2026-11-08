@@ -37,6 +37,7 @@ import bisect
 import importlib.util
 import json
 import os
+import pathlib
 import sys
 import traceback
 import urllib.parse
@@ -142,7 +143,10 @@ def uri_to_path(uri):
 
 
 def path_to_uri(path):
-    return "file://" + urllib.request.pathname2url(os.path.abspath(path))
+    # as_uri() gives file:///C:/dir/f.nova on Windows; "file://" plus
+    # pathname2url() gave file://///C:/dir/f.nova there. On POSIX the two
+    # are identical.
+    return pathlib.Path(os.path.abspath(path)).as_uri()
 
 
 # ---------------------------------------------------------------------------

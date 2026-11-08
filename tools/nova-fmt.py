@@ -723,7 +723,9 @@ def main(argv):
                 print("would reformat {}".format(path))
                 status = max(status, 1)
         elif result != source:
-            with open(path, "w", encoding="utf-8") as handle:
+            # newline="\n": the layout is one layout. Text mode would write
+            # CRLF on Windows, so the same file would format to different bytes.
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(result)
             print("reformatted {}".format(path))
     return status

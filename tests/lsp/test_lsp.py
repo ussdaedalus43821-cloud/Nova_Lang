@@ -21,6 +21,7 @@ client code, run under Node with stand-ins for the vscode modules.
 
 import json
 import os
+import pathlib
 import queue
 import re
 import shutil
@@ -176,7 +177,9 @@ def span(text, needle, nth=0, utf16=True):
 
 
 def file_uri(path):
-    return "file://" + os.path.abspath(path)
+    # file:///C:/dir/f.nova on Windows, file:///dir/f.nova elsewhere.
+    # "file://" + the path is not a URI on Windows (backslashes, no third slash).
+    return pathlib.Path(os.path.abspath(path)).as_uri()
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +405,10 @@ def test_navigation(check):
                 expected = greet_at
             got = ask("textDocument/definition", needle, nth, into)
             check(got == expected, "definition of " + label, (got, expected))
+        jump = ask("textDocument/definition", '"./shapes.nova" as', 0, 1)
+        check(jump is not None and jump["uri"].startswith("file:///")
+              and not jump["uri"].startswith("file://///") and "\\" not in jump["uri"],
+              "a definition's URI is a canonical file:/// URI on every platform", jump)
         check(ask("textDocument/definition", 'upper("done")') is None,
               "a built-in has no definition to jump to")
         check(ask("textDocument/definition", "# The workspace", 0, 3) is None,
