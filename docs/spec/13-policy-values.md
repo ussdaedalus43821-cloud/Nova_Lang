@@ -50,7 +50,10 @@ Consequences that are part of the rule: a number that rounds to zero at six plac
 is written `0`, or **`-0` if it was negative** (`-0.0000004` is `-0`); `0.1 + 0.2` is
 `0.3`; `1/3` is `0.333333`. The exact digits of a whole number above about
 `1e22` are those of the float's exact value, which depends on the host's
-formatting library; cases stay below that.
+formatting library; cases stay below that. Likewise, for a number that is not whole
+and has more than about 15 significant digits (`999999999999999.5`), the digits
+after the 15th are the host's: C's `printf` gives the exact ones and others may
+not. Cases keep to numbers whose text is the same on every host.
 
 ## [pol.text] The display text of a value
 
