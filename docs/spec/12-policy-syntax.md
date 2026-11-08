@@ -23,10 +23,10 @@ This chapter covers how a source file is read (`pol.source` to `pol.operators`),
 the syntax and what each statement does (`pol.grammar` to `pol.import`), and the
 two guards on every run (`pol.limits`, `pol.errors`). Values, operators and the
 built-in functions are `13-policy-values.md`; the rule engine is
-`14-policy-engine.md`. Those two chapters are written in the next slices of M10.
+`14-policy-engine.md`, written in the next slice of M10.
 
 A program is a sequence of statements run from the first to the last in a global
-scope. Its observable effects are what `print` writes (one line per call, kept in
+scope. Its observable effects are what `print` writes (one entry per call, kept in
 order), the calls it makes to host functions, and, if it fails, one error.
 
 ```
@@ -40,8 +40,8 @@ print("total", total)
 prints `hello 3` and `total 10`.
 
 **How cases are written.** A policy case has the same fields as any case
-(`tests/conformance/README.md`) with these meanings: `output` is the lines
-printed; `error` is the failure text exactly as `[pol.errors]` defines it (there
+(`tests/conformance/README.md`) with these meanings: `output` is what `print` wrote, one
+entry per call (`[pol.lib-print]`); `error` is the failure text exactly as `[pol.errors]` defines it (there
 is no label and `error_line` is not used); `exit` is 0 for a program that ran to
 the end, 1 for one that failed; `files` are the modules `import` can find, by
 the name the program writes; `host_functions` names the host functions the host
@@ -408,7 +408,9 @@ of text. **The first error wins**: nothing after it replaces it.
 
 The text of an error is `line N: message`, where `N` is the 1-based line of the
 construct at fault, and the message is one of those in this chapter and
-`13-policy-values.md`. There is no label such as `NovaError`. A lexical or
+`13-policy-values.md`. There is no label such as `NovaError`. **Errors raised by an
+operator** (`-`, `*`, `<`, ... given a value that is not a number,
+`[pol.arith]`) have no line and are the bare message, `expected a number, got string`. A lexical or
 syntax error has the line of the token being read when it was found (for an
 unterminated string, the last line of the source). A runtime error has the line of
 the name that is unknown, or of the opening bracket of the call, index or member
@@ -423,5 +425,5 @@ func f() {
 f()
 ```
 
-The errors that can come from a module have the forms in `[pol.import]`. A few
-errors have no line (a host's own failure); they are the bare message.
+The errors that can come from a module have the forms in `[pol.import]`. The other
+errors without a line are a host's own failures; they are the bare message.

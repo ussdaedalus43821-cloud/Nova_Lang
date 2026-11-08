@@ -26,6 +26,22 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10 slice 2: policy dialect values, operators and built-ins
+- `docs/spec/13-policy-values.md`: 18 sections (`pol.*`) on the dialect's values, how a
+  number is written, truthiness, equality, arithmetic (division by zero is zero),
+  `+` with strings, ordering, `and`/`or`/`not`, indexing, dictionary keys, and all 38
+  built-in functions. Operator errors have no line number; that is now stated.
+- `tests/conformance/cases/policy-values.json`: 296 cases. With slice 1 the policy corpus
+  is 542 cases, and **all 51 of the game's recorded oracle programs** are in it, source
+  and result unchanged.
+- Four divergences found by writing the chapter, three fixed in `dialects/policy/` and
+  one left open as a decision (D-030 to D-033): messages now quote names and keys
+  plainly; `floor`, `round`, `int`, `pow` and the index functions no longer end in a raw
+  Python exception on infinity, NaN or `pow(0, -1)`; `num("text")` reads one grammar
+  (`12abc`, `1_0`, `inf`, `nan` are 0); `upper`/`lower` beyond ASCII stay host-defined.
+- `docs/design/m10-gdscript-gaps.md`: the places the GDScript port is expected to differ,
+  to be confirmed when it runs the corpus. NovaLang is unchanged.
+
 ### M10: the policy dialect (specification, engine, first 246 cases)
 - [ADR 0004](docs/decisions/0004-policy-dialect-after-measurement.md) is
   **accepted** (Option C) and supersedes ADR 0002: the game dialect is its own

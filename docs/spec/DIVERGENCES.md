@@ -25,8 +25,10 @@ agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
 host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message) and D-025 (case conversion beyond ASCII, an open
-decision).
+difference in one error message) and D-025 and D-033 (case conversion beyond ASCII,
+an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
+policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
+`13-policy-values.md`.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -521,6 +523,63 @@ Cases: none beyond ASCII
 Unicode version can change a result. The decision: keep it host-defined, restrict
 the two functions to ASCII (as D-020 did for whitespace), or name a Unicode version
 and ship the mapping.
+
+### D-030 — Policy dialect: names and keys quoted the way Python quotes them
+
+Status: resolved
+Class: implementation bug
+Engines: the policy dialect engine
+Spec: `[pol.index]`, `[pol.import]`
+
+The policy engine wrote the name or key in a message with Python's `repr`, so
+`dict has no key 'it's'` came out as `dict has no key "it's"` and a key with a
+backslash was doubled, while the GDScript port writes `'` + the text + `'`. The
+specification says the text goes between plain quotes exactly as it is. Fixed in
+`dialects/policy/` (the messages for a missing key, an unknown name or function, a
+module that cannot be read and a circular import).
+
+### D-031 — Policy dialect: infinity and NaN in whole-number functions
+
+Status: resolved
+Class: implementation bug
+Engines: the policy dialect engine
+Spec: `[pol.lib-math]`, `[pol.index]`, `[pol.lib-collections]`
+
+`floor`, `round` and `int` of infinity or NaN, `pow(0, -1)`, `pow` of a negative base
+with a fractional exponent, and any index, `slice`, `remove_at` or `range` argument
+that was infinity or NaN each ended in a raw Python exception (`OverflowError`,
+`ValueError`, `ZeroDivisionError`, or a `TypeError` from a complex result) instead of
+a result or a language error, which a game would see as a crashed host. The
+specification now says: `floor`, `round` and `int` return a non-finite argument
+unchanged; `pow` follows C (`pow(0, -1)` is `inf`, a negative base with a fractional
+exponent is NaN, and overflow takes its sign from the base and the exponent); a
+non-finite index, position or count is `expected a finite number, got inf`.
+
+### D-032 — Policy dialect: `num` accepted Python's float syntax
+
+Status: resolved
+Class: implementation bug
+Engines: the policy dialect engine
+Spec: `[pol.lib-convert]`
+
+`num("1_0")` was 10, `num("inf")` was `inf`, `num("nan")` was NaN and digits of other
+scripts were read, because the engine handed the text to Python's `float`. The GDScript
+port's `to_float` accepts none of those and reads a leading number out of text such as
+`12abc`. The specification gives one grammar (an optional sign, digits with an optional
+point, an optional exponent, ASCII spaces around it) and makes anything else `0`; the
+engine now follows it.
+
+### D-033 — Policy dialect: case conversion beyond ASCII
+
+Status: open
+Untested: it depends on the Unicode tables of the host underneath
+Class: decision needed
+Engines: the policy dialect engine (and any port)
+Spec: `[pol.lib-text]`
+
+`upper` and `lower` follow Python's full Unicode case mapping (`upper("ß")` is `"SS"`);
+a port's engine maps each character on its own. The same decision as D-025 for the
+NovaLang functions: it stays host-defined, and the cases use ASCII only.
 
 ## Not divergences, but worth knowing
 
