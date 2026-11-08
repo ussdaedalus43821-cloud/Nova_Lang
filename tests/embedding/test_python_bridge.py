@@ -88,7 +88,7 @@ class BridgeContract:
             with self.subTest(path=path):
                 self.refuses('python.get("{}")'.format(path), "has no attribute")
         self.refuses('python.call("json.__builtins__")', "has no attribute")
-        self.refuses('python.set("json.__doc__", "x")', "private attribute")
+        self.refuses('python.set("json.__doc__", "x")', "cannot modify the module")
         self.refuses('python.set("json.__builtins__.x", 1)', "has no attribute")
 
     def test_public_module_aliases_do_not_lead_to_builtins_or_sys(self):
@@ -153,6 +153,64 @@ class BridgeContract:
         self.refuses('python.get("nova_test_outer.inner")', "has no attribute")
         self.nova.expose_module(inner)
         self.assertEqual(self.nova.eval('python.call("nova_test_outer.inner.answer")'), 42)
+
+    def test_submodules_are_not_granted_with_their_package(self):
+        # Granting is by exact name, as python.import() is. `os.path` is not
+        # exposed by exposing `os`; the host grants it by exposing it.
+        import json
+        import os
+        self.nova.exec('python.import("json")\npython.import("collections")')
+        for path in ("json.decoder", "json.encoder", "collections.abc"):
+            with self.subTest(path=path):
+                self.refuses('python.get("{}")'.format(path), "has no attribute")
+        self.nova.expose_module(os)
+        self.refuses('python.get("os.path")', "has no attribute")
+        self.refuses('python.get("os.sys")', "has no attribute")
+        self.nova.expose_module(os.path)
+        self.assertEqual(self.nova.eval('type(python.get("os.path"))'), "dict")
+        self.refuses('python.get("os.sys")', "has no attribute")       # still not
+
+    # -- writes ----------------------------------------------------------------
+
+    def test_python_set_cannot_change_a_module_class_or_function(self):
+        import json
+        import random
+        original = (json.dumps, random.random, json.JSONDecoder.decode)
+        self.nova.exec('python.import("json")\npython.import("random")')
+        for code in ('python.set("json.dumps", 5)', 'python.set("random.random", 5)',
+                     'python.set("json.JSONDecoder.decode", 5)', 'python.set("json.dumps.flag", 1)',
+                     'python.set("json.new_name", 1)'):
+            with self.subTest(code=code):
+                self.refuses(code, "only write to objects the host exposed")
+        self.assertEqual((json.dumps, random.random, json.JSONDecoder.decode), original)
+        self.assertFalse(hasattr(json, "new_name"))
+        self.assertEqual(self.nova.eval('python.call("json.dumps", [1, 2])'), "[1, 2]")
+
+    def test_assignment_through_a_module_proxy_is_refused(self):
+        import json
+        original = json.dumps
+        self.nova.expose_global("tool", json)
+        self.refuses('tool.dumps = 5', "only write to objects the host exposed")
+        self.refuses('tool["added"] = 5', "only write to objects the host exposed")
+        self.assertIs(json.dumps, original)
+
+    def test_a_host_exposed_module_is_not_writable_either(self):
+        service = types.ModuleType("nova_test_settings")
+        service.level = 1
+        self.nova.expose_module(service)
+        self.refuses('python.set("nova_test_settings.level", 2)', "only write to objects the host exposed")
+        self.assertEqual(service.level, 1)
+
+    def test_objects_the_host_exposed_stay_writable(self):
+        thing = Private()
+        self.nova.expose("thing", thing)
+        self.nova.exec('python.set("thing.visible", 7)')
+        self.assertEqual(thing.visible, 7)
+        self.nova.exec('python.set("fresh", 6 * 7)')                 # a registry entry, not an attribute
+        self.assertEqual(self.nova.registry["fresh"], 42)
+        self.nova.expose_global("other", Private())
+        self.nova.exec("other.visible = 9")
+        self.assertEqual(self.nova.eval("other.visible"), 9)
 
     def test_printing_a_module_proxy_is_shallow(self):
         # It once recursed until the stack ran out.

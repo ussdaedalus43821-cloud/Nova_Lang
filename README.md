@@ -717,13 +717,20 @@ the host process:
   through a proxy, for reading *and* writing, so `json.__builtins__`,
   `obj.__class__` and an object's private state are all out of reach.
 - **A module alias is not a way round the allowlist.** An attribute whose
-  value is a module is visible only if that module is itself allowed (on the
-  list, or exposed with `expose_module`). `re.enum.bltns`, `json.codecs` and
+  value is a module is visible only if that module is itself allowed, by its
+  exact name (on the list, or exposed with `expose_module`). Submodules are
+  not granted with their package: a host that needs `os.path` exposes it
+  (`nova.expose_module(os.path)`) as well as `os`. `re.enum.bltns`, `json.codecs` and
   `statistics.sys` would otherwise lead to `builtins` and `sys`. A module
   that is handed over stays a proxy, and printing one shows
   `<python object module>`. A test walks every path the gate allows from each
   allowed module, on every Python the CI matrix covers, and fails if one
   reaches a forbidden module or a builtin such as `eval` or `open`.
+- **Scripts cannot write to modules, classes or functions.** `python.set` and
+  assignment through a proxy work only on object instances the host exposed;
+  `python.set("json.dumps", 5)` would otherwise replace `json.dumps` for the
+  whole process. Give scripts an object, not a module, for settings they may
+  change.
 - This is **capability gating, not a sandbox.** Run code you did not write in
   a separate process or container as well; see
   [`docs/decisions/0003-security-stance.md`](docs/decisions/0003-security-stance.md)

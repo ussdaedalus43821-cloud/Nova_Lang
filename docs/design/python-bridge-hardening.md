@@ -20,6 +20,13 @@ which were run against `63605ef`, not on the report.
    are blocked for assignment through `PythonObjectProxy` as well as for reads.
 3. **Module objects stay proxies.** They are never converted into recursive
    dictionaries.
+4. **Scripts cannot write to modules, classes or functions** (added on review,
+   2026-11-08). `python.set` and proxy assignment work only on object
+   instances the host exposed, because overwriting `json.dumps` would
+   corrupt the whole process.
+5. **Nothing is exposed automatically.** A module is granted by its exact
+   name; a package's submodules, and `os.path` when only `os` is exposed, stay
+   hidden until the host grants them.
 
 ## What the code does today (verified)
 
@@ -138,11 +145,25 @@ minor version bump (2.1.0).
 - **A second choke point (added).** `to_nova_value` refuses a module that is
   not granted. The attribute gate cannot see a module that arrives inside a
   dict or a list, or as the result of a call, so conversion checks too.
-- **What "granted" means.** The top-level name is on `PYTHON_IMPORT_ALLOWLIST`
-  or in `interpreter.python_granted`, which `Nova.expose_module`, `expose` and
-  `expose_global` fill when given a module. It is by top-level name, so
-  exposing `os` does not grant `os.path` (the module `posixpath`): a host that
-  wants that exposes it as well.
+- **What "granted" means (owner decision, 2026-11-08).** The module's **exact
+  name** is on `PYTHON_IMPORT_ALLOWLIST`, as `python.import()` requires, or in
+  `interpreter.python_granted`, which `Nova.expose_module`, `expose` and
+  `expose_global` fill when given a module. A package does not carry its
+  submodules with it: `collections.abc`, `json.decoder` and `json.encoder` are
+  hidden although `collections` and `json` are allowed, and exposing `os` does
+  not expose `os.path`. Nothing is exposed automatically. A host that needs
+  `os.path` grants it on purpose, the same way it granted `os`:
+
+  ```python
+  import os
+  nova = Nova(allow_python=True)
+  nova.expose_module(os)         # python.get("os.getcwd") ...
+  nova.expose_module(os.path)    # ... and now python.get("os.path.join") too
+  ```
+
+  (`os.path` is named `posixpath` or `ntpath` by platform; the grant is by
+  that name, which `expose_module` reads from the module.) `os.sys` and the
+  rest of `os`'s module attributes stay hidden unless exposed the same way.
 - **`--bootstrap` needed no change to `novalang.nova`.** Its `python.*`
   built-ins already call the host's `python`, which is the refusing stub when
   the switch is off. The flag only had to reach the host interpreter that
@@ -157,6 +178,16 @@ minor version bump (2.1.0).
   without the gate; without it the walk finds 22 routes on Python 3.13
   (`re.enum.bltns`, `json.codecs.builtins`, `statistics.sys`, ...), which is
   what keeps a pass meaningful.
+- **Writes are narrower than reads (owner decision, 2026-11-08).**
+  `bridge_write_check` refuses an assignment whose target is a **module, a
+  class or a function**, and a name that starts with `_`. A script may set
+  attributes only on an object instance the host handed it. So
+  `python.set("json.dumps", 5)`, `python.set("json.JSONDecoder.decode", ...)`
+  and `tool.dumps = 5` through a proxy of `json` all raise `PythonError`; the
+  last two also cover host-exposed modules and classes, which are shared by
+  the whole process too. A host that wants scripts to write settings exposes
+  an object, not a module. `python.set("name", value)` with no dot still
+  defines a registry entry, which belongs to that one interpreter.
 - **Version.** 2.1.0.
 
 ## What this does not do
@@ -164,15 +195,6 @@ minor version bump (2.1.0).
 - **It is not a sandbox.** It follows ADR 0003's second option: deny by
   default, grant explicitly, test every denial, and say that untrusted code
   still needs a separate process or container.
-- **A script can still overwrite public attributes of an allowed module.**
-  `python.set("json.dumps", 5)` replaces `json.dumps` for the whole process,
-  and `python.set("random.random", ...)` likewise. That can corrupt the host
-  and other scripts, though it does not give a script new capabilities. It was
-  found while implementing this design and is not covered by it. The
-  suggested follow-up is to refuse writes into the modules on
-  `PYTHON_IMPORT_ALLOWLIST` and keep them for objects and modules the host
-  exposed; it is a further behavior change for hosts, so it is the owner's
-  decision.
 - A script can still read the string form of private state through
   `string.Formatter`, which formats attribute chains. That leaks text, not
   objects, and does not run code. It is a documented residual.

@@ -43,10 +43,17 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
     expose other modules under public names: `re.enum.bltns` is `builtins`,
     `json.codecs.builtins` is `builtins`, `statistics.sys` is `sys`. An
     attribute whose value is a module is now visible only if that module is
-    itself allowed (on the `python.import` list, or exposed by the host with
-    `expose_module`, `expose` or `expose_global`), and a module that arrives
+    itself allowed by its exact name (on the `python.import` list, or exposed
+    by the host with `expose_module`, `expose` or `expose_global`; a package's
+    submodules are not granted with it), and a module that arrives
     inside a dict, a list or a call result is refused the same way. A hidden
     name reads exactly like an absent one.
+  - `python.set` and assignment through a proxy could change anything they
+    could reach, including allowed modules: `python.set("json.dumps", 5)`
+    replaced `json.dumps` for the whole process, host and other scripts
+    included. Writes are now refused when the target is a module, a class or a
+    function (`PythonError: cannot modify the module "json"`); they work only
+    on object instances the host exposed.
   - `python` existed in every run, though the README said it did not outside
     an embedding host. It is now **off unless asked for**:
     `novalang.py --allow-python ...` on the command line, and
@@ -70,9 +77,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `python.import`, `python.call`, `python.get` or `python.set` must create
   `Nova(allow_python=True)`. Scripts that only use `expose_global()` objects
   need no change. Scripts that read or write `_`-prefixed attributes of
-  exposed objects, or that reached a module through another module's
-  attribute (`os.path` when only `os` was exposed, for example), stop working;
-  expose the second module with `expose_module` as well. `examples/embedding_demo.py`
+  exposed objects, that wrote to a module, class or function (`python.set` on
+  a module attribute, or assignment through a proxy of one), or that reached a
+  module through another module's attribute (`os.path` when only `os` was
+  exposed, or `collections.abc`), stop working. Expose an object instead of a
+  module for settings a script may write, and expose the second module with
+  `expose_module(os.path)` as well. `examples/embedding_demo.py`
   now passes `allow_python=True`.
 - `Interpreter(engine=None, allow_python=None)` takes the same switch, and
   `bootstrap.run_bootstrap(..., allow_python=False)` and

@@ -94,6 +94,18 @@ print(found)
                 self.assertEqual(result.stdout.splitlines(), expected)
                 self.assertEqual(list(self.folder.glob("marker.txt")), [])
 
+    def test_a_script_cannot_replace_an_allowed_modules_function(self):
+        program = ('python.import("json")\n'
+                   'try { python.set("json.dumps", 5) } catch e { print("refused:", e) }\n'
+                   'print(python.call("json.dumps", [1, 2]))\n')
+        for name, flags in MODES:
+            with self.subTest(mode=name):
+                result = self.run_program(program, with_flag(flags))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                lines = result.stdout.splitlines()
+                self.assertTrue(lines[0].startswith("refused: PythonError: cannot modify the module"), lines)
+                self.assertEqual(lines[1], "[1, 2]")
+
     def test_bootstrap_script_takes_the_flag_too(self):
         path = self.folder / "program.nova"
         path.write_text('python.import("math")\nprint(python.get("math.pi") > 3)\n', encoding="utf-8")

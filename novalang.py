@@ -92,7 +92,7 @@ import shutil
 import sys
 import time
 from datetime import datetime, timezone
-from types import ModuleType
+from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
 
 __version__ = "2.1.0"
 
@@ -2202,15 +2202,17 @@ _MISSING = object()
 
 
 def python_granted(module, interpreter):
-    """Is `module` one a script may be handed? Its top-level package must be on
-    PYTHON_IMPORT_ALLOWLIST or have been exposed by the embedding program
-    (Nova.expose_module/expose/expose_global). Any other module is a way
-    round the allowlist: `re.enum.bltns` is the builtins module, `json.codecs`
-    reaches builtins and sys, `statistics.sys` is sys."""
-    top = getattr(module, "__name__", "").split(".")[0]
-    if top in PYTHON_IMPORT_ALLOWLIST:
+    """Is `module` one a script may be handed? Its exact name must be on
+    PYTHON_IMPORT_ALLOWLIST, as python.import() requires, or the embedding
+    program must have exposed that module (Nova.expose_module/expose/
+    expose_global). Submodules are not granted along with their package: a
+    host that wants `os.path` exposes it, as it exposes `os`. Any other module
+    is a way round the allowlist: `re.enum.bltns` is the builtins module,
+    `json.codecs` reaches builtins and sys, `statistics.sys` is sys."""
+    name = getattr(module, "__name__", "")
+    if name in PYTHON_IMPORT_ALLOWLIST:
         return True
-    return interpreter is not None and top in interpreter.python_granted
+    return interpreter is not None and name in interpreter.python_granted
 
 
 def bridge_lookup(owner, name, interpreter):
@@ -2230,14 +2232,27 @@ def bridge_lookup(owner, name, interpreter):
     return value
 
 
+_NOT_WRITABLE = ((ModuleType, "module"), (type, "class"),
+                 ((FunctionType, BuiltinFunctionType, MethodType), "function"))
+
+
 def bridge_write_check(owner, name, interpreter, position=None):
-    """Writes follow reads: what a script cannot see it cannot overwrite."""
+    """Writes are narrower than reads. A script may set attributes only on
+    an object instance the host handed it, never on a module, a class or a
+    function: those are shared by the whole process, so `python.set(
+    "json.dumps", 5)` would replace json.dumps for the host and every other
+    script. And what a script cannot see it cannot overwrite: names that
+    start with "_" are refused."""
+    for kinds, what in _NOT_WRITABLE:
+        if isinstance(owner, kinds):
+            raise NovaError(
+                'cannot modify the {} "{}": python.set and assignment through a proxy only '
+                'write to objects the host exposed, not to modules, classes or functions'
+                .format(what, getattr(owner, "__name__", "?")),
+                position, label="PythonError",
+            )
     if isinstance(name, str) and name.startswith("_"):
         raise NovaError('cannot set private attribute "{}"'.format(name), position, label="PythonError")
-    if isinstance(owner, ModuleType) and isinstance(name, str) and hasattr(owner, name) \
-            and bridge_lookup(owner, name, interpreter) is _MISSING:
-        raise NovaError('"{}" has no attribute "{}"'.format(getattr(owner, "__name__", "?"), name),
-                        position, label="PythonError")
 
 
 class PythonObjectProxy(dict):
@@ -3415,8 +3430,8 @@ class Interpreter:
         # which is the only way a NovaLang script reaches anything here -
         # there is no path from `python.*` to an unregistered object.
         self.python_registry = {}
-        # Top-level names of modules a script may be handed beyond the
-        # allowlist: the ones the embedding program exposed on purpose.
+        # Names of modules a script may be handed beyond the allowlist: the
+        # ones the embedding program exposed on purpose, each by its own name.
         self.python_granted = set()
 
         # Module machinery (Stage 9). file_stack tracks the directory of
@@ -6446,7 +6461,7 @@ class Nova:
         """A module the embedding program hands over on purpose is one a
         script may be given; any other module is not (see python_granted)."""
         if isinstance(value, ModuleType):
-            self.interpreter.python_granted.add(value.__name__.split(".")[0])
+            self.interpreter.python_granted.add(value.__name__)
 
     def expose_module(self, module):
         """Allow python.import(name) to succeed for a module beyond the
