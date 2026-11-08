@@ -26,6 +26,19 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10 slice 4: the reactor host and the 900-step trace
+- `docs/spec/15-policy-reactor.md`: 5 sections (`pol.*`) on the reactor game's host: the inputs a policy
+  is given and what it hands back, the eight host functions (`log`, `alarm`, `scram`, `reset_trip`,
+  `meltdown`, `victory`, `inject_fault`, `clear_fault`) and their effects on the engine, and the scram
+  latch the host keeps between ticks.
+- `tests/conformance/cases/policy-reactor.json` (25 scenarios) and `policy-trace.json` (the oracle's
+  900-step reactor trace, and a 500-tick run with the operator's SCRAM). The trace holds the plant's
+  recorded measurements; the host's own inputs are computed by the host model (`ReactorModel` in
+  `tests/conformance/engines.py`), which reproduces the real Python host's results on all 900 ticks.
+  The policy corpus is 769 cases.
+- `tools/export_policy_corpus.py` copies the corpus to the game repository, where `corpus_check.gd`
+  (Reactor-Game, `godot/scripts/nova/`) runs it on the GDScript interpreter, on both backends.
+
 ### M10: list and string size limits for the policy dialect
 - No list may hold more than 1,000,000 items (owner's decision): `range`, `append` and `+` on two
   lists fail at once with `a list cannot have more than 1000000 items`, `range` before it builds
