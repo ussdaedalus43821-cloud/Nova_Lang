@@ -1,6 +1,6 @@
 # M11 threat model
 
-Status: **Draft: owner review of this text pending; independent third-party audit pending.**
+Status: **Owner-reviewed and Architect-reviewed, pending independent third-party audit.**
 Written 2026-11-08 as
 slice 1 of M11 ([plan](m11-security-plan.md), [ADR 0003](../decisions/0003-security-stance.md)).
 This document says what NovaLang's sandbox profile is meant to defend, and, first, what it
@@ -96,5 +96,5 @@ Each row becomes cases in the corpus and a cell of the coverage matrix
 | Reviewer | Date | Scope | Outcome |
 | --- | --- | --- | --- |
 | Project owner | 2026-11-08 | The plan ([m11-security-plan](m11-security-plan.md)) | Reviewed. |
-| Project owner | pending | This document and `16-sandbox.md` | **Pending.** Becomes "Owner-reviewed" when the owner has read them. |
+| Project owner and architect | 2026-11-08 | This document and `16-sandbox.md` | **Reviewed** (owner and architect). |
 | Independent third party | none | none | **Pending.** No "security boundary" wording before this row has an outcome. |

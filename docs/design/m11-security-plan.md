@@ -1,6 +1,6 @@
 # M11 plan: security model and sandbox
 
-Status: **owner-reviewed** (the plan, 2026-11-08); decisions recorded in [ADR 0005](../decisions/0005-m11-profile-defaults-and-scope.md).
+Status: **Owner-reviewed and Architect-reviewed, pending independent third-party audit** (the plan and the specification, 2026-11-08); decisions recorded in [ADR 0005](../decisions/0005-m11-profile-defaults-and-scope.md).
 Slice 1 is written (see the end of this file); nothing here changes the language yet.
 It applies [ADR 0003](../decisions/0003-security-stance.md) (accepted: capability gating and
 resource limits, **not** isolation) with the method of M10: the specification first, a
