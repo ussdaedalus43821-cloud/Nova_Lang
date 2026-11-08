@@ -264,14 +264,14 @@ about 60 independent differences from NovaLang plus the rule engine, against the
 with NovaLang after a purely syntactic translation
 ([`design/m10-dialect-inventory.md`](design/m10-dialect-inventory.md)).
 
-**Status.** Slices 1 and 2 are done: source, syntax, statements, scopes, calls, modules,
+**Status.** Slices 1 to 3 are done: source, syntax, statements, scopes, calls, modules,
 limits and error text (`docs/spec/12-policy-syntax.md`, 23 sections); values, operators
 and the 38 built-in functions (`13-policy-values.md`, 18 sections); the game's reference
-engine in `dialects/policy/`; and 542 cases on it as the `policy` profile, including all
-51 of the game's recorded oracle programs. Still to come, one slice each, ending in a
-green matrix and a PR: the rule engine, the host-function contract and the 900-step
-reactor trace (`14-policy-engine.md`); then the GDScript host checked against the
-corpus (`design/m10-gdscript-gaps.md` lists where it is expected to differ).
+engine in `dialects/policy/`; and the rule engine (`14-policy-engine.md`, 15 sections); and 710 cases on the game's reference
+engine as the `policy` profile, including all 51 of the game's recorded oracle programs. Still to
+come, one slice each, ending in a green matrix and a PR: the reactor host contract and the 900-step
+reactor trace; then the GDScript host checked against the corpus (`design/m10-gdscript-gaps.md`
+lists where it is expected to differ).
 
 **Deliverables**
 

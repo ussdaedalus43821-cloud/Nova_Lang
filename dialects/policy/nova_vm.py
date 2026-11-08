@@ -41,6 +41,7 @@ class NovaVM:
         self.active_fault = None
         self.fault_started_at = 0.0
         self.next_fault_at = 0.0
+        self._running = False
 
     # -- module loading -----------------------------------------------------
 
@@ -94,6 +95,19 @@ class NovaVM:
         self._modules[path] = exports
         return exports
 
+    def _number(self, name: str, fallback: float) -> float:
+        """A global the engine itself reads as a number (the time `t`, a fault
+        duration or timing parameter). A number is itself, a boolean 1 or 0;
+        anything else is the ordinary error `expected a number, got null`
+        (docs/spec/14-policy-engine.md, [pol.engine-errors], D-035)."""
+        return self._as_number(self.get_global(name, fallback))
+
+    def _as_number(self, value) -> float:
+        ev = self.evaluator
+        if ev.error:
+            return 0.0
+        return float(ev._num(value, 0))
+
     # -- public API ---------------------------------------------------------
 
     def register_function(self, name: str, fn) -> None:
@@ -135,7 +149,11 @@ class NovaVM:
             self.error = "'%s' is not a function" % name
             return None
         self.evaluator.begin_run()
-        result = self.evaluator.call_function(fn, args, 0)
+        self._running = True
+        try:
+            result = self.evaluator.call_function(fn, args, 0)
+        finally:
+            self._running = False
         if self.evaluator.error:
             self.error = self.evaluator.error
         return result
@@ -199,8 +217,8 @@ class NovaVM:
         self.active_fault = None
         self.fault_started_at = 0.0
         self.next_fault_at = self.rng.uniform(
-            float(self.get_global("fault_first_min_s", 45.0)),
-            float(self.get_global("fault_first_max_s", 90.0)))
+            self._number("fault_first_min_s", 45.0),
+            self._number("fault_first_max_s", 90.0))
 
         if ev.error:
             self.error = ev.error
@@ -227,13 +245,18 @@ class NovaVM:
         if self.active_fault is not None:
             return
         ev = self.evaluator
+        # Work everything out before changing any state, so a fault whose
+        # duration (or the time) is not a number does not start at all.
+        started = self._number("t", 0.0)
+        duration = self._as_number(ev.eval(fault["duration"], ev.globals))
+        if ev.error:
+            return
         self.active_fault = fault
-        self.fault_started_at = float(self.get_global("t", 0.0))
+        self.fault_started_at = started
         ev.globals.declare("active_fault", fault["name"])
         ev.globals.declare("fault_label", fault["label"])
         ev.globals.declare("fault_elapsed", 0.0)
-        ev.globals.declare("fault_duration",
-                           float(ev.eval(fault["duration"], ev.globals)))
+        ev.globals.declare("fault_duration", duration)
         self._host_log("ALARM: " + fault["label"])
 
     def _clear_fault(self) -> None:
@@ -246,10 +269,10 @@ class NovaVM:
         ev.globals.declare("fault_label", "")
         ev.globals.declare("fault_elapsed", 0.0)
         ev.globals.declare("fault_duration", 0.0)
-        now = float(self.get_global("t", 0.0))
+        now = self._number("t", 0.0)
         self.next_fault_at = now + self.rng.uniform(
-            float(self.get_global("fault_gap_min_s", 45.0)),
-            float(self.get_global("fault_gap_max_s", 90.0)))
+            self._number("fault_gap_min_s", 45.0),
+            self._number("fault_gap_max_s", 90.0))
 
     def _pick_weighted_fault(self):
         total = sum(f["weight"] for f in self.program.faults if f["weight"] > 0)
@@ -270,7 +293,13 @@ class NovaVM:
         if fault is None:
             self.error = "no such fault '%s'" % name
             return False
+        outside = not self._running
+        if outside:
+            self.evaluator.begin_run()
         self._activate_fault(fault)
+        if self.evaluator.error:
+            self.error = self.evaluator.error
+            return False
         return True
 
     def clear_fault(self) -> None:
@@ -286,13 +315,20 @@ class NovaVM:
         else:
             elapsed = now - self.fault_started_at
             ev.globals.declare("fault_elapsed", elapsed)
-            if elapsed >= float(self.get_global("fault_duration", 30.0)):
+            if elapsed >= self._number("fault_duration", 30.0):
                 self._clear_fault()
 
         if self.active_fault is not None:
             ev.exec_block(self.active_fault["body"], Env(ev.globals))
 
     def tick(self, dt: float, inputs: dict, faults_enabled: bool = True) -> bool:
+        self._running = True
+        try:
+            return self._tick(dt, inputs, faults_enabled)
+        finally:
+            self._running = False
+
+    def _tick(self, dt: float, inputs: dict, faults_enabled: bool = True) -> bool:
         """One control cycle: reset transient effects, take the host's
         measurements, run the fault scheduler, recompute signals, then fire
         every rule in priority order. The host reads results back with
@@ -313,13 +349,19 @@ class NovaVM:
             if not ev.globals.has(key):
                 ev.globals.declare(key, default)
 
-        self._update_faults(float(self.get_global("t", 0.0)), faults_enabled)
+        self._update_faults(self._number("t", 0.0), faults_enabled)
         if ev.error:
             self.error = ev.error
             return False
 
         for name, expr in self.program.signal_defs:
             ev.globals.declare(name, ev.eval(expr, ev.globals))
+        if ev.error:
+            # An error in a signal stops the tick as the error of that signal's
+            # own line, not as the error of whichever rule is evaluated next
+            # (docs/spec/14-policy-engine.md, [pol.tick], D-034).
+            self.error = ev.error
+            return False
 
         for rule in self.program.rules:
             if rule["once"] and rule["fired"]:

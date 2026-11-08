@@ -35,3 +35,5 @@ port**, which the corpus will then check (`docs/design/m10-gdscript-gaps.md`).
 | D-030 | Messages quote names, keys and module paths as `'` text `'`, not with Python's `repr` (`nova_evaluator.py`, `nova_vm.py`). |
 | D-031 | `floor`, `round`, `int` return infinity and NaN unchanged; `pow` is C `pow` (`c_pow`); index, `slice`, `remove_at` and `range` arguments go through `_int`, which refuses infinity and NaN with `expected a finite number, got inf`. |
 | D-032 | `num("text")` reads the one grammar of `[pol.lib-convert]` (`read_number`). |
+| D-034 | An error in a signal stops the tick as the signal's own error (`nova_vm.py`, `_tick`). |
+| D-035 | The engine's own reads of a number (`t`, a fault duration, the `fault_*` timing parameters) go through `_number`/`_as_number` and fail with an ordinary error; a fault starts only once its duration is known; `inject_fault` reports the error. |
