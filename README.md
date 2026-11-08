@@ -156,6 +156,21 @@ what an operation means (`binary_operation`, `compare_operation`,
 `index_operation` and the rest), so they cannot disagree about
 semantics, only about control flow, and that is what station 11 tests.
 
+**Known limitation: deep recursion under `--tree-walk` on Windows.** The
+tree-walker spends about nine Python frames on each NovaLang call, and before
+Python 3.11 each of those also uses native stack. Windows has far less of it
+than Linux or macOS, so a program that recurses toward the 1200-call limit
+can overflow the native stack there and end the whole process, instead of
+printing `call depth of 1200 exceeded`. This was observed on Windows with
+Python 3.7; Python 3.8 to 3.10 on Windows are expected to behave the same but
+are not tested, and Python 3.11 and later are not affected. The default
+engine is the VM, which keeps NovaLang calls on its own stack and is not
+affected. To keep the comparison honest, station 11 does not give the
+tree-walker the 16 of its 300 generated programs that reach the limit on those
+platforms: it decides them on the VM, prints a `SKIPPED:` line and compares the
+other 284 on both engines (`docs/CI.md`). A larger-stack thread for the
+tree-walker would remove the limitation; it has not been decided.
+
 ### Around the core
 
 - `novalang.nova` is the self-hosted implementation: a lexer, parser and

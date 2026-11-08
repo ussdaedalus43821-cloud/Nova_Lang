@@ -66,6 +66,11 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   limit, because it overflows the native stack there and kills the process. The
   VM decides them; the skip is printed, recorded as a check, capped at a tenth
   and tested on every platform (`docs/CI.md`). Other platforms compare all 300.
+- Known limitation, not fixed: on Windows with Python before 3.11 (observed on
+  3.7), a program that recurses toward the 1200-call limit under `--tree-walk`
+  can overflow the native stack and end the process instead of reporting the
+  call-depth error. The default VM is not affected. Running the tree-walker on
+  a larger-stack thread would fix it and is undecided (`docs/CI.md`).
 - Continuous integration (M7, in progress): `.github/workflows/ci.yml` runs a
   fast tier (`run_all.py --quick`) on every pull request and the full suite
   across a Python/OS matrix on the default branch, weekly and on demand. Rows
