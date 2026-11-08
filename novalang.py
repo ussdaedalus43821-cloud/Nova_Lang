@@ -2083,6 +2083,8 @@ def builtin_abs(args, position):
 
 
 def builtin_round(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("round() takes a number and an optional digit count", position)
     value = numeric_argument(args[0], "round()", position)
     if len(args) == 1:
         return round(finite_argument(value, "round()", position))
@@ -2191,6 +2193,8 @@ def builtin_env(args, position):
 
 
 def builtin_exit(args, position):
+    if len(args) > 1:
+        raise NovaError("exit() takes an optional status code and nothing else", position)
     code = whole_number(args[0], "exit()", position) if args else 0
     sys.exit(code)
 
@@ -2721,6 +2725,8 @@ def builtin_reverse(args, position):
 
 
 def builtin_sorted(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("sorted() takes a list and an optional true or false", position)
     items = list(list_argument(args[0], "sorted()", position))
     descending = False
     if len(args) > 1:
@@ -2737,6 +2743,8 @@ def builtin_sorted(args, position):
 # ---- debugging -----------------------------------------------------------------
 
 def builtin_assert(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("assert() takes a condition and an optional message", position)
     condition = args[0]
     if not isinstance(condition, bool):
         raise NovaError(
@@ -2791,6 +2799,9 @@ def builtin_filter(args, position, interpreter):
 
 
 def builtin_reduce(args, position, interpreter):
+    if not 2 <= len(args) <= 3:
+        raise NovaError("reduce() takes a function, a list and an optional starting value",
+                        position)
     fn = callable_argument(args[0], "reduce()", position)
     items = list_argument(args[1], "reduce()", position)
     if len(args) >= 3:
