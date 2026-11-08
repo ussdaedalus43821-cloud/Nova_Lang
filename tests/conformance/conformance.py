@@ -55,9 +55,9 @@ UNTESTED = re.compile(r"^Untested: ", re.M)
 # D-001: the self-hosted interpreter reports lexical and syntax errors as
 # "Error: LexError@12: message" (a kind and a character offset in front of the
 # message) and uses the label "Error" where the host says "NovaError". The
-# message text is what is compared; see docs/spec/DIVERGENCES.md. An import
-# failure, whose label the host reports as ImportError, arrives the same way
-# ("Error: ImportError: message") and is read as the label it names.
+# message text is what is compared; see docs/spec/DIVERGENCES.md. A failure
+# the host labels ImportError or TypeError arrives the same way ("Error:
+# TypeError: message") and is read as the label it names.
 BOOTSTRAP_PREFIX = re.compile(r"^(?:LexError|ParseError)@\d+: ")
 
 
@@ -154,9 +154,12 @@ def normalize(engine, expected_error, result):
             message = BOOTSTRAP_PREFIX.sub("", message)
             if label == "Error" and expected_error.startswith("NovaError: "):
                 label = "NovaError"
-            if label == "Error" and message.startswith("ImportError: "):
-                # An import failure carries its label in the message text.
-                label, _, message = message.partition(": ")
+            if label == "Error":
+                # A labelled failure of the language's own (ImportError,
+                # TypeError) carries its label in the message text.
+                inner, _, rest = message.partition(": ")
+                if inner in ("ImportError", "TypeError", "AssertionError"):
+                    label, message = inner, rest
             result["error"] = label + ": " + message
         result["error_line"] = None
     return result

@@ -220,15 +220,15 @@ checked against, instead of "whatever `novalang.py` does".
 implementation is the first conforming host
 ([ADR 0001](decisions/0001-specification-is-normative.md), accepted).
 
-**Status (2026-11-08).** Two slices written. [`spec/`](spec/README.md) has 83
-sections in eight chapters: lexical structure, values, expressions, scoping, the
+**Status (2026-11-08).** Three slices written. [`spec/`](spec/README.md) has 91
+sections in nine chapters: lexical structure, values, expressions, scoping, the
 error catalogue, the security properties of the language, the rules a portable
-host must follow, statements, and modules. [`tests/conformance/`](../tests/conformance/README.md)
-has 463 cases citing them, run by the `conformance` station on the VM, the
+host must follow, statements, modules, and the core library. [`tests/conformance/`](../tests/conformance/README.md)
+has 530 cases citing them, run by the `conformance` station on the VM, the
 tree-walker and the self-hosted interpreter; a case can ship its own module files
 (the `modules` profile). The station enforces that every section is cited and
 every divergence is logged. The log ([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md))
-has 18 entries and 16 are resolved. Non-ASCII names and digits are refused by the
+has 25 entries; all but three are resolved, and the open one that is a real decision is D-025 (case conversion beyond ASCII). Non-ASCII names and digits are refused by the
 host (decided 2026-11-08); the self-hosted interpreter was brought into line on
 nine implementation bugs (scoping, reserved names, duplicate parameters, top-level
 control flow, function equality, argument counts, message wording) and on its
@@ -240,7 +240,7 @@ documented normalization (D-001), and how one syntax error names a whole float
 (D-015). Host failures the spec work exposed are fixed: `print(²)`, `num("²")`,
 integers too large for a float, and numbers with thousands of digits leaked a raw
 Python exception. Not yet written: packages (`nova.json`, `.nova_modules`), the
-standard library as profiles, type annotations, the embedding profile, and the
+`host` library profile (files, clock, randomness, environment, process), type annotations, the embedding profile, and the
 `Reactor-Game` oracle cases as a profile.
 
 **Risks.** Writing the spec will expose undocumented behavior and inconsistent

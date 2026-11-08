@@ -87,6 +87,41 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   formatter follow the same rule. Programs with non-ASCII names fail with
   `unexpected character`; rename them.
 
+### The core library (third slice of M9, first part)
+- `docs/spec/09-library.md`: 8 sections (`lib.*`) and 59 cases (530 in all, 91
+  sections) on the functions that compute without touching the machine: argument
+  counts and the two error labels, lists/dictionaries/ranges/`sorted`, strings,
+  `regex` (a portable subset), math (round half to even, exact `pow`, which
+  `sin`/`ln` digits a program may rely on), `map`/`filter`/`reduce`, JSON and
+  `assert`. Pinned along the way: `json.dumps` writes only ASCII (`\u00e9`), a
+  whole float keeps its `.0` (`2.0`), `round` goes to the even neighbour,
+  `split("a,b,,c", ",")` keeps the empty piece.
+- **Raw Python exceptions fixed (D-023).** `round()`, `sorted()`, `reduce()`,
+  `reduce(f)` and `assert()` with no arguments ended in a Python `IndexError`
+  that no `try` could catch, and extra arguments to them and to `exit()` were
+  silently ignored. Each now says what it takes.
+- The self-hosted interpreter now checks the argument counts of `pop`, `range`,
+  `split` and the other variable-count built-ins, validates what `map`, `filter`
+  and `reduce` are given, refuses to write a function out through `json.dumps`,
+  and labels those errors `TypeError` as the host does (D-024).
+- **Four decisions made (D-019 to D-022) and implemented, two of them breaking:**
+  - `sorted` treats booleans as 0 and 1 and refuses a mixture of kinds, lists,
+    dictionaries and NaN with a `TypeError`.
+  - **Whitespace is ASCII only.** `trim`, `split()` with no separator and `num()`
+    skip space, tab, line feed, carriage return, vertical tab and form feed; a
+    no-break space or an em space is now an ordinary character (`trim` keeps it,
+    `num("\u00a05")` is an error). `split_lines` ends a line only at a line
+    feed, a carriage return or both; form feed, `U+0085` and `U+2028` no longer
+    split.
+  - **`regex`'s `\d`, `\w`, `\s` and `\b` are ASCII only**, as names and digits
+    are: Arabic-Indic digits no longer match `\d`.
+  - **`json.dumps` refuses NaN and infinity** (`TypeError: json.dumps() cannot
+    represent NaN or infinity`) and **`json.loads` refuses** `NaN`, `Infinity`,
+    `-Infinity` and numbers too large for a float such as `1e999`. The owner asked
+    for a `ValueError` from `json.loads`; NovaLang has no such label, so it is a
+    `TypeError` like its other errors.
+  - Case conversion beyond ASCII stays the host's (D-025, open).
+
 ### Statements and modules (second slice of M9)
 - `docs/spec/07-statements.md` and `08-modules.md`: 8 + 6 sections on `if`,
   `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete`,

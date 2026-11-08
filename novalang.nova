@@ -1368,6 +1368,11 @@ def import_error(message, pos) {
     throw("ImportError: " + message)
 }
 
+# The host's TypeError label, for a built-in given something it cannot use.
+def type_error(message, pos) {
+    throw("TypeError: " + message)
+}
+
 # ---- built-ins --------------------------------------------------------
 
 let BUILTIN_NAMES = {
@@ -1403,9 +1408,40 @@ let BUILTIN_ARITY = {
     reverse: 1, map: 2, filter: 2
 }
 
+# Built-ins that take a range of argument counts: [fewest, most, message]. The
+# messages are the host's.
+let VARIABLE_ARITY = {
+    pop: [1, 2, "pop() takes a list and an optional index"],
+    range: [1, 3, "range() takes 1, 2 or 3 numbers"],
+    split: [1, 2, "split() takes a string and an optional separator"],
+    round: [1, 2, "round() takes a number and an optional digit count"],
+    sorted: [1, 2, "sorted() takes a list and an optional true or false"],
+    reduce: [2, 3, "reduce() takes a function, a list and an optional starting value"],
+    "assert": [1, 2, "assert() takes a condition and an optional message"],
+    exit: [0, 1, "exit() takes an optional status code and nothing else"],
+    input: [0, 1, "input() takes an optional prompt and nothing else"]
+}
+
 # Gives every function value an identity, since a function is a dictionary
 # here and `==` on dictionaries compares contents.
 let FUNCTION_IDS = {next: 0}
+
+# A function value is a dictionary here, so the host would write it out as one;
+# json.dumps() must refuse it as the host does.
+def check_jsonable(v, pos) {
+    if is_target_function(v) {
+        type_error("json.dumps() cannot represent a function", pos)
+    }
+    if type(v) == "list" {
+        for item in v {
+            check_jsonable(item, pos)
+        }
+    } else if type(v) == "dict" {
+        for item in values(v) {
+            check_jsonable(item, pos)
+        }
+    }
+}
 
 def is_target_function(v) {
     return type(v) == "dict" and "kind" in v and (v["kind"] == "function" or v["kind"] == "builtin")
@@ -1630,12 +1666,14 @@ def call_builtin(name, call_args, pos) {
         return platform()
     }
     if name == "json_dumps" {
+        check_jsonable(call_args[0], pos)
         return json.dumps(call_args[0])
     }
     if name == "json_loads" {
         return json.loads(call_args[0])
     }
     if name == "json_pretty" {
+        check_jsonable(call_args[0], pos)
         return json.pretty(call_args[0])
     }
     if name == "python_import" {
@@ -1735,7 +1773,17 @@ def call_builtin(name, call_args, pos) {
 # already has everything it takes to invoke a function value, unlike the
 # host, which had to grow a new needs_interpreter mechanism for this.
 
+def check_callable_and_list(who, fn, items, pos) {
+    if not is_target_function(fn) {
+        type_error(who + " needs a function, but got " + type_phrase(fn), pos)
+    }
+    if type(items) != "list" {
+        type_error(who + " needs a list, but got " + type_phrase(items), pos)
+    }
+}
+
 def target_map(fn, items, pos) {
+    check_callable_and_list("map()", fn, items, pos)
     let out = []
     for item in items {
         append(out, call_target_value(fn, [item], pos))
@@ -1744,11 +1792,12 @@ def target_map(fn, items, pos) {
 }
 
 def target_filter(fn, items, pos) {
+    check_callable_and_list("filter()", fn, items, pos)
     let out = []
     for item in items {
         let keep = call_target_value(fn, [item], pos)
         if type(keep) != "boolean" {
-            raise_error("filter()'s function must return true or false", pos)
+            type_error("filter()'s function must return true or false", pos)
         }
         if keep {
             append(out, item)
@@ -1760,6 +1809,7 @@ def target_filter(fn, items, pos) {
 def target_reduce(call_args, pos) {
     let fn = call_args[0]
     let items = call_args[1]
+    check_callable_and_list("reduce()", fn, items, pos)
     let accumulator = 0
     let rest = items
     if len(call_args) >= 3 {
@@ -1836,6 +1886,12 @@ def call_target_value(callee, call_args, pos) {
     if callee["kind"] == "builtin" {
         if callee["name"] in BUILTIN_ARITY and len(call_args) != BUILTIN_ARITY[callee["name"]] {
             raise_error(callee["name"] + "() takes " + str(BUILTIN_ARITY[callee["name"]]) + " argument(s) but got " + str(len(call_args)), pos)
+        }
+        if callee["name"] in VARIABLE_ARITY {
+            let limits = VARIABLE_ARITY[callee["name"]]
+            if len(call_args) < limits[0] or len(call_args) > limits[1] {
+                raise_error(limits[2], pos)
+            }
         }
         return call_builtin(callee["name"], call_args, pos)
     }

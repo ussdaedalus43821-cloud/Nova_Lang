@@ -1904,6 +1904,15 @@ def builtin_range(args, position):
     return [start + index * step for index in range(count)]
 
 
+# The whitespace trim(), split() and num() skip: ASCII only ([lib.text]). What
+# Python calls whitespace includes no-break space, the Unicode spaces and the
+# information separators, which would make a text mean different things on
+# hosts with different tables (D-020).
+ASCII_WHITESPACE = " \t\n\r\x0b\x0c"
+ASCII_WHITESPACE_RUNS = re.compile("[" + ASCII_WHITESPACE + "]+")
+LINE_ENDS = re.compile("\r\n|\r|\n")
+
+
 def text_argument(value, who, position):
     """Most of the string built-ins take exactly one string."""
     if not isinstance(value, str):
@@ -1920,7 +1929,7 @@ def builtin_lower(args, position):
 
 
 def builtin_trim(args, position):
-    return text_argument(args[0], "trim()", position).strip()
+    return text_argument(args[0], "trim()", position).strip(ASCII_WHITESPACE)
 
 
 def builtin_split(args, position):
@@ -1928,7 +1937,7 @@ def builtin_split(args, position):
         raise NovaError("split() takes a string and an optional separator", position)
     text = text_argument(args[0], "split()", position)
     if len(args) == 1:
-        return text.split()                     # split on runs of whitespace
+        return [piece for piece in ASCII_WHITESPACE_RUNS.split(text) if piece]
     separator = text_argument(args[1], "the separator of split()", position)
     if separator == "":
         raise NovaError("split() cannot use an empty separator", position)
@@ -1957,7 +1966,7 @@ def builtin_num(args, position):
     if not isinstance(value, str):
         raise NovaError("num() needs a string, but got {}".format(type_name(value)), position)
 
-    text = value.strip()
+    text = value.strip(ASCII_WHITESPACE)
     digits = text[1:] if text[:1] in ("+", "-") else text
     readable = (
         digits
@@ -2083,6 +2092,8 @@ def builtin_abs(args, position):
 
 
 def builtin_round(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("round() takes a number and an optional digit count", position)
     value = numeric_argument(args[0], "round()", position)
     if len(args) == 1:
         return round(finite_argument(value, "round()", position))
@@ -2191,6 +2202,8 @@ def builtin_env(args, position):
 
 
 def builtin_exit(args, position):
+    if len(args) > 1:
+        raise NovaError("exit() takes an optional status code and nothing else", position)
     code = whole_number(args[0], "exit()", position) if args else 0
     sys.exit(code)
 
@@ -2208,6 +2221,8 @@ def builtin_platform(args, position):
 def to_jsonable(value, position):
     if value is NOTHING:
         return None
+    if isinstance(value, float) and not math.isfinite(value):
+        raise NovaError("json.dumps() cannot represent NaN or infinity", position, label="TypeError")
     if isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, list):
@@ -2241,8 +2256,19 @@ def builtin_json_loads(args, position):
                             label="TypeError")
         return int(digits)
 
+    def read_float(digits):
+        value = float(digits)
+        if not math.isfinite(value):
+            raise NovaError("json.loads(): that number is too large", position, label="TypeError")
+        return value
+
+    def refuse_constant(name):
+        raise NovaError("json.loads(): {} is not valid JSON".format(name), position,
+                        label="TypeError")
+
     try:
-        return from_jsonable(json_module.loads(text, parse_int=read_integer))
+        return from_jsonable(json_module.loads(text, parse_int=read_integer, parse_float=read_float,
+                                               parse_constant=refuse_constant))
     except json_module.JSONDecodeError as problem:
         raise NovaError("json.loads(): {}".format(problem), position, label="TypeError")
 
@@ -2683,7 +2709,7 @@ def builtin_regex(args, position):
     pattern = text_argument(args[0], "the pattern for regex()", position)
     text = text_argument(args[1], "the text for regex()", position)
     try:
-        return re.search(pattern, text) is not None
+        return re.search(pattern, text, re.ASCII) is not None   # \d \w \s \b are ASCII (D-021)
     except re.error as problem:
         raise NovaError("regex(): bad pattern: {}".format(problem), position, label="TypeError")
 
@@ -2696,7 +2722,10 @@ def builtin_replace_all(args, position):
 
 
 def builtin_split_lines(args, position):
-    return text_argument(args[0], "split_lines()", position).splitlines()
+    lines = LINE_ENDS.split(text_argument(args[0], "split_lines()", position))
+    if lines[-1] == "":
+        lines.pop()                             # a final line end starts no new line
+    return lines
 
 
 def builtin_pad(args, position):
@@ -2721,22 +2750,31 @@ def builtin_reverse(args, position):
 
 
 def builtin_sorted(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("sorted() takes a list and an optional true or false", position)
     items = list(list_argument(args[0], "sorted()", position))
     descending = False
     if len(args) > 1:
         if not isinstance(args[1], bool):
             raise NovaError("sorted()'s second argument must be true or false", position, label="TypeError")
         descending = args[1]
-    try:
-        items.sort(reverse=descending)
-    except TypeError:
+    # Numbers (a boolean counts as 0 or 1) sort among themselves and strings
+    # among themselves; any other item, a NaN, or a mixture, cannot be ordered
+    # (D-019).
+    numbers = [is_number(item) or isinstance(item, bool) for item in items]
+    texts = [isinstance(item, str) for item in items]
+    if not (all(numbers) or all(texts)) or any(
+            isinstance(item, float) and item != item for item in items):
         raise NovaError("sorted() needs items that can be compared with each other", position, label="TypeError")
+    items.sort(reverse=descending)
     return items
 
 
 # ---- debugging -----------------------------------------------------------------
 
 def builtin_assert(args, position):
+    if not 1 <= len(args) <= 2:
+        raise NovaError("assert() takes a condition and an optional message", position)
     condition = args[0]
     if not isinstance(condition, bool):
         raise NovaError(
@@ -2791,6 +2829,9 @@ def builtin_filter(args, position, interpreter):
 
 
 def builtin_reduce(args, position, interpreter):
+    if not 2 <= len(args) <= 3:
+        raise NovaError("reduce() takes a function, a list and an optional starting value",
+                        position)
     fn = callable_argument(args[0], "reduce()", position)
     items = list_argument(args[1], "reduce()", position)
     if len(args) >= 3:

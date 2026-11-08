@@ -2,8 +2,9 @@
 headers (issue 3): a catchable NovaError, never a raw Python ValueError or
 OverflowError, and the same on every way of running a program.
 
-They come from json.loads("NaN") and ("1e999"), from num() of a decimal
-string too long for a float, and from float overflow.
+They come from num() of a decimal string too long for a float, from the
+difference of two such numbers, and from float overflow. (json.loads used to
+hand them over too, from "NaN" and "1e999"; it now refuses both, D-022.)
 """
 
 from pathlib import Path
@@ -23,9 +24,9 @@ MODES = {
 }
 
 SOURCES = '''
-let nan = json.loads("NaN")
-let inf = json.loads("1e999")
 let long = num("1" + "0" * 400 + ".0")
+let nan = long - long
+let inf = num("1" + "0" * 500 + ".0")
 let overflow = num("1" + "0" * 308 + ".0") * 10
 '''
 
@@ -93,7 +94,7 @@ class NonFiniteTests(unittest.TestCase):
             for call in ("floor", "ceil", "round"):
                 with self.subTest(mode=name, call=call):
                     result = self.run_program(
-                        'print("before")\n{}({}json.loads("NaN"))\n'.format(call, ""), flags)
+                        'print("before")\nlet big = num("1" + "0" * 400 + ".0")\n{}(big - big)\n'.format(call), flags)
                     self.assertEqual(result.returncode, 1, result.stderr)
                     self.assertEqual(result.stdout, "before\n")
                     self.assertIn("{}() needs a finite number, but got nan".format(call), result.stderr)

@@ -73,6 +73,7 @@ sections are written.
 | [`06-portability.md`](06-portability.md) | `port.*`: integers, floats and how they print, text, ordering and determinism, limits |
 | [`07-statements.md`](07-statements.md) | `stmt.*`: `if`, `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete` |
 | [`08-modules.md`](08-modules.md) | `mod.*`: `import`, `export`, finding files, the module cache, scope, cycles, errors while loading |
+| [`09-library.md`](09-library.md) | `lib.*`: the core library (collections, strings, `regex`, math, `map`/`filter`/`reduce`, JSON, `assert`) |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

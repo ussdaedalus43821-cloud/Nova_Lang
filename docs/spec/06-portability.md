@@ -139,6 +139,7 @@ corpus relies on.
 | Depth of nested calls | `call depth of <N> exceeded - is the recursion missing a base case?` | 1200 | 50 |
 | Items in a list made by `*` | `repeating that list <n> times would exceed 1000000 items` | 1,000,000 | 1,000,000 |
 | Characters in a string made by `*` | `repeating that string <n> times would be too long` | 1,000,000 | 1,000,000 |
+| Items in a list grown by `append` | `a list cannot grow beyond 1000000 items` | 1,000,000 | 1,000,000 |
 | Items in a list made by `range` | `range() would build a list of <n> items, which is too large` | 1,000,000 | 1,000,000 |
 
 `<N>` is the host's own bound, so the corpus matches that message with a

@@ -1,0 +1,1250 @@
+{
+ "area": "library",
+ "version": 1,
+ "cases": [
+  {
+   "name": "lib-range-of-argument-counts-errors",
+   "spec": [
+    "lib.calls"
+   ],
+   "profile": "core",
+   "source": "def a(s) { try { print(s) } catch e { print(e) } }\ntry { pop() } catch e { print(e) }\ntry { pop([1], 0, 0) } catch e { print(e) }\ntry { range() } catch e { print(e) }\ntry { range(1, 2, 3, 4) } catch e { print(e) }\ntry { split() } catch e { print(e) }\ntry { split(\"a\", \",\", 1) } catch e { print(e) }\ntry { round() } catch e { print(e) }\ntry { round(1, 2, 3) } catch e { print(e) }\ntry { sorted() } catch e { print(e) }\ntry { sorted([1], true, 3) } catch e { print(e) }\ntry { reduce(print) } catch e { print(e) }\ntry { reduce(print, [1], 0, 0) } catch e { print(e) }\ntry { assert() } catch e { print(e) }\ntry { assert(true, \"a\", 3) } catch e { print(e) }",
+   "output": [
+    "pop() takes a list and an optional index",
+    "pop() takes a list and an optional index",
+    "range() takes 1, 2 or 3 numbers",
+    "range() takes 1, 2 or 3 numbers",
+    "split() takes a string and an optional separator",
+    "split() takes a string and an optional separator",
+    "round() takes a number and an optional digit count",
+    "round() takes a number and an optional digit count",
+    "sorted() takes a list and an optional true or false",
+    "sorted() takes a list and an optional true or false",
+    "reduce() takes a function, a list and an optional starting value",
+    "reduce() takes a function, a list and an optional starting value",
+    "assert() takes a condition and an optional message",
+    "assert() takes a condition and an optional message"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-labels-of-argument-errors",
+   "spec": [
+    "lib.calls",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\nt(abs, \"a\")\nt(len, 5)\nt(upper, 5)\nt(keys, [1])\nt(reverse, 5)\nt(sorted, 5)\nt(floor, \"x\")\nt(sqrt, true)",
+   "output": [
+    "TypeError: abs() needs a number, but got a string",
+    "len() needs a list, a string or a dictionary, but got a number",
+    "upper() needs a string, but got a number",
+    "keys() needs a dictionary, but got a list",
+    "TypeError: reverse() needs a string or a list, but got a number",
+    "TypeError: sorted() needs a list, but got a number",
+    "TypeError: floor() needs a number, but got a string",
+    "TypeError: sqrt() needs a number, but got a boolean"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-len-keys-values",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "print(len([1, 2]), len(\"héy\"), len({a: 1}), len(\"\"), len([]), len(\"😀\"))\nprint(keys({b: 1, a: 2}), values({b: 1, a: 2}), keys({}), values({}))\nlet d = {x: 1}\nlet k = keys(d)\nappend(k, \"y\")\nprint(d, k)",
+   "output": [
+    "2 3 1 0 0 1",
+    "[\"b\", \"a\"] [1, 2] [] []",
+    "{x: 1} [\"x\", \"y\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-len-keys-values-errors",
+   "spec": [
+    "lib.collections",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\nt(len, 5)\nt(len, true)\nt(keys, [1])\nt(values, \"x\")\nt(keys, 5)",
+   "output": [
+    "len() needs a list, a string or a dictionary, but got a number",
+    "len() needs a list, a string or a dictionary, but got a boolean",
+    "keys() needs a dictionary, but got a list",
+    "values() needs a dictionary, but got a string",
+    "keys() needs a dictionary, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-append-grows-the-list-and-returns-it",
+   "spec": [
+    "lib.collections",
+    "scope.references"
+   ],
+   "profile": "core",
+   "source": "let l = [1]\nlet r = append(l, 2)\nprint(l, r, r == l)\nappend(l, [3])\nprint(l, len(l))\nlet m = []\nfor i = 1 to 3 { append(m, i * i) }\nprint(m)",
+   "output": [
+    "[1, 2] [1, 2] true",
+    "[1, 2, [3]] 3",
+    "[1, 4, 9]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-append-needs-a-list",
+   "spec": [
+    "lib.collections",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt2(append, 5, 1)\nt2(append, {a: 1}, 1)\nt2(append, true, 1)",
+   "output": [
+    "append() needs a list or a file name as its first argument, but got a number",
+    "append() needs a list or a file name as its first argument, but got a dictionary",
+    "append() needs a list or a file name as its first argument, but got a boolean"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-append-list-size-is-bounded",
+   "spec": [
+    "lib.collections",
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "let l = [0] * 1000000\nprint(len(l))\ntry { append(l, 1) } catch e { print(e) }\nprint(len(l))",
+   "output": [
+    "1000000",
+    "a list cannot grow beyond 1000000 items",
+    "1000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-pop-removes-from-the-end-or-an-index",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "let l = [1, 2, 3, 4, 5]\nprint(pop(l), l)\nprint(pop(l, 0), l)\nprint(pop(l, -1), l)\nprint(pop(l, 1), l)\nprint(pop(l), l)",
+   "output": [
+    "5 [1, 2, 3, 4]",
+    "1 [2, 3, 4]",
+    "4 [2, 3]",
+    "3 [2]",
+    "2 []"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-pop-errors",
+   "spec": [
+    "lib.collections",
+    "expr.index"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt(pop, [])\nt(pop, 5)\nt(pop, \"ab\")\nt2(pop, [1], 5)\nt2(pop, [1, 2], -3)\nt2(pop, [1], 1.5)\nt2(pop, [1], \"a\")",
+   "output": [
+    "pop() cannot take anything from an empty list",
+    "pop() needs a list as its first argument, but got a number",
+    "pop() needs a list as its first argument, but got a string",
+    "index 5 is out of range for a list of 1 item(s) - valid indexes are -1 to 0",
+    "index -3 is out of range for a list of 2 item(s) - valid indexes are -2 to 1",
+    "a list index needs a whole number, but got 1.5",
+    "a list index needs a whole number, but got a string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-range-forms",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "print(range(3), range(2, 5), range(0, 10, 3), range(5, 0, -2), range(0), range(3, 3), range(5, 1), range(5, 0))\nprint(range(2.0), range(1, 4.0), len(range(100)), range(-2, 2), range(10, 0, -5))",
+   "output": [
+    "[0, 1, 2] [2, 3, 4] [0, 3, 6, 9] [5, 3, 1] [] [] [] []",
+    "[0, 1] [1, 2, 3] 100 [-2, -1, 0, 1] [10, 5]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-range-errors",
+   "spec": [
+    "lib.collections",
+    "port.limits"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t3(f, a, b, x) { try { f(a, b, x) } catch e { print(e) } }\nt(range, 1.5)\nt(range, \"a\")\nt3(range, 0, 5, 0)\nt3(range, 0, 10000000, 1)\nt(range, 1000001)\nprint(len(range(1000000)))",
+   "output": [
+    "range() needs a whole number, but got 1.5",
+    "range() needs a whole number, but got a string",
+    "range() cannot step by zero",
+    "range() would build a list of 10000000 items, which is too large",
+    "range() would build a list of 1000001 items, which is too large",
+    "1000000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-reverse",
+   "spec": [
+    "lib.collections",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let l = [1, 2, 3]\nprint(reverse(\"héy😀\"), reverse(l), reverse(\"\"), reverse([]), l)\nlet r = reverse(l)\nappend(r, 0)\nprint(l, r)",
+   "output": [
+    "😀yéh [3, 2, 1]  [] [1, 2, 3]",
+    "[1, 2, 3] [3, 2, 1, 0]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-ascending-and-descending",
+   "spec": [
+    "lib.collections",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let l = [3, 1, 2]\nprint(sorted(l), sorted(l, true), sorted(l, false), l)\nprint(sorted([\"b\", \"a\", \"C\", \"aa\", \"\"]), sorted([2.5, 1, 3, -4, 0.5]), sorted([]), sorted([\"é\", \"z\", \"e\"]))\nprint(sorted([\"b\", \"a\"], true), sorted([1, 1, 1]), sorted([-1.5, -2]))",
+   "output": [
+    "[1, 2, 3] [3, 2, 1] [1, 2, 3] [3, 1, 2]",
+    "[\"\", \"C\", \"a\", \"aa\", \"b\"] [-4, 0.5, 1, 2.5, 3] [] [\"e\", \"z\", \"é\"]",
+    "[\"b\", \"a\"] [1, 1, 1] [-2, -1.5]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-errors",
+   "spec": [
+    "lib.collections",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt(sorted, 5)\nt(sorted, [1, \"a\"])\nt(sorted, [\"a\", 1])\nt2(sorted, [1], 1)\nt2(sorted, [1], \"x\")",
+   "output": [
+    "TypeError: sorted() needs a list, but got a number",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted()'s second argument must be true or false",
+    "TypeError: sorted()'s second argument must be true or false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-fixed-arity-count-errors",
+   "spec": [
+    "lib.calls",
+    "err.call"
+   ],
+   "profile": "core",
+   "source": "def z(f) { try { f() } catch e { print(e) } }\nz(len)\nz(upper)\nz(abs)\ntry { join([1]) } catch e { print(e) }\ntry { pow(2) } catch e { print(e) }\ntry { replace_all(\"a\", \"b\") } catch e { print(e) }\ntry { len(1, 2) } catch e { print(e) }",
+   "output": [
+    "len() takes 1 argument(s) but got 0",
+    "upper() takes 1 argument(s) but got 0",
+    "abs() takes 1 argument(s) but got 0",
+    "join() takes 2 argument(s) but got 1",
+    "pow() takes 2 argument(s) but got 1",
+    "replace_all() takes 3 argument(s) but got 2",
+    "len() takes 1 argument(s) but got 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-upper-lower-trim-for-ascii",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(upper(\"Hello, World 42\"), lower(\"Hello, World 42\"), upper(\"\"), lower(\"\"))\nprint(\"[\" + trim(\"  hi \\n\") + \"]\", \"[\" + trim(\"\\t a b \\r\\n\") + \"]\", \"[\" + trim(\"\") + \"]\", \"[\" + trim(\"   \") + \"]\", \"[\" + trim(\"x\") + \"]\")",
+   "output": [
+    "HELLO, WORLD 42 hello, world 42  ",
+    "[hi] [a b] [] [] [x]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-text-argument-errors",
+   "spec": [
+    "lib.text",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt(upper, 5)\nt(lower, [])\nt(trim, true)\nt(split, 5)\nt2(split, \"a\", 5)\nt2(join, \"ab\", \",\")\nt2(join, [1], 5)\nt2(pad, 5, 2)\nt2(pad, \"a\", 2.5)\nt2(pad_left, \"a\", \"2\")\nt(split_lines, 5)\nt3(replace_all, 1, \"b\", \"c\")\nt3(replace_all, \"a\", 2, \"c\")\nt3(replace_all, \"a\", \"b\", 3)",
+   "output": [
+    "upper() needs a string, but got a number",
+    "lower() needs a string, but got a list",
+    "trim() needs a string, but got a boolean",
+    "split() needs a string, but got a number",
+    "the separator of split() needs a string, but got a number",
+    "join() needs a list as its first argument, but got a string",
+    "the separator of join() needs a string, but got a number",
+    "pad() needs a string, but got a number",
+    "pad() needs a whole number, but got 2.5",
+    "pad_left() needs a whole number, but got a string",
+    "split_lines() needs a string, but got a number"
+   ],
+   "error": "NovaError: undefined name 't3'",
+   "error_line": 14,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-with-a-separator",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(split(\"a,b,,c\", \",\"), split(\"\", \",\"), split(\"abc\", \"abc\"), split(\"a--b\", \"--\"), split(\",\", \",\"), split(\"abc\", \"x\"))\nprint(split(\"aaa\", \"aa\"), split(\"a b\", \" \"), len(split(\"a,b,c\", \",\")))",
+   "output": [
+    "[\"a\", \"b\", \"\", \"c\"] [\"\"] [\"\", \"\"] [\"a\", \"b\"] [\"\", \"\"] [\"abc\"]",
+    "[\"\", \"a\"] [\"a\", \"b\"] 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-without-a-separator",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(split(\"  a  b\\n c\\t\"), split(\"\"), split(\"   \"), split(\"one\"), split(\" x \"))",
+   "output": [
+    "[\"a\", \"b\", \"c\"] [] [] [\"one\"] [\"x\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-empty-separator-is-an-error",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "split(\"a\", \"\")",
+   "output": [],
+   "error": "NovaError: split() cannot use an empty separator",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lib-join",
+   "spec": [
+    "lib.text",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(join([\"a\", 1, true, 2.5, [1], {a: 1}], \"-\"), \"[\" + join([], \",\") + \"]\", join([\"x\"], \"\"), join([1, 2, 3], \", \"), join([\"a\", \"b\"], \"\"))\nprint(join(split(\"a b c\"), \"+\"))",
+   "output": [
+    "a-1-true-2.5-[1]-{a: 1} [] x 1, 2, 3 ab",
+    "a+b+c"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-str-is-how-print-writes",
+   "spec": [
+    "lib.text",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(str(5), str(2.5), str(true), str(\"x\"), str([1, \"a\"]), str({a: 1}), str(len), str(1.0), str(0.1 + 0.2))\nprint(type(str(5)), str(5) + \"!\", str([]), str({}), len(str(123456789)))",
+   "output": [
+    "5 2.5 true x [1, \"a\"] {a: 1} <built-in function len> 1 0.30000000000000004",
+    "string 5! [] {} 9"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-pad-and-pad-left",
+   "spec": [
+    "lib.text",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "print(\"[\" + pad(\"ab\", 5) + \"]\", \"[\" + pad_left(\"ab\", 5) + \"]\", \"[\" + pad(\"abcdef\", 3) + \"]\", \"[\" + pad_left(\"x\", 0) + \"]\", \"[\" + pad(\"x\", -2) + \"]\")\nprint(\"[\" + pad(\"é😀\", 4) + \"]\", \"[\" + pad_left(\"é\", 3) + \"]\", \"[\" + pad(\"\", 2) + \"]\", len(pad(\"é\", 5)))",
+   "output": [
+    "[ab   ] [   ab] [abcdef] [x] [x]",
+    "[é😀  ] [  é] [  ] 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-replace-all",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(replace_all(\"aaa\", \"a\", \"bb\"), replace_all(\"abc\", \"x\", \"y\"), replace_all(\"abab\", \"ab\", \"\"), replace_all(\"aaaa\", \"aa\", \"b\"))\nprint(replace_all(\"abc\", \"\", \"-\"), replace_all(\"\", \"\", \"z\"), replace_all(\"\", \"a\", \"z\"), replace_all(\"hello world\", \"o\", \"0\"))",
+   "output": [
+    "bbbbbb abc  bb",
+    "-a-b-c- z  hell0 w0rld"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-lines",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(split_lines(\"a\\nb\\r\\nc\\rd\"), split_lines(\"\"), split_lines(\"a\\n\"), split_lines(\"\\n\\n\"), split_lines(\"one\"), split_lines(\"a\\n\\nb\"), split_lines(\"\\r\\n\"))",
+   "output": [
+    "[\"a\", \"b\", \"c\", \"d\"] [] [\"a\"] [\"\", \"\"] [\"one\"] [\"a\", \"\", \"b\"] [\"\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-the-portable-subset",
+   "spec": [
+    "lib.regex"
+   ],
+   "profile": "core",
+   "source": "print(regex(\"^a.c$\", \"abc\"), regex(\"b+\", \"aabbb\"), regex(\"^$\", \"\"), regex(\"x\", \"abc\"), regex(\"[a-c]+\", \"zzb\"), regex(\"a|b\", \"xb\"), regex(\"(ab)+c\", \"ababc\"), regex(\"a?\", \"\"))\nprint(regex(\"^[0-9]+$\", \"123\"), regex(\"[^0-9]\", \"123\"), regex(\"^[a-z]*$\", \"abc1\"), regex(\"colou?r\", \"color\"), regex(\"^(a|b)*c$\", \"abbac\"), regex(\"a*\", \"bbb\"))",
+   "output": [
+    "true true true false true true true true",
+    "true false false true true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-matches-anywhere-unless-anchored",
+   "spec": [
+    "lib.regex"
+   ],
+   "profile": "core",
+   "source": "print(regex(\"b\", \"abc\"), regex(\"^b\", \"abc\"), regex(\"c$\", \"abc\"), regex(\"^abc$\", \"abc\"), regex(\"^abc$\", \"abcd\"), regex(\"\", \"x\"), regex(\"a.c\", \"a\\nc\"), regex(\"^b\", \"a\\nb\"))",
+   "output": [
+    "true false true true false true false false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-ascii-classes",
+   "spec": [
+    "lib.regex"
+   ],
+   "profile": "core",
+   "source": "print(regex(\"^\\\\d+$\", \"123\"), regex(\"\\\\bcat\\\\b\", \"a cat sat\"), regex(\"^\\\\w+$\", \"ab_9\"), regex(\"\\\\s\", \"a b\"), regex(\"\\\\d\", \"abc\"), regex(\"\\\\bcat\\\\b\", \"concatenate\"))",
+   "output": [
+    "true true true true false false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-characters-are-code-points",
+   "spec": [
+    "lib.regex",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "print(regex(\"é\", \"café\"), regex(\"^.$\", \"é\"), regex(\"^.$\", \"😀\"), regex(\"^..$\", \"😀\"))",
+   "output": [
+    "true true true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-abs-floor-ceil",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(abs(-5), abs(5), abs(-2.5), abs(0), abs(-0.0))\nprint(floor(2.7), floor(-2.1), floor(5), ceil(2.1), ceil(-2.9), ceil(5), floor(-0.5), ceil(-0.5), floor(0.99999))",
+   "output": [
+    "5 5 2.5 0 0",
+    "2 -3 5 3 -2 5 -1 0 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-round-ties-go-to-the-even-whole-number",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(round(0.5), round(1.5), round(2.5), round(3.5), round(-0.5), round(-1.5), round(-2.5), round(1.4), round(-1.6), round(7))",
+   "output": [
+    "0 2 2 4 0 -2 -2 1 -2 7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-round-to-digits",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(round(2.675, 2), round(1.005, 2), round(123.456, 1), round(3.14159, 3), round(2.5, 0), round(0.125, 2), round(0.375, 2))\nprint(round(1234, -2), round(1250, -2), round(1350, -2), round(5, 2), round(5.0, 2), round(1234.5678, -1), round(-1250, -2))",
+   "output": [
+    "2.67 1 123.5 3.142 2 0.12 0.38",
+    "1200 1200 1400 5 5 1230 -1200"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-round-and-floor-keep-whole-numbers-whole",
+   "spec": [
+    "lib.math",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(round(7), floor(5), ceil(5), round(5, 2), type(round(5.5)), floor(2.5) + 1, 10 / round(2.4))",
+   "output": [
+    "7 5 5 5 number 3 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-math-argument-and-domain-errors",
+   "spec": [
+    "lib.math",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt(sqrt, -1)\nt(sqrt, \"a\")\nt2(pow, 0, -1)\nt2(pow, -8, 0.5)\nt2(pow, \"a\", 2)\nt2(pow, 2, true)\nt(ln, 0)\nt(ln, -1)\nt(log10, 0)\nt(ln, \"a\")\nt(abs, true)\nt(round, \"a\")\nt2(round, 1.5, 1.5)\nt2(round, 1.5, \"a\")\nt(floor, \"x\")\nt(ceil, [])\nt(sin, \"a\")",
+   "output": [
+    "TypeError: sqrt() needs a number that is not negative",
+    "TypeError: sqrt() needs a number, but got a string",
+    "TypeError: pow(): 0.0 cannot be raised to a negative power",
+    "TypeError: pow() produced a complex result, which NovaLang cannot represent",
+    "TypeError: pow() needs a number, but got a string",
+    "TypeError: pow() needs a number, but got a boolean",
+    "TypeError: ln() needs a number greater than zero",
+    "TypeError: ln() needs a number greater than zero",
+    "TypeError: log10() needs a number greater than zero",
+    "TypeError: ln() needs a number, but got a string",
+    "TypeError: abs() needs a number, but got a boolean",
+    "TypeError: round() needs a number, but got a string",
+    "round() needs a whole number, but got 1.5",
+    "round() needs a whole number, but got a string",
+    "TypeError: floor() needs a number, but got a string",
+    "TypeError: ceil() needs a number, but got a list",
+    "TypeError: sin() needs a number, but got a string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-exact-trigonometry-and-logarithms",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(sin(0), cos(0), tan(0), ln(1), log10(1))\nprint(round(sin(PI / 2), 9), round(cos(PI), 9), round(tan(PI / 4), 9), round(ln(E), 9), round(log10(1000), 9), round(sin(PI / 6), 9), round(ln(10), 9))",
+   "output": [
+    "0 1 0 0 0",
+    "1 -1 1 1 3 0.5 2.302585093"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-pi-and-e",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(PI, E, PI == 3.141592653589793, E == 2.718281828459045, round(PI * 2, 4))",
+   "output": [
+    "3.141592653589793 2.718281828459045 true true 6.2832"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-min-max-sum",
+   "spec": [
+    "lib.math"
+   ],
+   "profile": "core",
+   "source": "print(min(3, 1, 2), max(3, 1, 2), min([3, 1, 2]), max([4, 9, 2]), sum([1, 2, 3]), sum(1, 2, 3), min(2, 1.5), max(1, 2.5))\nprint(sum([0.1, 0.2]), sum([1, 2.5]), min(5), max(5), sum(5), min([-1, -2.5]), max(-1, -2), sum([0.1] * 10), sum([1.0, 2]) )",
+   "output": [
+    "1 3 1 9 6 6 1.5 2.5",
+    "0.30000000000000004 3.5 5 5 5 -2.5 -1 0.9999999999999999 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-min-max-sum-errors",
+   "spec": [
+    "lib.math",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\ntry { min() } catch e { print(e) }\nt(min, [])\nt(max, [])\nt(sum, [])\nt2(max, \"a\", \"b\")\nt(sum, [1, \"a\"])\nt(sum, [[1]])\nt2(min, [1], [2])\nt(max, \"abc\")",
+   "output": [
+    "TypeError: min() needs at least one number",
+    "TypeError: min() needs at least one number",
+    "TypeError: max() needs at least one number",
+    "TypeError: sum() needs at least one number",
+    "TypeError: max() needs a number, but got a string",
+    "TypeError: sum() needs a number, but got a string",
+    "TypeError: sum() needs a number, but got a list",
+    "TypeError: min() needs a number, but got a list",
+    "TypeError: max() needs a number, but got a string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-map-filter-reduce",
+   "spec": [
+    "lib.functional"
+   ],
+   "profile": "core",
+   "source": "def sq(x) { return x * x }\ndef big(x) { return x > 1 }\ndef add(a, b) { return a + b }\nprint(map(sq, [1, 2, 3]), map(str, [1, 2]), map(len, [\"a\", \"bb\"]), map(sq, []), map(upper, [\"a\"]), map(abs, [-1, 2]))\nprint(filter(big, [1, 2, 3]), filter(big, []), filter(big, [0, 1]))\nprint(reduce(add, [1, 2, 3]), reduce(add, [1, 2, 3], 10), reduce(add, [], 5), reduce(add, [7]), reduce(max, [1, 5, 2]), reduce(add, [\"a\", \"b\", \"c\"]))",
+   "output": [
+    "[1, 4, 9] [\"1\", \"2\"] [1, 2] [] [\"A\"] [1, 2]",
+    "[2, 3] [] []",
+    "6 16 5 7 5 abc"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-reduce-folds-from-the-left",
+   "spec": [
+    "lib.functional"
+   ],
+   "profile": "core",
+   "source": "def sub(a, b) { return a - b }\ndef cat(a, b) { return \"(\" + a + b + \")\" }\nprint(reduce(sub, [10, 1, 2]), reduce(sub, [10, 1, 2], 100), reduce(cat, [\"a\", \"b\", \"c\"]), reduce(cat, [\"b\", \"c\"], \"a\"))",
+   "output": [
+    "7 87 ((ab)c) ((ab)c)"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-map-filter-call-in-order-once-each",
+   "spec": [
+    "lib.functional",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "let calls = []\ndef f(x) { append(calls, x)\nreturn x }\ndef keep(x) { append(calls, x * 10)\nreturn x > 1 }\nmap(f, [3, 1, 2])\nfilter(keep, [1, 2])\nprint(calls)",
+   "output": [
+    "[3, 1, 2, 10, 20]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-higher-order-argument-errors",
+   "spec": [
+    "lib.functional",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\ndef add(a, b) { return a + b }\nt2(map, 5, [1])\nt2(map, len, 5)\nt2(filter, \"x\", [1])\nt2(filter, len, \"x\")\nt2(reduce, add, 5)\nt2(reduce, 5, [1])\ntry { reduce(add, []) } catch e { print(e) }\ntry { filter(len, [\"a\"]) } catch e { print(e) }\ndef one(x) { return x }\ntry { filter(one, [1]) } catch e { print(e) }\ndef two(a, b) { return a }\ntry { map(two, [1]) } catch e { print(e) }\ntry { map(len) } catch e { print(e) }",
+   "output": [
+    "TypeError: map() needs a function, but got a number",
+    "TypeError: map() needs a list, but got a number",
+    "TypeError: filter() needs a function, but got a string",
+    "TypeError: filter() needs a list, but got a string",
+    "TypeError: reduce() needs a list, but got a number",
+    "TypeError: reduce() needs a function, but got a number",
+    "reduce() needs a non-empty list, or an initial value as a third argument",
+    "TypeError: filter()'s function must return true or false",
+    "TypeError: filter()'s function must return true or false",
+    "two() expects 2 argument(s) but got 1",
+    "map() takes 2 argument(s) but got 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-errors-raised-by-the-function-are-the-callers",
+   "spec": [
+    "lib.functional",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "def boom(x) { return 1 / 0 }\ntry { map(boom, [1]) } catch e { print(e) }\ndef fail(x) { throw \"from f\" }\ntry { filter(fail, [1]) } catch e { print(e) }\nprint(map(print, [1]))",
+   "output": [
+    "division by zero",
+    "from f",
+    "1",
+    "[nothing]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-assert-passes-silently",
+   "spec": [
+    "lib.assert"
+   ],
+   "profile": "core",
+   "source": "assert(true)\nassert(1 == 1, \"ok\")\nprint(assert(true), \"fine\")",
+   "output": [
+    "nothing fine"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-assert-failure-is-an-assertion-error",
+   "spec": [
+    "lib.assert",
+    "err.try-catch"
+   ],
+   "profile": "core",
+   "source": "try { assert(false) } catch e { print(e) }\ntry { assert(false, \"boom\") } catch e { print(e) }\ntry { assert(1 > 2, \"math \" + str(1 + 1)) } catch e { print(e) }",
+   "output": [
+    "AssertionError: assertion failed",
+    "AssertionError: boom",
+    "AssertionError: math 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-assert-uncaught",
+   "spec": [
+    "lib.assert",
+    "err.uncaught"
+   ],
+   "profile": "core",
+   "source": "print(\"before\")\nassert(false, \"stop here\")\nprint(\"never\")",
+   "output": [
+    "before"
+   ],
+   "error": "AssertionError: stop here",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sqrt-and-pow",
+   "spec": [
+    "lib.math",
+    "port.integers"
+   ],
+   "profile": "core",
+   "source": "print(sqrt(16), sqrt(2), sqrt(0), sqrt(2.25), sqrt(1000000))\nprint(pow(2, 10), pow(2, -1), pow(2.5, 2), pow(9, 0.5), pow(0, 0), pow(-2, 3), pow(-8, 2), pow(10, 3), pow(0, 5), pow(7, 1), pow(1, 100000000))",
+   "output": [
+    "4 1.4142135623730951 0 1.5 1000",
+    "1024 0.5 6.25 3 1 -8 64 1000 0 7 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-bad-pattern-and-bad-arguments",
+   "spec": [
+    "lib.regex",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\ntry { regex(\"(\", \"a\") } catch e { print(e[:32]) }\ntry { regex(\"[\", \"a\") } catch e { print(e[:32]) }\ntry { regex(\"*\", \"a\") } catch e { print(e[:32]) }\nt2(regex, 1, \"a\")\nt2(regex, \"a\", 1)",
+   "output": [
+    "TypeError: regex(): bad pattern:",
+    "TypeError: regex(): bad pattern:",
+    "TypeError: regex(): bad pattern:",
+    "the pattern for regex() needs a string, but got a number",
+    "the text for regex() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-assert-argument-errors",
+   "spec": [
+    "lib.assert",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def t(f, a) { try { f(a) } catch e { print(e) } }\ndef t2(f, a, b) { try { f(a, b) } catch e { print(e) } }\nt(assert, 1)\nt2(assert, \"x\", \"m\")\nt2(assert, false, 5)\nt2(assert, true, 5)\nprint(\"end\")",
+   "output": [
+    "TypeError: assert() needs true or false, but got a number",
+    "TypeError: assert() needs true or false, but got a string",
+    "the message for assert() needs a string, but got a number",
+    "end"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-structure",
+   "spec": [
+    "lib.json"
+   ],
+   "profile": "core",
+   "source": "print(json.dumps(1), json.dumps(2.5), json.dumps(true), json.dumps(false), json.dumps(\"a\"), json.dumps([1, \"b\"]), json.dumps({a: 1, b: [true]}), json.dumps({}), json.dumps([]))\ndef f() { }\nprint(json.dumps(f()), json.dumps([f(), 1]), json.dumps({z: 1, a: {b: [f()]}}), json.dumps(\"a b\"))",
+   "output": [
+    "1 2.5 true false \"a\" [1, \"b\"] {\"a\": 1, \"b\": [true]} {} []",
+    "null [null, 1] {\"z\": 1, \"a\": {\"b\": [null]}} \"a b\""
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-strings-are-ascii",
+   "spec": [
+    "lib.json",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "print(json.dumps(\"é😀\"), json.dumps(\"日本\"), json.dumps(\"a\\nb\\tc\\rd\"), json.dumps(\"q\\\"s\\\\\"), json.dumps(\"x\\0y\"))\nprint(json.dumps({\"é\": 1, \"a b\": 2}), json.dumps(json.loads(\"\\\"\\\\u007f\\\\u0001\\\\b\\\\f\\\"\")))",
+   "output": [
+    "\"\\u00e9\\ud83d\\ude00\" \"\\u65e5\\u672c\" \"a\\nb\\tc\\rd\" \"q\\\"s\\\\\" \"x\\u0000y\"",
+    "{\"\\u00e9\": 1, \"a b\": 2} \"\\u007f\\u0001\\b\\f\""
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-floats",
+   "spec": [
+    "lib.json",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "let big = 1.0\nfor i = 1 to 22 { big = big * 10 }\nlet tiny = 1.0\nfor i = 1 to 5 { tiny = tiny / 10 }\nprint(json.dumps(1.0), json.dumps(2.5), json.dumps(big), json.dumps(tiny), json.dumps(100.5), json.dumps(1000000.0), json.dumps(0.1 + 0.2), json.dumps(-0.5), json.dumps(0.0001))\nprint(json.dumps([1, 2.0, 3]), json.dumps(big * 1000000), json.dumps(1 / 3))",
+   "output": [
+    "1.0 2.5 1e+22 1e-05 100.5 1000000.0 0.30000000000000004 -0.5 0.0001",
+    "[1, 2.0, 3] 1e+28 0.3333333333333333"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-refuses-functions",
+   "spec": [
+    "lib.json",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "try { json.dumps(len) } catch e { print(e) }\ndef f() { }\ntry { json.dumps(f) } catch e { print(e) }\ntry { json.pretty([1, [len]]) } catch e { print(e) }\ntry { json.dumps({a: {b: print}}) } catch e { print(e) }",
+   "output": [
+    "TypeError: json.dumps() cannot represent a function",
+    "TypeError: json.dumps() cannot represent a function",
+    "TypeError: json.dumps() cannot represent a function",
+    "TypeError: json.dumps() cannot represent a function"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-pretty",
+   "spec": [
+    "lib.json"
+   ],
+   "profile": "core",
+   "source": "print(json.pretty({a: [1, 2], b: {}}))\nprint(json.pretty([]), json.pretty(1), json.pretty(\"é\"), json.pretty({}), json.pretty([[]]))\nprint(json.pretty({a: {b: [true, \"x\", 2.0]}}))",
+   "output": [
+    "{",
+    "  \"a\": [",
+    "    1,",
+    "    2",
+    "  ],",
+    "  \"b\": {}",
+    "}",
+    "[] 1 \"\\u00e9\" {} [",
+    "  []",
+    "]",
+    "{",
+    "  \"a\": {",
+    "    \"b\": [",
+    "      true,",
+    "      \"x\",",
+    "      2.0",
+    "    ]",
+    "  }",
+    "}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-values",
+   "spec": [
+    "lib.json"
+   ],
+   "profile": "core",
+   "source": "print(json.loads(\"[1, 2.5, \\\"a\\\", true, false, null, {\\\"k\\\": [1]}]\"))\nprint(json.loads(\"1\"), json.loads(\"1.0\"), json.loads(\"-0\"), json.loads(\"1e2\"), json.loads(\"1E-2\"), json.loads(\"  [ ]  \"), json.loads(\"{}\"), json.loads(\"null\"), json.loads(\"\\\"x\\\"\"))\nprint(json.loads(\"\\\"\\\\u00e9\\\\ud83d\\\\ude00\\\\n\\\"\"), len(json.loads(\"\\\"\\\\ud83d\\\\ude00\\\"\")), json.loads(\"\\n[1,\\t2]\\r\\n\"))",
+   "output": [
+    "[1, 2.5, \"a\", true, false, nothing, {k: [1]}]",
+    "1 1 0 100 0.01 [] {} nothing x",
+    "é😀",
+    " 1 [1, 2]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-objects-keep-order-and-last-value",
+   "spec": [
+    "lib.json",
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "print(json.loads(\"{\\\"a\\\": 1, \\\"a\\\": 2}\"), keys(json.loads(\"{\\\"z\\\": 1, \\\"a\\\": 2, \\\"m\\\": 3}\")), keys(json.loads(\"{\\\"a\\\": 1, \\\"b\\\": 2, \\\"a\\\": 3}\")))",
+   "output": [
+    "{a: 2} [\"z\", \"a\", \"m\"] [\"a\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-numbers-are-integers-or-floats",
+   "spec": [
+    "lib.json",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "let n = json.loads(\"[1, 1.0, 2e0, -3]\")\nprint(n, json.dumps(n))\nprint(json.loads(\"12345678901234567890\"), json.loads(\"0.1\") + json.loads(\"0.2\"))",
+   "output": [
+    "[1, 1, 2, -3] [1, 1.0, 2.0, -3]",
+    "12345678901234567890 0.30000000000000004"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-errors",
+   "spec": [
+    "lib.json",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def p(text) { try { json.loads(text) } catch e { print(e[:23]) } }\np(\"\")\np(\"[1,\")\np(\"{a: 1}\")\np(\"nope\")\np(\"'a'\")\np(\"[1] x\")\np(\"[1, 2\")\np(\"{\\\"a\\\" 1}\")\ntry { json.loads(5) } catch e { print(e) }\ntry { json.loads([]) } catch e { print(e) }",
+   "output": [
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "TypeError: json.loads()",
+    "json.loads() needs a string, but got a number",
+    "json.loads() needs a string, but got a list"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-round-trip",
+   "spec": [
+    "lib.json"
+   ],
+   "profile": "core",
+   "source": "let v = {name: \"Nova\", n: [1, 2.5, true, 0], nested: {x: \"é\\n\", y: 1}, none: json.loads(\"null\")}\nlet text = json.dumps(v)\nprint(text)\nprint(json.loads(text) == v, json.loads(json.pretty(v)) == v)\nprint(json.dumps(json.loads(text)) == text)",
+   "output": [
+    "{\"name\": \"Nova\", \"n\": [1, 2.5, true, 0], \"nested\": {\"x\": \"\\u00e9\\n\", \"y\": 1}, \"none\": null}",
+    "true true",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-treats-booleans-as-zero-and-one",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "print(sorted([true, false, true]), sorted([3, true, 0, false, 2]), sorted([true, 1.5, 0], true), sorted([false, true], true))\nprint(sorted([2, true, 1.5]), sorted([true]), sorted([-1, false]))",
+   "output": [
+    "[false, true, true] [0, false, true, 2, 3] [1.5, true, 0] [true, false]",
+    "[true, 1.5, 2] [true] [-1, false]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-refuses-what-cannot-be-ordered",
+   "spec": [
+    "lib.collections",
+    "err.type",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "def nan() { let inf = num(\"1\" + \"0\" * 400 + \".0\")\nreturn inf - inf }\ndef t(l) { try { print(sorted(l)) } catch e { print(e) } }\nt([1, \"a\"])\nt([\"a\", true])\nt([[2], [1]])\nt([{a: 1}])\nt([1, nan()])\nt([len, len])\ndef f() { }\nt([f(), f()])\nt([1, [2]])\nt([\"b\", \"a\"])",
+   "output": [
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "TypeError: sorted() needs items that can be compared with each other",
+    "[\"a\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-trim-and-split-use-ascii-whitespace-only",
+   "spec": [
+    "lib.text",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let nb = \" \"\nlet em = \" \"\nprint(\"[\" + trim(nb + \" x \" + nb) + \"]\", \"[\" + trim(em + \"x\") + \"]\", len(trim(nb)), len(trim(\" \" + nb + \" \")))\nprint(split(\"a\" + nb + \"b c\"), split(\"a\" + em + \"b\"), len(split(nb)), split(\" \" + nb + \" \"))\nprint(\"[\" + trim(\"\\t\\n x \\r\\n\") + \"]\", split(\" a\\tb\\nc\\rd \"))",
+   "output": [
+    "[  x  ] [ x] 1 1",
+    "[\"a b\", \"c\"] [\"a b\"] 1 [\" \"]",
+    "[x] [\"a\", \"b\", \"c\", \"d\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-num-skips-only-ascii-whitespace",
+   "spec": [
+    "lib.text",
+    "val.types"
+   ],
+   "profile": "core",
+   "source": "print(num(\" 5 \"), num(\"\\t7\\n\"), num(\"  -2.5  \"))\ntry { print(num(\" 5\")) } catch e { print(e[:30]) }",
+   "output": [
+    "5 7 -2.5",
+    "num() cannot read a number fro"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-split-lines-ends-lines-only-at-line-feeds-and-returns",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "let ls = \" \"\nlet nel = \"\"\nprint(split_lines(\"a\" + ls + \"b\"), split_lines(\"a\" + nel + \"b\"), len(split_lines(\"x\" + ls + \"y\" + nel + \"z\")))\nprint(split_lines(\"a\\nb\\r\\nc\\rd\"), split_lines(\"a\\n\"), split_lines(\"\\r\\n\"), split_lines(\"\\r\\r\"), split_lines(\"a\\r\\n\\r\\nb\"))",
+   "output": [
+    "[\"a b\"] [\"ab\"] 1",
+    "[\"a\", \"b\", \"c\", \"d\"] [\"a\"] [\"\"] [\"\", \"\"] [\"a\", \"\", \"b\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-regex-classes-are-ascii",
+   "spec": [
+    "lib.regex",
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "let arabic = \"١٢٣\"\nlet nb = \" \"\nprint(regex(\"^\\\\d+$\", arabic), regex(\"\\\\d\", \"x\" + arabic), regex(\"^\\\\w+$\", \"café\"), regex(\"^\\\\w+$\", \"abc_9\"), regex(\"\\\\s\", \"a\" + nb + \"b\"), regex(\"\\\\s\", \"a b\"))\nprint(regex(\"\\\\bcaf\\\\b\", \"café\"), regex(\"\\\\bcafe\\\\b\", \"x cafe y\"), regex(\"^[0-9]+$\", arabic), regex(\"^\\\\d{3}$\", \"123\"))",
+   "output": [
+    "false false false true false true",
+    "true true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-dumps-refuses-nan-and-infinity",
+   "spec": [
+    "lib.json",
+    "err.type",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\nlet nan = inf - inf\ndef t(v) { try { print(json.dumps(v)) } catch e { print(e) } }\nt(inf)\nt(-inf)\nt(nan)\nt([1, nan])\nt({a: {b: inf}})\ntry { json.pretty([inf]) } catch e { print(e) }\nt(2.5)",
+   "output": [
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "TypeError: json.dumps() cannot represent NaN or infinity",
+    "2.5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-json-loads-refuses-nan-infinity-and-overflow",
+   "spec": [
+    "lib.json",
+    "err.type",
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "def t(text) { try { print(json.loads(text)) } catch e { print(e) } }\nt(\"NaN\")\nt(\"Infinity\")\nt(\"-Infinity\")\nt(\"[1, NaN]\")\nt(\"{\\\"a\\\": Infinity}\")\nt(\"1e999\")\nt(\"-1e999\")\nt(\"[1e308]\")\nt(\"1e-999\")",
+   "output": [
+    "TypeError: json.loads(): NaN is not valid JSON",
+    "TypeError: json.loads(): Infinity is not valid JSON",
+    "TypeError: json.loads(): -Infinity is not valid JSON",
+    "TypeError: json.loads(): NaN is not valid JSON",
+    "TypeError: json.loads(): Infinity is not valid JSON",
+    "TypeError: json.loads(): that number is too large",
+    "TypeError: json.loads(): that number is too large",
+    "[100000000000000001097906362944045541740492309677311846336810682903157585404911491537163328978494688899061249669721172515611590283743140088328307009198146046031271664502933027185697489699588559043338384466165001178426897626212945177628091195786707458122783970171784415105291802893207873272974885715430223118336]",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}
