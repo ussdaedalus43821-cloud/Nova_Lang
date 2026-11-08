@@ -1,0 +1,117 @@
+# 8. Modules
+
+A program can be split into files. A *module* is a NovaLang file that another
+program runs with `import` and reads the results of. Modules need a file system
+or something that stands in for one, so every case in this chapter is in the
+`modules` profile (`README.md`).
+
+Packages (`import "name"` with a bare name and no `.nova`, found in
+`.nova_modules` through `nova.json` and `nova.lock`) are the business of the
+package tool and are not specified here yet.
+
+## [mod.import] `import`
+
+```
+import "path/to/util.nova"                    # binds  util
+import "path/to/util.nova" as u               # binds  u
+import "path/to/util.nova" with double, LIMIT # binds  double  and  LIMIT
+```
+
+The path is a string literal (`import p` with a variable is a syntax error:
+`expected a quoted module path after 'import'`, which keeps what a program can
+load visible in its text, `[sec.no-dynamic-code]`). `import` is a statement: it
+runs when control reaches it, loads the module (`[mod.cache]`) and binds in the
+**current scope**, as `let` would (`[scope.let]`), so an import inside a block
+or function is local to it.
+
+Plain `import` binds the module's **exports** as a dictionary under the file's
+name without its folders and extension: `"sub/util.nova"` binds `util`. That name
+MUST be a valid name (`[lex.identifiers]`) and not a built-in's: `"my-mod.nova"`
+is `"my-mod.nova" does not make a valid module name - import it with 'as' and
+choose one`, and `"print.nova"` is `'print' is a built-in function and cannot be
+used as a module name`. `as name` chooses the name instead and needs no valid
+file name; `name` may not be a built-in's (`[scope.reserved]`).
+
+`with a, b` binds each named export directly and no module name. A name MUST be
+exported by the module: `module "util.nova" has no exported 'triple' - it exports
+double, LIMIT` (`it exports nothing` when there are none), with the path as it
+was written in the `import`. Naming one twice is a syntax error (`'a' is imported
+twice`), and so is a built-in's name (`[scope.reserved]`). `as` and `with` do not
+combine.
+
+## [mod.export] `export`
+
+```
+export def double(x) { return x * 2 }
+export let LIMIT = 10
+```
+
+`export` is written before a `def` or `let` (`'export' must be followed by 'def'
+or 'let'`). The declaration happens as usual and, when the statement runs,
+the name and its **value at that moment** are added to the module's exports. A
+later assignment to the variable in the module does not change what was
+exported, and exporting the same name again replaces the earlier value. A
+declaration without `export` is private to the module. The exports are one
+dictionary, in the order they were exported, shared by everyone who imports the
+module: assigning to a field of `util` changes it for all of them
+(`[scope.references]`). A program's own exports, as the program a host starts,
+are not used.
+
+## [mod.resolution] Finding the file
+
+A path with a `/` or ending in `.nova` names a file. It is looked for relative
+to the folder of the **file containing the `import`**, so a module imports its
+neighbours by their own relative path whatever the program's folder is. `.` and
+`..` work. No extension is added: `import "util"` is a package name and not the
+file `util.nova`. If the file is not there a host MAY look further, in its
+working directory for instance; this chapter's cases only rely on the importing
+file's folder. When nothing is found the error is
+`ImportError: cannot find module "<path>" - looked in:` followed by the places
+tried, one to a line, which are the host's.
+
+## [mod.cache] A module runs once
+
+A module's file is run the first time it is imported and its exports are kept,
+keyed by the file itself: `"util.nova"`, `"./util.nova"` and `"../sub/util.nova"`
+reaching the same file are one module, whoever imports it and under whatever name.
+Every later import binds the **same** exports dictionary without running the file
+again, so what the module printed is printed once and its state is shared. A
+module that fails to load is not kept; importing it again runs it again.
+
+## [mod.scope] A module's own scope
+
+A module runs in a fresh global scope of its own, as a program would, with the
+built-ins and the predefined names a program starts with (`PI`, `E`, `json`, and
+`python` where the host provides it) and nothing else. It cannot see the importer's variables or
+functions, not even ones the importer defined first, and the importer sees only
+the exports. A function a module exports keeps working in the module's scope
+whatever the importer has: it sees the module's private names. A top-level `return`, `break` or `continue` in a
+module is an error as in a program (`[scope.toplevel]`). What the module prints
+goes to the same output as the program's.
+
+## [mod.cycles] Circular imports
+
+If a module is imported while it is still loading (a imports b, b imports a) the
+second import is `ImportError: circular import: a.nova -> b.nova -> a.nova`
+naming the modules by file name, from the one that closes the loop back to
+itself. Like every error in a module it reaches the importer wrapped
+(`[mod.errors]`).
+
+## [mod.errors] Errors while loading
+
+Any error raised while a module loads (a syntax error in its file, an error its
+statements raise, a failed import of its own, a cycle) reaches the program that
+imported it as
+
+```
+ImportError: while loading module "<path as written in the import>":
+  <the module's error, indented>
+```
+
+and is an ordinary, catchable error (`[err.try-catch]`) whose text, when caught,
+contains the module's own message, so `"division by zero" in e` is true. A module
+imported by a module that fails is wrapped once for each level. Everything after
+the first line is a report whose layout belongs to the host (a source excerpt,
+for example): only the first line and the message inside it are the language's.
+A syntax error in the module is found when it is imported, not before the
+importing program starts, so a `try` can catch it.

@@ -3551,21 +3551,12 @@ class Interpreter:
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
             raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
-        self.globals = Environment(barrier=True)
-        self.env = self.globals
-        self.call_stack = []            # function names, innermost last
-
-        # Stage 11: predefined globals, not reserved builtin names - an
-        # ordinary `let PI = 3` shadows these in its own scope, the same
-        # as it would shadow any other predefined variable.
-        self.globals.define("PI", math.pi)
-        self.globals.define("E", math.e)
-        self.globals.define("json", dict(JSON_NAMESPACE))
         # python.* is off unless asked for (docs/design/python-bridge-hardening.md,
         # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
         self.allow_python = ALLOW_PYTHON if allow_python is None else allow_python
-        self.globals.define("python", dict(PYTHON_NAMESPACE if self.allow_python
-                                           else PYTHON_DISABLED_NAMESPACE))
+        self.globals = self.new_global_scope()
+        self.env = self.globals
+        self.call_stack = []            # function names, innermost last
 
         # Stage 12: the NovaLang-side half of the embedding bridge. Empty
         # by default - a plain `python3 novalang.py script.nova` run has
@@ -3587,6 +3578,20 @@ class Interpreter:
         self.modules = {}               # resolved path -> its exports dict
         self.type_cache = None          # the type gate's results (a GateCache)
         self.current_exports = {}       # name -> value, for the module now loading
+
+    def new_global_scope(self):
+        """A program's global scope, and a module's: a module is a fresh
+        program, so it starts with the same predefined names ([mod.scope])."""
+        scope = Environment(barrier=True)
+        # Stage 11: predefined globals, not reserved builtin names - an
+        # ordinary `let PI = 3` shadows these in its own scope, the same
+        # as it would shadow any other predefined variable.
+        scope.define("PI", math.pi)
+        scope.define("E", math.e)
+        scope.define("json", dict(JSON_NAMESPACE))
+        scope.define("python", dict(PYTHON_NAMESPACE if self.allow_python
+                                    else PYTHON_DISABLED_NAMESPACE))
+        return scope
 
     # -- dispatch -----------------------------------------------------------
 
@@ -3786,7 +3791,7 @@ class Interpreter:
         # A module gets its own top-level scope, its own call stack and its
         # own set of exports - it is a fresh program, not a shared block.
         saved = (self.globals, self.env, self.call_stack, self.current_exports)
-        self.globals = Environment(barrier=True)
+        self.globals = self.new_global_scope()
         self.env = self.globals
         self.call_stack = []
         self.current_exports = {}

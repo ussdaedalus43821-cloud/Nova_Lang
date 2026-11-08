@@ -87,6 +87,29 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   formatter follow the same rule. Programs with non-ASCII names fail with
   `unexpected character`; rename them.
 
+### Statements and modules (second slice of M9)
+- `docs/spec/07-statements.md` and `08-modules.md`: 8 + 6 sections on `if`,
+  `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete`,
+  and `import`, `export`, finding files, the module cache, module scope,
+  circular imports and errors while loading. The corpus grows by 61 statement
+  cases and 43 module cases (463 cases, 83 sections), and gains a `modules`
+  profile and a `files` field: a case can ship its own module files, written
+  beside the program in a folder of its own.
+- Pinned semantics worth knowing: a numeric `for` takes `start + k * step`
+  worked out afresh; `for ... in` works on a snapshot; closures made in a loop
+  share its one variable; `else` on a loop is skipped only by `break`; a module
+  runs once, keyed by its file; an error while loading reaches the importer as
+  `ImportError: while loading module "<path>":` and is catchable.
+- **Modules now start with the same predefined names as a program (D-018).**
+  `PI`, `E`, `json` and `python` were defined only in the program the host
+  started, so a module using `json.dumps` failed with `undefined name`. `python`
+  follows the program's switch: the refusing stub unless `--allow-python`.
+- The self-hosted interpreter's imports now match the host (D-016, D-017):
+  errors in a module are wrapped and carry the `ImportError` label, an alias
+  needs no valid file name, a top-level `return` in a module is an error, a
+  repeated `with` name is a syntax error, and the missing-export and
+  circular-import messages say what the host's do.
+
 ### Fixed
 - **The self-hosted interpreter (`--bootstrap`) now behaves like the host on the
   nine points the conformance corpus found (D-003 to D-011).** The two had been

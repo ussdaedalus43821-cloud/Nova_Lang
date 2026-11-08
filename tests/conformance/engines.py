@@ -57,10 +57,33 @@ def lines_of(text):
     return parts
 
 
-def run_in_process(source, engine):
+def write_files(folder, source, files):
+    """The case's module files and its program (main.nova) in `folder`."""
+    for name, text in dict(files or {}, **{"main.nova": source}).items():
+        path = Path(folder).joinpath(*name.split("/"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+
+
+def run_in_process(source, engine, files=None):
+    if files is None:
+        return run_in_process_in(source, engine, None)
+    with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
+        write_files(folder, source, files)
+        here = os.getcwd()
+        os.chdir(folder)
+        try:
+            return run_in_process_in(source, engine, os.path.realpath(folder))
+        finally:
+            os.chdir(here)
+
+
+def run_in_process_in(source, engine, folder):
     out = io.StringIO()
     error, line, status = "", None, 0
     interpreter = novalang.Interpreter(engine)
+    if folder is not None:
+        interpreter.file_stack.append(folder)       # as run_source does for a file
     real_stdin = sys.stdin
     sys.stdin = io.StringIO("")
     try:
@@ -68,7 +91,12 @@ def run_in_process(source, engine):
             try:
                 novalang.run(source, interpreter)
             except novalang.NovaError as problem:
-                error = "{}: {}".format(problem.label, problem.message)
+                message = problem.message
+                if problem.label == "ImportError":
+                    # What follows the first line names places on this machine
+                    # (the folders searched, a nested report): host-defined.
+                    message = message.split("\n")[0]
+                error = "{}: {}".format(problem.label, message)
                 line = line_of(source, problem.position)
                 status = 1
             except SystemExit as stop:
@@ -83,10 +111,14 @@ def run_in_process(source, engine):
     return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status}
 
 
-def run_bootstrap(source, timeout=120):
+def run_bootstrap(source, files=None, timeout=120):
     with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
         path = Path(folder) / "case.nova"
-        path.write_bytes(source.encode("utf-8"))
+        if files is None:
+            path.write_bytes(source.encode("utf-8"))
+        else:
+            path = Path(folder) / "main.nova"
+            write_files(folder, source, files)
         try:
             done = subprocess.run(
                 [sys.executable, str(ROOT / "novalang.py"), "--bootstrap", str(path)],
@@ -108,7 +140,9 @@ def run_bootstrap(source, timeout=120):
             "error": error, "error_line": None, "exit": done.returncode}
 
 
-def run(source, engine):
+def run(source, engine, files=None):
+    """`files` maps relative paths (with `/`) to text: the modules the program
+    imports, written beside it (as main.nova) in a folder of their own."""
     if engine == "bootstrap":
-        return run_bootstrap(source)
-    return run_in_process(source, engine)
+        return run_bootstrap(source, files)
+    return run_in_process(source, engine, files)

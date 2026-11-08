@@ -31,13 +31,14 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | --- | --- |
 | `name` | unique |
 | `spec` | the spec sections the case tests (`docs/spec/`, the ids in square brackets) |
-| `profile` | the feature set a host needs to run it: `core` or `host` (`docs/spec/README.md`) |
+| `profile` | the feature set a host needs to run it: `core`, `modules` or `host` (`docs/spec/README.md`) |
 | `source` | the program |
 | `output` | the lines `print` writes, in order, before the program ends |
 | `error` | `Label: message` of the error that ends the program, or `""` |
 | `error_line` | the 1-based line of that error, or `null` when it has none; compared only for hosts that report a line |
 | `exit` | the process exit status |
 | `host_calls` | calls the program makes to the host (none yet; kept for the game cases) |
+| `files` | optional; module files the program imports: a map from a relative path (with `/`) to its text. They are written, with the program as `main.nova`, into a folder of their own that the engine runs in, so `import "sub/util.nova"` finds `sub/util.nova`. For the `modules` profile (`docs/spec/08-modules.md`) |
 | `error_like` | optional regular expression the error must match instead of equalling `error`, for a message that contains a host-defined limit (the call depth) |
 | `deep` | optional; the program recurses until the host's call-depth limit, so it is not run on the tree-walker where that would crash the process (Windows before Python 3.11; a `SKIPPED:` line says so) |
 | `divergences` | optional; see below |
@@ -67,8 +68,12 @@ case keeps the spec's value and the engine's behavior goes in `divergences`.
 5. One systematic difference is not repeated in every case: the self-hosted
    interpreter's error headlines (D-001). Its `Error:` label and its
    `LexError@12:` / `ParseError@12:` prefix are removed before comparing, and
-   its line number is not compared. The rule is `normalize()` in
-   `conformance.py`.
+   its line number is not compared. An import failure arrives as
+   `Error: ImportError: message` and is read as the `ImportError` label. The
+   rule is `normalize()` in `conformance.py`. For an `ImportError` every engine's
+   error is cut after its first line, because what follows names places on the
+   machine (folders searched, a nested report); a case that needs the rest
+   catches the error and tests the text with `in`.
 
 ## Engines
 

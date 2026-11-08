@@ -49,11 +49,12 @@ chosen yet, and two habits follow:
 ## Profiles
 
 A *profile* names a set of language features a host implements. Every case in
-the corpus carries one. This slice has one profile:
+the corpus carries one. The profiles so far:
 
 | Profile | Contents |
 | --- | --- |
 | `core` | The language itself, the values and the built-in functions that compute on them. No files, environment, clock, randomness, processes, modules or embedding. Deterministic. |
+| `modules` | `import` and `export`: a program that loads other files. Needs a file system, or something that stands in for one, and a way to find a module relative to the file that imports it. `core` plus this. |
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock and randomness. Present only if the host provides it (`[sec.principles]`). Not yet specified beyond the exit status. |
 
 Profiles for embedding (the Python bridge) and the game dialect
@@ -71,6 +72,7 @@ sections are written.
 | [`05-security.md`](05-security.md) | `sec.*`: what the language guarantees (no ambient authority, no dynamic code, no reflection, scope isolation, no host failures leaking) |
 | [`06-portability.md`](06-portability.md) | `port.*`: integers, floats and how they print, text, ordering and determinism, limits |
 | [`07-statements.md`](07-statements.md) | `stmt.*`: `if`, `while`, both `for` forms, loop `else`, `break`/`continue`, `def`, `delete` |
+| [`08-modules.md`](08-modules.md) | `mod.*`: `import`, `export`, finding files, the module cache, scope, cycles, errors while loading |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

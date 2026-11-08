@@ -16,7 +16,10 @@ Function and global scopes are *barriers* (see `[scope.assign]`). Block scopes a
 Top-level statements run in the global scope. A global is visible everywhere in
 the program, including inside functions, which read it when they run, not when
 they are defined. Reading a name that is not defined anywhere in reach is an
-error: `undefined name 'missing'`.
+error: `undefined name 'missing'`. A program starts with the built-in functions
+and a few predefined names, `PI` and `E` (numbers), `json` (a dictionary of
+functions) and, where the host provides the embedding profile, `python`. They are
+ordinary globals, not reserved: `let PI = 3` shadows one in its own scope.
 
 A function that needs to change a global cannot assign to it (see
 `[scope.assign]`); it can change a list or dictionary the global refers to

@@ -44,7 +44,7 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core", "host")
+PROFILES = ("core", "host", "modules")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
 
 SECTION = re.compile(r"^#{2,4} \[([a-z][a-z0-9.-]*)\] ", re.M)
@@ -55,7 +55,9 @@ UNTESTED = re.compile(r"^Untested: ", re.M)
 # D-001: the self-hosted interpreter reports lexical and syntax errors as
 # "Error: LexError@12: message" (a kind and a character offset in front of the
 # message) and uses the label "Error" where the host says "NovaError". The
-# message text is what is compared; see docs/spec/DIVERGENCES.md.
+# message text is what is compared; see docs/spec/DIVERGENCES.md. An import
+# failure, whose label the host reports as ImportError, arrives the same way
+# ("Error: ImportError: message") and is read as the label it names.
 BOOTSTRAP_PREFIX = re.compile(r"^(?:LexError|ParseError)@\d+: ")
 
 
@@ -108,6 +110,10 @@ def validate(cases, sections, log):
             problems.append("{} has profile {!r}".format(where, case.get("profile")))
         if not case.get("spec"):
             problems.append("{} cites no spec section".format(where))
+        for name, text in (case.get("files") or {}).items():
+            if not isinstance(text, str) or name.startswith("/") or "\\" in name or ":" in name \
+                    or name == "main.nova" or any(part in ("", ".", "..") for part in name.split("/")):
+                problems.append("{} has a files entry {!r} that is not a plain relative path to text".format(where, name))
         for section in case.get("spec", []):
             cited.add(section)
             if section not in sections:
@@ -148,6 +154,9 @@ def normalize(engine, expected_error, result):
             message = BOOTSTRAP_PREFIX.sub("", message)
             if label == "Error" and expected_error.startswith("NovaError: "):
                 label = "NovaError"
+            if label == "Error" and message.startswith("ImportError: "):
+                # An import failure carries its label in the message text.
+                label, _, message = message.partition(": ")
             result["error"] = label + ": " + message
         result["error_line"] = None
     return result
@@ -203,9 +212,9 @@ def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
     if engine == "bootstrap":
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {case["name"]: pool.submit(engines.run, case["source"], engine) for case in cases}
+            futures = {case["name"]: pool.submit(engines.run, case["source"], engine, case.get("files")) for case in cases}
             return {name: future.result() for name, future in futures.items()}
-    return {case["name"]: engines.run(case["source"], engine) for case in cases}
+    return {case["name"]: engines.run(case["source"], engine, case.get("files")) for case in cases}
 
 
 def check_all(check, selected=engines.ENGINES, verbose=False):

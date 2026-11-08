@@ -26,7 +26,7 @@ def dump(path, area, cases):
     ordered = []
     for case in cases:
         first = ("name", "spec", "profile", "source", "output", "error", "error_like",
-                 "error_line", "exit", "host_calls", "deep")
+                 "error_line", "exit", "host_calls", "files", "deep")
         entry = {key: case[key] for key in first if key in case}
         entry.update({key: value for key, value in case.items() if key not in entry and not key.startswith("_")})
         ordered.append(entry)
@@ -55,7 +55,7 @@ def main(argv):
         data = json.loads(path.read_text(encoding="utf-8"))
         changed = False
         for case in data["cases"]:
-            result = engines.run(case["source"], "vm")
+            result = engines.run(case["source"], "vm", case.get("files"))
             for key in ("output", "error", "error_line", "exit"):
                 if key not in case:
                     if mode == "--missing":
