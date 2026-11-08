@@ -29,7 +29,11 @@ sys.path.insert(0, str(ROOT))
 
 import novalang  # noqa: E402
 
-ENGINES = ("vm", "tree", "bootstrap")
+ENGINES = ("vm", "tree", "bootstrap", "policy")
+
+# The policy dialect is a separate language (ADR 0004): its cases run only on the
+# policy engine, and the three NovaLang engines run no case of that profile.
+POLICY_DIRECTORY = ROOT / "dialects" / "policy"
 
 # A report's headline: "NovaError: division by zero", "PythonError: ...".
 HEADLINE = re.compile(r"^([A-Za-z][A-Za-z0-9]*): (.*)$")
@@ -171,7 +175,34 @@ def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=
     return run_in_process(source, engine, files, env, stdin, args, allow_python)
 
 
+def run_policy(case):
+    """A policy-dialect case on the policy engine (dialects/policy/).
+
+    The result has the same shape as for NovaLang. The error is the engine's own
+    text, `line N: message` (docs/spec/12-policy-syntax.md, [pol.errors]); `error_line` is
+    not used. `host_functions` names the host functions the case binds; each one
+    records its call as `name(arguments as print writes them)` in `host_calls`
+    and returns nothing. `files` are the modules `import` can find."""
+    import random
+    if str(POLICY_DIRECTORY) not in sys.path:
+        sys.path.insert(0, str(POLICY_DIRECTORY))
+    import nova_evaluator
+    import nova_vm
+    files = case.get("files") or {}
+    machine = nova_vm.NovaVM(random.Random(case.get("seed", 12345)), module_reader=files.get)
+    calls = []
+    for name in case.get("host_functions", []):
+        machine.register_function(
+            name, (lambda n: lambda args: calls.append(
+                n + "(" + ", ".join(nova_evaluator.text(a) for a in args) + ")"))(name))
+    ok = machine.eval(case["source"], case["name"])
+    return {"output": machine.drain_output(), "error": machine.error, "error_line": None,
+            "exit": 0 if ok else 1, "host_calls": calls}
+
+
 def run_case(case, engine):
+    if engine == "policy":
+        return run_policy(case)
     files = case.get("files")
     if files is None and case.get("profile") in ("host", "modules"):
         files = {}      # these cases touch the file system: a folder of their own

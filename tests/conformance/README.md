@@ -31,7 +31,7 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | --- | --- |
 | `name` | unique |
 | `spec` | the spec sections the case tests (`docs/spec/`, the ids in square brackets) |
-| `profile` | the feature set a host needs to run it: `core`, `modules`, `host`, `embedding` or `python` (`docs/spec/README.md`) |
+| `profile` | the feature set a host needs to run it: `core`, `modules`, `host`, `embedding`, `python` or `policy` (`docs/spec/README.md`) |
 | `source` | the program |
 | `output` | the lines `print` writes, in order, before the program ends |
 | `error` | `Label: message` of the error that ends the program, or `""` |
@@ -40,6 +40,8 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | `host_calls` | calls the program makes to the host (none yet; kept for the game cases) |
 | `allow_python` | optional; the host turns the `python.*` bridge on (`--allow-python`, `Nova(allow_python=True)`) for this case: the `python` profile |
 | `embedding` | optional; the case runs the way a host program that embeds the language does (`docs/spec/11-embedding.md`), and the object says what that host does. `globals`: values bound as globals (`{"$digits": n}` is a number of n digits); `functions`: host functions, each `{"returns": v}`, `{"echo": true}`, `{"sum": true}`, `{"raises": text}` or `{"apply": n}`; `objects`: live objects bound as globals, `{"attrs": {...}, "methods": {name: function}}`; `registry`: the same, reachable through `python.*`; `modules`: modules handed to the bridge; `after`: what the host does when the program has finished: `["call", name, args...]`, `["eval", source]`, `["run_compiled", source, times]`; `other_engine_after`: the same steps on a second, fresh engine. The expected `host_calls` (each call a host function received, written `name(args)`) and `results` (one `{"value": v}`, `{"error": "Label: message"}` or `{"exit": n}` per step) are compared. Not run on the self-hosted interpreter, which has no host program (a `NOT APPLICABLE` line says so) |
+| `host_functions` | optional, `policy` cases only: names of the host functions the host binds; each records its call in `host_calls` as `name(args)` and returns `null` |
+| `oracle` | optional, `policy` cases only: the name of the game's recorded oracle program (`godot/scripts/nova/conformance.json`) the case was taken from, source and result unchanged |
 | `files` | optional; module files the program imports: a map from a relative path (with `/`) to its text. They are written, with the program as `main.nova`, into a folder of their own that the engine runs in, so `import "sub/util.nova"` finds `sub/util.nova`. For the `modules` profile (`docs/spec/08-modules.md`) |
 | `error_like` | optional regular expression the error must match instead of equalling `error`, for a message that contains a host-defined limit (the call depth) |
 | `deep` | optional; the program recurses until the host's call-depth limit, so it is not run on the tree-walker where that would crash the process (Windows before Python 3.11; a `SKIPPED:` line says so) |
@@ -96,3 +98,12 @@ case keeps the spec's value and the engine's behavior goes in `divergences`.
 
 The cases are data, not code, so another implementation (the GDScript port, a
 future host) can read the same files.
+
+## The policy profile
+
+`policy` cases (`cases/policy-*.json`) run only on the policy engine
+(`dialects/policy/`, [ADR 0004](../../docs/decisions/0004-policy-dialect-after-measurement.md)); the three NovaLang engines report them as
+`NOT APPLICABLE`. Their `error` is the engine's own text, `line N: message`, with no
+label, and `error_line` is not used. `files` are the modules `import` finds, by the
+name the program writes (`lib/m.nova`). A host that implements the dialect declares
+the `policy` profile and is checked against the same JSON.

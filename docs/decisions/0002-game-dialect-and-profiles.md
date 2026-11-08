@@ -1,6 +1,8 @@
 # 0002: How the game dialect relates to NovaLang
 
-Status: **Accepted** on 2026-11-07. Needed by the start of M10.
+Status: **Superseded** by [0004](0004-policy-dialect-after-measurement.md) on
+2026-11-08. It was accepted on 2026-11-07; measuring the dialect at the start of M10
+met its own reconsideration triggers. The text below is kept as it was.
 
 ## Context
 

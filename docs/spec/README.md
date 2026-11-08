@@ -59,9 +59,7 @@ the corpus carries one. The profiles so far:
 | `python` | The `python.*` bridge to Python, reference host only, off unless asked for (`11-embedding.md`). |
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
 
-Profiles for embedding (the Python bridge) and the game dialect
-([ADR 0002](../decisions/0002-game-dialect-and-profiles.md)) are added as their
-sections are written.
+| `policy` | The game's policy dialect, a separate language specified in `12-policy-syntax.md` onwards ([ADR 0004](../decisions/0004-policy-dialect-after-measurement.md)). Its cases run on the policy engine (`dialects/policy/`) and never on NovaLang's engines. |
 
 ## Files
 
@@ -78,6 +76,7 @@ sections are written.
 | [`09-library.md`](09-library.md) | `lib.*`: the core library (collections, strings, `regex`, math, `map`/`filter`/`reduce`, JSON, `assert`) |
 | [`10-host.md`](10-host.md) | `host.*`: files, the clock, randomness, the environment and the process (the `host` profile) |
 | [`11-embedding.md`](11-embedding.md) | `emb.*`: engines, values across the boundary, binding host values, calling in, errors; `py.*`: the Python bridge and what it can reach |
+| [`12-policy-syntax.md`](12-policy-syntax.md) | `pol.*`: the policy dialect's source text, syntax, statements, scopes, calls, modules, limits and error text (the `policy` profile) |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus
