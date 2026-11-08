@@ -255,27 +255,29 @@ error text. That cost is the value of the milestone.
 `for`, `try`, f-strings) and the game dialect (`func`, a rule engine, a small
 builtin set, division by zero yields 0, no `for` or `try`).
 
-**Decided.** [ADR 0002](decisions/0002-game-dialect-and-profiles.md) (accepted)
-makes the game dialect a "policy" profile of NovaLang, defined as a small
-enumerated list of individually tested switches. The ADR's tables are the
-starting inventory of switches; if that list outgrows what can be tested
-exhaustively, the ADR says to revisit.
+**Decided.** [ADR 0004](decisions/0004-policy-dialect-after-measurement.md)
+(accepted 2026-11-08, Option C) supersedes ADR 0002. The game dialect is its own
+specified language, the *policy dialect*, that shares NovaLang's corpus format,
+runner, profile tags and security stance. It was measured before it was named:
+about 60 independent differences from NovaLang plus the rule engine, against the
+11 in ADR 0002's tables, and only 12 of the 51 recorded oracle programs agreed
+with NovaLang after a purely syntactic translation
+([`design/m10-dialect-inventory.md`](design/m10-dialect-inventory.md)).
 
-**Measured (2026-11-08).** The inventory
-([`design/m10-dialect-inventory.md`](design/m10-dialect-inventory.md)) found
-about 60 independent differences plus the rule engine, not the 11 in the ADR's
-tables, and only 12 of the 51 recorded oracle programs agree with NovaLang after
-a purely syntactic translation. That meets ADR 0002's reconsideration trigger.
-[ADR 0004](decisions/0004-policy-dialect-after-measurement.md) (**proposed**)
-recommends specifying the policy dialect as its own language that shares the
-corpus, runner and security stance (Option C). Work that depends on the answer
-does not start until the owner decides.
+**Status.** Slice 1 is done: the source, syntax, statements, scopes, calls,
+modules, limits and error text are `docs/spec/12-policy-syntax.md` (23 sections),
+the game's reference engine is in `dialects/policy/`, and 246 cases run on it as
+the `policy` profile (32 are the game's own oracle programs). Still to come, one
+slice each, ending in a green matrix and a PR: values, operators and the built-in
+functions (`13-policy-values.md`, with the remaining oracle programs); the rule
+engine, the host-function contract and the 900-step reactor trace
+(`14-policy-engine.md`); then the GDScript host checked against the corpus.
 
 **Deliverables**
 
-- The chosen mechanism implemented in the Python engine (for example a named
-  profile selecting syntax aliases and the rule-engine declarations), with the
-  profile recorded in the conformance corpus.
+- The policy dialect specified (`12-` to `14-policy-*.md`), its Python engine
+  in the repository (`dialects/policy/`), and the `policy` profile recorded in
+  the conformance corpus.
 - The `Reactor-Game` and `DaedalusGodot` scripts running either unchanged or
   through a documented, tested migration.
 - The GDScript host passing the shared corpus for the profile it implements,

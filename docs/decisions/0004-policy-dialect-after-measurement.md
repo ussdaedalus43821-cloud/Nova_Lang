@@ -1,8 +1,7 @@
 # 0004: The policy dialect, after measuring it
 
-Status: **Proposed**. Written 2026-11-08 at the start of M10. Asks the owner
-whether to supersede [0002](0002-game-dialect-and-profiles.md). Work that depends
-on the answer does not start until it is decided.
+Status: **Accepted** on 2026-11-08 (Option C). Written the same day at the start
+of M10. Supersedes [0002](0002-game-dialect-and-profiles.md).
 
 ## Context
 
@@ -96,4 +95,13 @@ as the budget.
 
 ## Decision
 
-Not yet decided.
+Accepted as recommended, by the project owner, on 2026-11-08: Option C.
+
+1. ADR 0002 is superseded by this record.
+2. The game dialect is its own specified language. It shares the corpus format, the
+   runner, the profile tags and the security stance ([ADR 0003](0003-security-stance.md))
+   with NovaLang.
+3. M10 proceeds under Option C: write the specification of the policy dialect,
+   bring the game's Python reference engine into this repository
+   (`dialects/policy/`), and convert the 51 oracle programs and the 900-step
+   reactor trace into corpus cases under the `policy` profile.

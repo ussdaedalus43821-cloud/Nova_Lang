@@ -44,7 +44,7 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core", "host", "modules", "embedding", "python")
+PROFILES = ("core", "host", "modules", "embedding", "python", "policy")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
 
 SECTION = re.compile(r"^#{2,4} \[([a-z][a-z0-9.-]*)\] ", re.M)
@@ -218,6 +218,7 @@ def tree_walker_stack_limited():
 
 def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
+    cases = [case for case in cases if (case["profile"] == "policy") == (engine == "policy")]
     if engine == "bootstrap":
         cases = [case for case in cases if "embedding" not in case]
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -242,7 +243,12 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     if "bootstrap" in selected:
         pending["bootstrap"] = pool.submit(run_engine, cases, "bootstrap")
-    names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter"}
+    names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter",
+             "policy": "the policy dialect engine"}
+    dialect = sum(1 for case in cases if case["profile"] == "policy")
+    if dialect and set(selected) & {"vm", "tree", "bootstrap"}:
+        print("  NOT APPLICABLE: the NovaLang engines did not run {} policy cases: the policy dialect is a "
+              "separate language (ADR 0004) and has its own engine.".format(dialect))
     hosted = sum(1 for case in cases if "embedding" in case)
     if hosted and "bootstrap" in selected:
         print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "
@@ -251,10 +257,11 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
         runnable = cases
         if engine == "tree" and tree_walker_stack_limited():
             runnable = [case for case in cases if not case.get("deep")]
+            nova_cases = [case for case in cases if case["profile"] != "policy"]
             print("  SKIPPED: the tree-walker did not run {} of {} conformance cases (marked deep): "
                   "on Windows with Python {}.{} it overflows the native stack on runaway recursion "
                   "(docs/CI.md). Run on the other engines.".format(
-                      len(cases) - len(runnable), len(cases), sys.version_info[0], sys.version_info[1]))
+                      len(cases) - len(runnable), len(nova_cases), sys.version_info[0], sys.version_info[1]))
         results = pending[engine].result() if engine in pending else run_engine(runnable, engine)
         failures = []
         for case in cases:
@@ -262,7 +269,8 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
                 continue
             for reason in judge(case, engine, results[case["name"]]):
                 failures.append("{} [{}]: {}".format(case["name"], ", ".join(case["spec"]), reason))
-        check(not failures, "conformance: {} passes the corpus ({} cases)".format(names[engine], len(cases)),
+        counted = len(results)
+        check(not failures, "conformance: {} passes the corpus ({} cases)".format(names[engine], counted),
               "\n".join(failures[:30]) + ("\n... {} more".format(len(failures) - 30) if len(failures) > 30 else ""))
         if verbose:
             print("  {}: {} failing".format(engine, len(failures)))

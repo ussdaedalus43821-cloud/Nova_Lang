@@ -332,7 +332,7 @@ python3 tests/run_all.py --station input-errors # formatter refusal and malforme
 python3 tests/run_all.py --report checks.jsonl # flush each result for long audit runs
 ```
 
-The complete suite records 1,925 parent checks. The REPL station contributes
+The complete suite records 1,926 parent checks. The REPL station contributes
 one check for 46 tests, the input-errors station one for six tests with
 parameterized cases, the portability station one for 14 tests that simulate
 Windows on any platform, and the conformance station four checks (the corpus

@@ -26,6 +26,21 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10: the policy dialect (specification, engine, first 246 cases)
+- [ADR 0004](docs/decisions/0004-policy-dialect-after-measurement.md) is
+  **accepted** (Option C) and supersedes ADR 0002: the game dialect is its own
+  specified language that shares the corpus format, runner, profile tags and
+  security stance. No behaviour of `novalang.py` or `novalang.nova` changed.
+- `docs/spec/12-policy-syntax.md`: 23 sections (`pol.*`) specifying the policy
+  dialect's source text, syntax, scopes, statements, calls, modules, limits and
+  error text.
+- `dialects/policy/`: the game's Python reference engine (lexer, parser,
+  evaluator, VM façade), copied unchanged from Reactor-Game `fae228d`, run by the
+  conformance station as a fourth engine for the new `policy` profile.
+- `tests/conformance/cases/policy-syntax.json`: 246 cases, 32 of them the game's
+  own recorded oracle programs, source and result unchanged. The suite is now
+  1,926 parent checks.
+
 ### M10: the game dialect, measured (no language change)
 - `docs/design/m10-dialect-inventory.md`: a count of how the game dialect differs
   from NovaLang 2.1.0, from the game's own lexer, parser, evaluator and host and
