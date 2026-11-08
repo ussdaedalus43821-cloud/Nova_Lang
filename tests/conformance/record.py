@@ -25,10 +25,10 @@ import engines  # noqa: E402
 def dump(path, area, cases):
     ordered = []
     for case in cases:
-        entry = {key: case[key] for key in ("name", "spec", "profile", "source", "output", "error",
-                                            "error_line", "exit", "host_calls") if key in case}
-        if "divergences" in case:
-            entry["divergences"] = case["divergences"]
+        first = ("name", "spec", "profile", "source", "output", "error", "error_like",
+                 "error_line", "exit", "host_calls", "deep")
+        entry = {key: case[key] for key in first if key in case}
+        entry.update({key: value for key, value in case.items() if key not in entry and not key.startswith("_")})
         ordered.append(entry)
     path.write_text(json.dumps({"area": area, "version": 1, "cases": ordered}, indent=1,
                                ensure_ascii=False) + "\n", encoding="utf-8")

@@ -31,13 +31,15 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | --- | --- |
 | `name` | unique |
 | `spec` | the spec sections the case tests (`docs/spec/`, the ids in square brackets) |
-| `profile` | the feature set a host needs to run it; `core` for now |
+| `profile` | the feature set a host needs to run it: `core` or `host` (`docs/spec/README.md`) |
 | `source` | the program |
 | `output` | the lines `print` writes, in order, before the program ends |
 | `error` | `Label: message` of the error that ends the program, or `""` |
 | `error_line` | the 1-based line of that error, or `null` when it has none; compared only for hosts that report a line |
 | `exit` | the process exit status |
 | `host_calls` | calls the program makes to the host (none yet; kept for the game cases) |
+| `error_like` | optional regular expression the error must match instead of equalling `error`, for a message that contains a host-defined limit (the call depth) |
+| `deep` | optional; the program recurses until the host's call-depth limit, so it is not run on the tree-walker where that would crash the process (Windows before Python 3.11; a `SKIPPED:` line says so) |
 | `divergences` | optional; see below |
 
 `output`, `error` and `exit` are what **the specification says**. They were
@@ -56,7 +58,9 @@ case keeps the spec's value and the engine's behavior goes in `divergences`.
    carries `"divergences": {"<engine>": {"id": "D-003", "output": ..., "error":
    ..., "exit": ...}}`. The station requires that engine to behave exactly as
    recorded, so a disagreement cannot grow unnoticed; and fails when it starts
-   following the spec, so the entry gets closed. Each id must be in
+   following the spec, so the entry gets closed. An entry whose behavior differs between
+   Python releases and so cannot be pinned (D-013) says `Untested:` and needs no case.
+   Each id must be in
    [`DIVERGENCES.md`](../../docs/spec/DIVERGENCES.md) as `open`, and every `open`
    entry must be used by a case. A divergence that is a stack overflow carries
    `"unstable": true`, because it ends differently on different Pythons.

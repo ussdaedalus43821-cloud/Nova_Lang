@@ -1,7 +1,8 @@
 # NovaLang language specification
 
 Status: **first slice, draft.** Written 2026-11-08 for milestone M9. It covers
-lexical rules, values, expressions, scoping and the error catalogue. Statements
+lexical rules, values, expressions, scoping, the error catalogue, the security
+properties of the language and the rules a portable host must follow. Statements
 beyond `let`, assignment, blocks, loops, functions and `try`/`catch`/`finally`,
 the standard library, modules and the type annotations are still to come.
 
@@ -9,6 +10,25 @@ This specification is normative ([ADR 0001](../decisions/0001-specification-is-n
 where an implementation and this text disagree, one of them has a bug, and the
 disagreement is written down in [`DIVERGENCES.md`](DIVERGENCES.md) until it is
 resolved. `novalang.py` is the first conforming host, not the definition.
+
+## Who this is written for
+
+NovaLang is the foundation of a wider ecosystem ([`../ROADMAP.md`](../ROADMAP.md)):
+the same language is meant to run on servers, in browsers (WebAssembly), on
+phones and edge computers, on microcontrollers with a few hundred kilobytes of
+memory, and eventually to compile itself. A specification that only describes
+what `novalang.py` happens to do cannot serve those hosts, so this text is
+written for someone implementing NovaLang on a platform that has not been
+chosen yet, and two habits follow:
+
+- **If a rule is ambiguous, it is written down and a case pins it**, even when the
+  answer is whatever the first implementation did by accident (how a float
+  prints, how a string compares). Where the accident is a Python-ism that a port
+  would struggle with, the text says so and the question goes to the project
+  owner; it is never left implicit.
+- **What a smaller host may not do is stated** (`06-portability.md`): it may bound
+  integers, depth and sizes, and must then refuse with an error, never wrap,
+  truncate or crash.
 
 ## Reading this document
 
@@ -33,10 +53,12 @@ the corpus carries one. This slice has one profile:
 
 | Profile | Contents |
 | --- | --- |
-| `core` | Everything in this specification so far, with no host I/O, no modules and no embedding. |
+| `core` | The language itself, the values and the built-in functions that compute on them. No files, environment, clock, randomness, processes, modules or embedding. Deterministic. |
+| `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock and randomness. Present only if the host provides it (`[sec.principles]`). Not yet specified beyond the exit status. |
 
-Profiles for host I/O, embedding and the game dialect ([ADR 0002](../decisions/0002-game-dialect-and-profiles.md))
-are added as their sections are written.
+Profiles for embedding (the Python bridge) and the game dialect
+([ADR 0002](../decisions/0002-game-dialect-and-profiles.md)) are added as their
+sections are written.
 
 ## Files
 
@@ -46,6 +68,8 @@ are added as their sections are written.
 | [`02-expressions.md`](02-expressions.md) | `val.*` the value model, `expr.*` the expression grammar and its meaning |
 | [`03-scoping.md`](03-scoping.md) | `scope.*`: names, blocks, functions, closures, shared values |
 | [`04-errors.md`](04-errors.md) | `err.*`: the error model, `try`/`catch`/`finally`, the message catalogue |
+| [`05-security.md`](05-security.md) | `sec.*`: what the language guarantees (no ambient authority, no dynamic code, no reflection, scope isolation, no host failures leaking) |
+| [`06-portability.md`](06-portability.md) | `port.*`: integers, floats and how they print, text, ordering and determinism, limits |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

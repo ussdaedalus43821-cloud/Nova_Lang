@@ -471,7 +471,10 @@ class Lexer:
                 seen_dot = True
             digits += char
 
-        value = float(digits) if seen_dot else int(digits)
+        try:
+            value = float(digits) if seen_dot else int(digits)
+        except ValueError:
+            raise NovaError("this number has too many digits", start) from None
         return Token(TT_NUMBER, value, start)
 
     def read_identifier(self):
@@ -1911,7 +1914,10 @@ def builtin_num(args, position):
     )
     if not readable:
         raise NovaError('num() cannot read a number from "{}"'.format(value), position)
-    return float(text) if "." in digits else int(text)
+    try:
+        return float(text) if "." in digits else int(text)
+    except ValueError:
+        raise NovaError("num(): that number has too many digits", position) from None
 
 
 def builtin_type(args, position):
@@ -2959,7 +2965,12 @@ def format_value(value, seen=None):
         return str(int(value))
     if isinstance(value, (NovaFunction, BuiltinFunction)):
         return repr(value)
-    return str(value)
+    try:
+        return str(value)
+    except ValueError:
+        # Python refuses to turn an integer of more than 4300 digits into
+        # text (3.11 and later, and security releases of earlier versions).
+        raise NovaError("an integer with more than 4300 digits cannot be converted to text") from None
 
 
 def format_key(key):
@@ -3114,6 +3125,20 @@ def binary_operation(op, left, right, position):
             position,
         )
 
+    try:
+        return numeric_operation(op, left, right, position)
+    except OverflowError:
+        # An integer beyond the range of a float, mixed with a float or divided
+        # into a quotient too large to be one. (Float arithmetic itself
+        # saturates to infinity, as IEEE 754 says.)
+        raise NovaError(
+            "a number is too large for this operation - an integer beyond the range of "
+            "a float cannot be divided or mixed with a float",
+            position,
+        ) from None
+
+
+def numeric_operation(op, left, right, position):
     if op == "+":
         return left + right
     if op == "-":
@@ -3859,9 +3884,14 @@ class Interpreter:
                     ),
                     position,
                 )
-            if callee.needs_interpreter:
-                return callee.implementation(args, position, self)
-            return callee.implementation(args, position)
+            try:
+                if callee.needs_interpreter:
+                    return callee.implementation(args, position, self)
+                return callee.implementation(args, position)
+            except OverflowError:
+                # math.sqrt(10 ** 400) and friends: an integer beyond a float.
+                raise NovaError("{}(): a number is too large for this function".format(callee.name),
+                                position, label="TypeError") from None
 
         if not isinstance(callee, NovaFunction):
             raise NovaError(

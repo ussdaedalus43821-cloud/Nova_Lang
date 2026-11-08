@@ -96,6 +96,7 @@ Found while reading the source (`[lex.*]`), before anything runs:
 | `a number cannot have two decimal points` | `[lex.numbers]` |
 | `unexpected character '<c>'` | `[lex.identifiers]`, `[lex.operators]` |
 | `'!' on its own is not an operator - did you mean '!=' or 'not'?` | `[lex.operators]` |
+| `this number has too many digits` | `[lex.numbers]`, `[port.integers]` |
 | `this f-string placeholder is empty` | `[lex.fstrings]` |
 | `this f-string placeholder needs a closing '}'` | `[lex.fstrings]` |
 | `a '}' inside an f-string must be written '}}'` | `[lex.fstrings]` |
@@ -169,13 +170,22 @@ The kind is right, the value is not:
 | `num() cannot read a number from "<text>"` | `[val.types]` |
 | `a 'for' step must be greater than zero (use 'downto' to count down)` | `[scope.loop-var]` |
 | `pop() cannot take anything from an empty list` | built-ins |
+| `<fn>() needs a finite number, but got inf` (or `-inf`, `nan`) | `[port.floats]` |
+| `the <start, end or step> of a 'for' range must be a finite number, but this is inf` | `[port.floats]` |
+| `num(): that number has too many digits` | `[port.integers]` |
+| `repeating that list <n> times would exceed 1000000 items` / `repeating that string <n> times would be too long` / `range() would build a list of <n> items, which is too large` | `[port.limits]` |
+| `call depth of <N> exceeded - is the recursion missing a base case?` | `[port.limits]` |
 | `TypeError: pow(): 0.0 cannot be raised to a negative power` | built-ins |
 
 ## [err.arithmetic] Arithmetic errors
 
 `division by zero`, `integer division by zero` and
 `cannot take the remainder of a division by zero` (`[expr.division]`). There is
-no infinity or NaN to return, so these are errors.
+no infinity or NaN to return, so these are errors. An integer too large to be a
+float, used with a float or divided, is
+`a number is too large for this operation - an integer beyond the range of a
+float cannot be divided or mixed with a float` (`[port.integers]`); a built-in
+given one reports `TypeError: <fn>(): a number is too large for this function`.
 
 ## [err.call] Call errors
 

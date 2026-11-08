@@ -28,11 +28,16 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ### M9: language specification and conformance corpus (first slice)
 - `docs/spec/`: the first written specification of NovaLang, normative per
-  ADR 0001. 57 sections, each with an id such as `[lex.numbers]`, covering
-  lexical structure, the value model, expressions, names and scopes, and the
-  error catalogue with its message text. A versioning rule says what a major,
-  minor and patch release may change in the language.
-- `tests/conformance/`: a host-neutral corpus of 297 cases (source, expected
+  ADR 0001. 68 sections, each with an id such as `[lex.numbers]`, covering
+  lexical structure, the value model, expressions, names and scopes, the error
+  catalogue with its message text, the security properties of the language
+  (no ambient authority, no dynamic code, no reflection, scope isolation, no
+  host failure leaking as a host exception) and the rules a portable host must
+  follow (integers, how floats print, text, ordering, limits). It is written for
+  hosts that do not exist yet (browsers, microcontrollers): an ambiguity is
+  written down and tested, not left to what Python did. A versioning rule says
+  what a major, minor and patch release may change in the language.
+- `tests/conformance/`: a host-neutral corpus of 338 cases (source, expected
   output, error, line and exit status, the spec sections tested, a profile),
   in the shape the game port already uses, and a `conformance` station that
   runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
@@ -40,7 +45,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   section that does not exist, or a divergence is not in the log. The full
   suite is now 1,925 parent checks; the quick tier 1,852.
 - `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
-  follow the text. 11 entries from this slice. The bytecode VM and the
+  follow the text. 13 entries from this slice. The bytecode VM and the
   tree-walker agree with the spec and each other on every case but one
   decision (D-002, non-ASCII letters and digits in names and numbers, which the
   spec forbids and `novalang.py` accepts). The self-hosted interpreter has nine
@@ -53,10 +58,25 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   limits, not isolation.
 
 ### Fixed
-- `print(²)` and `num("²")` (a superscript digit, which Python's `isdigit`
-  accepts but `int()` does not) ended in a raw Python `ValueError`. They now
-  report `unexpected character '²'` and `num() cannot read a number from "²"`.
-  Found by writing the lexical chapter of the specification.
+- Four more ways a Python failure reached a program as a host exception that
+  `try`/`catch` could not catch (the class of issue 3), found by writing the
+  security and portability chapters of the specification:
+  - `print(²)` and `num("²")` (a superscript digit, which Python's `isdigit`
+    accepts but `int()` does not): now `unexpected character '²'` and
+    `num() cannot read a number from "²"`.
+  - An integer too large to be a float, mixed with a float or divided
+    (`big * 1.0`, `big + 0.5`, `big / 3`): was a raw `OverflowError`, now
+    `a number is too large for this operation - an integer beyond the range of
+    a float cannot be divided or mixed with a float`. A built-in given one
+    (`sqrt(big)`) reports `TypeError: sqrt(): a number is too large for this
+    function`.
+  - A number literal, or a `num()` argument, of thousands of digits (Python
+    refuses above 4300): now `this number has too many digits` and
+    `num(): that number has too many digits`.
+  - Printing or converting an integer of more than 4300 digits (on the Python
+    releases that limit it): now `an integer with more than 4300 digits cannot
+    be converted to text`, and catchable. Releases without the limit still print
+    it (D-013 in the divergence log).
 
 ## [2.1.0] - 2026-11-08 — Verification, portability, and a closed `python.*` bridge
 

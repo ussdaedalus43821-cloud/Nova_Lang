@@ -44,12 +44,13 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core",)
+PROFILES = ("core", "host")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
 
 SECTION = re.compile(r"^#{2,4} \[([a-z][a-z0-9.-]*)\] ", re.M)
 ENTRY = re.compile(r"^### (D-\d+) ", re.M)
 STATUS = re.compile(r"^Status: (open|normalized|resolved)\b", re.M)
+UNTESTED = re.compile(r"^Untested: ", re.M)
 
 # D-001: the self-hosted interpreter reports lexical and syntax errors as
 # "Error: LexError@12: message" (a kind and a character offset in front of the
@@ -85,7 +86,10 @@ def divergence_log():
     log = {}
     for index in range(1, len(parts), 2):
         status = STATUS.search(parts[index + 1])
-        log[parts[index]] = status.group(1) if status else "?"
+        found = status.group(1) if status else "?"
+        # An entry that cannot be tested portably says why on an `Untested:` line
+        # and is then exempt from needing a case.
+        log[parts[index]] = "untested" if found == "open" and UNTESTED.search(parts[index + 1]) else found
     return log
 
 
@@ -115,11 +119,18 @@ def validate(cases, sections, log):
             if observed.get("id") not in log:
                 problems.append("{} cites {}, which is not in the divergence log".format(
                     where, observed.get("id")))
-            elif log[observed["id"]] != "open":
+            elif log[observed["id"]] not in ("open",):
                 problems.append("{} cites {}, which is {}".format(where, observed["id"], log[observed["id"]]))
     for section, filename in sorted(sections.items()):
         if section not in cited:
             problems.append("spec section [{}] ({}) is cited by no case".format(section, filename))
+    for case in cases:
+        if "error_like" in case:
+            try:
+                if not re.fullmatch(case["error_like"], case["error"]):
+                    problems.append("{}: error_like does not match the recorded error".format(case["name"]))
+            except re.error as problem:
+                problems.append("{}: error_like is not a regular expression ({})".format(case["name"], problem))
     for entry, status in sorted(log.items()):
         if status == "open" and entry not in used:
             problems.append("divergence {} is open but no case records it".format(entry))
@@ -145,7 +156,11 @@ def normalize(engine, expected_error, result):
 def differences(wanted, got, engine):
     out = []
     for key in ("output", "error", "exit"):
-        if wanted[key] != got[key]:
+        if key == "error" and wanted.get("error_like"):
+            # Part of the message is a host-defined limit (the call depth).
+            if not re.fullmatch(wanted["error_like"], got["error"]):
+                out.append("error: expected a match for {!r}, got {!r}".format(wanted["error_like"], got["error"]))
+        elif wanted[key] != got[key]:
             out.append("{}: expected {!r}, got {!r}".format(key, wanted[key], got[key]))
     if engine != "bootstrap" and wanted.get("error_line") is not None \
             and wanted["error_line"] != got["error_line"]:
@@ -158,6 +173,7 @@ def judge(case, engine, result):
     got = normalize(engine, case["error"], result)
     spec = {key: case[key] for key in ("output", "error", "exit")}
     spec["error_line"] = case.get("error_line")
+    spec["error_like"] = case.get("error_like")
     recorded = case.get("divergences", {}).get(engine)
     if recorded is None:
         return differences(spec, got, engine)
@@ -176,6 +192,13 @@ def judge(case, engine, result):
     return differences(expected, got, engine)
 
 
+def tree_walker_stack_limited():
+    """The tree-walker cannot run deep recursion on Windows before Python 3.11:
+    it overflows the native stack and ends the process (docs/CI.md). Cases marked
+    `deep` are not given to it there; see tests/vm/test_differential.py."""
+    return sys.platform == "win32" and sys.version_info < (3, 11)
+
+
 def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
     if engine == "bootstrap":
@@ -192,7 +215,7 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     problems = validate(cases, sections, log)
     check(not problems, "conformance: the corpus is well-formed and cites every spec section "
           "({} cases, {} sections, {} divergences open)".format(
-              len(cases), len(sections), sum(1 for s in log.values() if s == "open")),
+              len(cases), len(sections), sum(1 for s in log.values() if s in ("open", "untested"))),
           "\n".join(problems[:40]))
     if problems:
         return
@@ -203,9 +226,18 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
         pending["bootstrap"] = pool.submit(run_engine, cases, "bootstrap")
     names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter"}
     for engine in selected:
-        results = pending[engine].result() if engine in pending else run_engine(cases, engine)
+        runnable = cases
+        if engine == "tree" and tree_walker_stack_limited():
+            runnable = [case for case in cases if not case.get("deep")]
+            print("  SKIPPED: the tree-walker did not run {} of {} conformance cases (marked deep): "
+                  "on Windows with Python {}.{} it overflows the native stack on runaway recursion "
+                  "(docs/CI.md). Run on the other engines.".format(
+                      len(cases) - len(runnable), len(cases), sys.version_info[0], sys.version_info[1]))
+        results = pending[engine].result() if engine in pending else run_engine(runnable, engine)
         failures = []
         for case in cases:
+            if case["name"] not in results:
+                continue
             for reason in judge(case, engine, results[case["name"]]):
                 failures.append("{} [{}]: {}".format(case["name"], ", ".join(case["spec"]), reason))
         check(not failures, "conformance: {} passes the corpus ({} cases)".format(names[engine], len(cases)),

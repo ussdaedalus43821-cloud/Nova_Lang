@@ -46,7 +46,7 @@ either operand is a float the result is a float.
 | Value | Text |
 | --- | --- |
 | integer | its decimal digits |
-| float | the shortest decimal text that reads back as the same float; a float with a whole value has no decimal point (`5.0` prints `5`, `0.1 + 0.2` prints `0.30000000000000004`) |
+| float | `5.0` prints `5`, `0.1 + 0.2` prints `0.30000000000000004`; the exact rules, including exponents, `inf` and `nan`, are in `[port.floats]` |
 | string | the characters themselves; inside a list or dictionary, in double quotes with `\\`, `\"`, `\n` and `\t` escaped |
 | `true`, `false` | `true`, `false` |
 | `nothing` | `nothing` |

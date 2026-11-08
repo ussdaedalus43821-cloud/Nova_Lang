@@ -23,7 +23,7 @@ change would break existing programs).
 The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
-accounts for every entry but D-002, which is the host's.
+accounts for every entry but D-002 and D-013, which are the host's.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -181,6 +181,38 @@ Cases: `scope-return-at-top-level-error`, `scope-break-outside-loop-error`,
 
 On the host each is an error. The self-hosted interpreter accepts them and
 the program ends normally with status 0.
+
+### D-012 — A literal with too many digits is reported by `num()`
+
+Status: open
+Class: implementation bug
+Engines: self-hosted
+Spec: `[port.integers]`, `[sec.error-boundary]`
+Cases: `sec-host-failures-are-nova-errors-huge-literal`
+
+A number literal of more than 4300 digits is `this number has too many digits`
+on the host. The self-hosted lexer builds the number with `num()`, so the same
+program reports `num(): that number has too many digits`.
+
+### D-013 — Integer-to-text limits depend on the Python release
+
+Status: open
+Untested: the behaviour differs between Python releases, so no case can pin it on
+every host
+Class: decision needed
+Engines: all three Python engines
+Spec: `[port.integers]`
+Cases: none
+
+Python 3.11 and the security releases of 3.7 to 3.10 refuse to turn an integer of
+more than 4300 digits into text, and the three engines turn that refusal into
+`an integer with more than 4300 digits cannot be converted to text`. Earlier
+releases of those versions have no limit, so `print(big)` succeeds there. The
+specification says a host MAY refuse beyond a host-defined size of at least 4,300
+digits; it does not say a host MUST. To make the engines agree on every Python the
+reference would have to enforce its own limit (and decide it: 4,300 digits, or
+a size in bits) instead of inheriting Python's, and the same question applies
+to integers built by arithmetic, which are unbounded. That is a language decision.
 
 ## Not divergences, but worth knowing
 

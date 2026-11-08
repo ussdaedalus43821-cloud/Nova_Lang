@@ -84,7 +84,7 @@
    "spec": [
     "err.uncaught"
    ],
-   "profile": "core",
+   "profile": "host",
    "source": "print(\"a\")\nexit(3)\nprint(\"b\")",
    "output": [
     "a"

@@ -1,0 +1,407 @@
+{
+ "area": "portability",
+ "version": 1,
+ "cases": [
+  {
+   "name": "port-integers-are-exact-beyond-sixty-four-bits",
+   "spec": [
+    "port.integers",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big % 7, big // 10 > 0, big - big, big * big > big, (big * 10) / big, big / big)",
+   "output": [
+    "4 true 0 true 10 1"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-integers-compare-exactly-with-floats",
+   "spec": [
+    "port.integers",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big > 1.5, big < 1.5, big == big, 9007199254740993 == 9007199254740992.0, 9007199254740993 > 9007199254740992.0)",
+   "output": [
+    "true false true false true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-integer-beyond-a-float-cannot-be-mixed-with-one",
+   "spec": [
+    "port.integers",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big + 0.5)",
+   "output": [],
+   "error": "NovaError: a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "port-integer-division-quotient-too-large-for-a-float",
+   "spec": [
+    "port.integers",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big / 3)",
+   "output": [],
+   "error": "NovaError: a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float",
+   "error_line": 3,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "port-integer-floor-division-and-remainder-stay-exact",
+   "spec": [
+    "port.integers",
+    "expr.division"
+   ],
+   "profile": "core",
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big // 3 > 0, big % 3, (big * big) // big == big)",
+   "output": [
+    "true 1 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-floats-are-ieee-doubles",
+   "spec": [
+    "port.floats",
+    "val.numbers"
+   ],
+   "profile": "core",
+   "source": "print(0.1 + 0.2 == 0.3, 0.5 + 0.25 == 0.75, 1 / 3 * 3 == 1, 2 * 0.1 == 0.2)",
+   "output": [
+    "false true true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-float-overflow-is-infinity-not-an-error",
+   "spec": [
+    "port.floats"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\nprint(inf, -inf, inf * 2, inf - inf, inf == inf, inf > 5, -inf < 5)",
+   "output": [
+    "inf -inf inf nan true true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-nan-is-unordered-and-unequal",
+   "spec": [
+    "port.floats",
+    "expr.ordering",
+    "val.equality"
+   ],
+   "profile": "core",
+   "source": "let inf = num(\"1\" + \"0\" * 400 + \".0\")\nlet nan = inf - inf\nprint(nan == nan, nan != nan, nan < 1, nan > 1, nan <= nan)",
+   "output": [
+    "false true false false false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-float-display-whole-values-print-all-digits",
+   "spec": [
+    "port.floats",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "let x = 1000000000000\nprint(x * x * 1.0, x * 1.0, 0.0 + 5)",
+   "output": [
+    "999999999999999983222784 1000000000000 5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-float-display-fractions-use-the-shortest-form-that-round-trips",
+   "spec": [
+    "port.floats",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(0.5, 100.25, 1 / 3, 0.1, 1.1 * 3)",
+   "output": [
+    "0.5 100.25 0.3333333333333333 0.1 3.3000000000000003"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-float-display-uses-an-exponent-below-one-ten-thousandth",
+   "spec": [
+    "port.floats",
+    "val.display"
+   ],
+   "profile": "core",
+   "source": "print(0.0001, 0.00001, 1 / 10000000, 123.456 / 1000000)",
+   "output": [
+    "0.0001 1e-05 1e-07 0.000123456"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-text-is-code-points-not-bytes-or-glyphs",
+   "spec": [
+    "port.text",
+    "lex.source"
+   ],
+   "profile": "core",
+   "source": "let nfc = \"é\"\nlet nfd = \"é\"\nprint(len(nfc), len(nfd), nfc == nfd, len(\"😀\"), len(\"日本語\"), \"😀\"[0] == \"😀\")",
+   "output": [
+    "1 2 false 1 3 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-text-compares-by-code-point",
+   "spec": [
+    "port.text",
+    "expr.ordering"
+   ],
+   "profile": "core",
+   "source": "print(\"Z\" < \"a\", \"é\" > \"z\", \"a\" < \"ab\", \"\" < \"a\", \"😀\" > \"z\")",
+   "output": [
+    "true true true true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-text-has-no-normalization",
+   "spec": [
+    "port.text"
+   ],
+   "profile": "core",
+   "source": "print(\"é\" + \"x\" == \"é\" + \"x\", len(\"é\" + \"x\"))",
+   "output": [
+    "false 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-dictionaries-keep-insertion-order",
+   "spec": [
+    "port.order",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "let d = {z: 1, a: 2, m: 3}\nd.b = 4\nd.a = 9\nprint(keys(d), values(d), d)",
+   "output": [
+    "[\"z\", \"a\", \"m\", \"b\"] [1, 9, 3, 4] {z: 1, a: 9, m: 3, b: 4}"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-dictionary-merge-order",
+   "spec": [
+    "port.order",
+    "expr.dicts"
+   ],
+   "profile": "core",
+   "source": "print({a: 1, b: 2} + {c: 3, a: 9}, keys({x: 1} + {y: 2}))",
+   "output": [
+    "{a: 9, b: 2, c: 3} [\"x\", \"y\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-for-in-over-a-dictionary-follows-insertion-order",
+   "spec": [
+    "port.order",
+    "scope.loop-var"
+   ],
+   "profile": "core",
+   "source": "for k, v in {z: 1, a: 2, m: 3} { print(k, v) }",
+   "output": [
+    "z 1",
+    "a 2",
+    "m 3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-evaluation-order-is-left-to-right",
+   "spec": [
+    "port.order",
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "let trail = []\ndef t(v) { append(trail, v)\nreturn v }\nlet r = t(1) + t(2) * t(3) - t(4)\nlet l = [t(5), t(6)]\nlet d = {a: t(7), b: t(8)}\nprint(trail)",
+   "output": [
+    "[1, 2, 3, 4, 5, 6, 7, 8]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-the-same-program-gives-the-same-output",
+   "spec": [
+    "port.order"
+   ],
+   "profile": "core",
+   "source": "let d = {}\nfor i = 0 to 20 { d[\"k\" + str(i)] = i * i }\nlet total = 0\nfor k, v in d { total = total + v }\nprint(total, keys(d)[0], keys(d)[20], len(d))",
+   "output": [
+    "2870 k0 k20 21"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-recursion-to-a-modest-depth-works",
+   "spec": [
+    "port.limits",
+    "expr.call"
+   ],
+   "profile": "core",
+   "source": "def f(n) { if n == 0 { return 0 }\nreturn 1 + f(n - 1) }\nprint(f(40))",
+   "output": [
+    "40"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "port-runaway-recursion-ends-in-an-error",
+   "spec": [
+    "err.try-catch",
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "def f(n) { return f(n + 1) }\ntry { f(0) } catch e { print(\"call depth\" in e, \"missing a base case\" in e) }",
+   "output": [
+    "true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deep": true
+  },
+  {
+   "name": "port-runaway-recursion-uncaught-is-an-error-status",
+   "spec": [
+    "err.uncaught",
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "print(\"start\")\ndef f(n) { return f(n + 1) }\nf(0)\nprint(\"never\")",
+   "output": [
+    "start"
+   ],
+   "error": "NovaError: call depth of 1200 exceeded - is the recursion missing a base case?",
+   "error_like": "NovaError: call depth of \\d+ exceeded - is the recursion missing a base case\\?",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "deep": true
+  },
+  {
+   "name": "port-list-repetition-is-bounded",
+   "spec": [
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "print(len([0] * 1000000))\nprint([0] * 1000001)",
+   "output": [
+    "1000000"
+   ],
+   "error": "NovaError: repeating that list 1000001 times would exceed 1000000 items",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "port-string-repetition-is-bounded",
+   "spec": [
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "print(len(\"a\" * 1000000))\nprint(\"a\" * 1000001)",
+   "output": [
+    "1000000"
+   ],
+   "error": "NovaError: repeating that string 1000001 times would be too long",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "port-range-is-bounded",
+   "spec": [
+    "port.limits",
+    "sec.limits"
+   ],
+   "profile": "core",
+   "source": "print(len(range(1000000)), len(range(0, 2000000, 2)))\nprint(range(1000001))",
+   "output": [
+    "1000000 1000000"
+   ],
+   "error": "NovaError: range() would build a list of 1000001 items, which is too large",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  }
+ ]
+}

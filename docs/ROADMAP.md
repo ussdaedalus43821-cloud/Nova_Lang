@@ -220,17 +220,20 @@ checked against, instead of "whatever `novalang.py` does".
 implementation is the first conforming host
 ([ADR 0001](decisions/0001-specification-is-normative.md), accepted).
 
-**Status (2026-11-08).** First slice written: [`spec/`](spec/README.md) has 57
-sections covering lexical structure, values, expressions, scoping and the error
-catalogue, and [`tests/conformance/`](../tests/conformance/README.md) has 297
+**Status (2026-11-08).** First slice written: [`spec/`](spec/README.md) has 68
+sections covering lexical structure, values, expressions, scoping, the error
+catalogue, the security properties of the language and the rules a portable host
+must follow, and [`tests/conformance/`](../tests/conformance/README.md) has 338
 cases citing them, run by the `conformance` station on the VM, the tree-walker
 and the self-hosted interpreter. The station enforces that every section is
 cited and every divergence is logged. The log
-([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) has 11 entries from this slice,
-ten open: one the host's (non-ASCII letters and digits, a decision for the
-owner) and nine the self-hosted interpreter's, plus its error headlines handled
-by a documented normalization. Two host crashes the spec work exposed are
-fixed (`print(²)` and `num("²")` leaked a raw Python `ValueError`). Not yet
+([`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)) has 13 entries from this slice, 12
+open: two the host's and for the owner to decide (non-ASCII letters and digits;
+whether integer-to-text limits are the language's or Python's) and ten the
+self-hosted interpreter's, plus its error headlines handled by a documented
+normalization. Host failures the spec work exposed are fixed: `print(²)`,
+`num("²")`, integers too large for a float, and numbers with thousands of digits
+leaked a raw Python exception. Not yet
 written: statements beyond `let`/assignment/blocks/loops/functions/`try`,
 the standard library as profiles, modules, type annotations, the embedding
 profile, and the `Reactor-Game` oracle cases as a profile.
