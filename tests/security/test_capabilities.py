@@ -5,6 +5,7 @@ is right for a trusted and a restricted engine, what exit() does inside a host p
 share no grants, and what the command line refuses (docs/spec/16-sandbox.md).
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -118,7 +119,7 @@ class Paths(SandboxFolder):
             self.assertEqual(nova.eval('read("data/../data/./in.txt")'), "hello")
             for path in ("data/../secret.txt", self.root + "/secret.txt", "data2/x", "../" + os.path.basename(self.root)):
                 with self.assertRaises(nl.NovaLangError, msg=(engine, path)) as caught:
-                    nova.eval('read("{}")'.format(path))
+                    nova.eval("read({})".format(json.dumps(path)))      # a Windows path has backslashes
                 self.assertIn("outside the folders", str(caught.exception))
 
     def test_a_granted_folder_may_be_named_by_a_symlink_but_not_escaped_by_one(self):

@@ -271,11 +271,18 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
           "\n".join(problems[:40]))
     if problems:
         return
+    no_links = engines.symlinks_unavailable()
+    no_sandbox = novalang_sandbox_unsupported()
+
+    def runs_here(case):
+        """Cases this machine cannot run are left out for every engine, the slow one included."""
+        return not (no_links and case.get("symlinks")) and not (no_sandbox and case["profile"] == "sandbox")
+
     # Start the slow engine first so it overlaps the in-process ones.
     pending = {}
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     if "bootstrap" in selected:
-        pending["bootstrap"] = pool.submit(run_engine, cases, "bootstrap")
+        pending["bootstrap"] = pool.submit(run_engine, [case for case in cases if runs_here(case)], "bootstrap")
     names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter",
              "policy": "the policy dialect engine"}
     dialect = sum(1 for case in cases if case["profile"] == "policy")
@@ -286,17 +293,14 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if hosted and "bootstrap" in selected:
         print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "
               "host that binds values and functions for the program, and it has no host.".format(hosted))
-    no_links = engines.symlinks_unavailable()
     if no_links:
         print("  SKIPPED: {} cases that need a symbolic link did not run: this machine cannot make "
               "one.".format(sum(1 for case in cases if case.get("symlinks"))))
-    no_sandbox = novalang_sandbox_unsupported()
     if no_sandbox:
         print("  SKIPPED: {} sandbox cases did not run: the restricted profile needs Python 3.8 or later on "
               "Windows ([sbx.profiles]).".format(sum(1 for case in cases if case["profile"] == "sandbox")))
     for engine in selected:
-        runnable = [case for case in cases if not (no_links and case.get("symlinks"))
-                    and not (no_sandbox and case["profile"] == "sandbox")]
+        runnable = [case for case in cases if runs_here(case)]
         if engine == "tree" and tree_walker_stack_limited():
             runnable = [case for case in runnable if not case.get("deep")]
             nova_cases = [case for case in cases if case["profile"] != "policy"]
