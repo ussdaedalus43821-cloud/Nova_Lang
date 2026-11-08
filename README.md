@@ -211,8 +211,11 @@ if x > 10 {
 while x < 20 {
     x = x + 1
 }
-for i = 0 to 10 { print(i) }          # counts 0..9; `downto` counts down
-for i = 0 to 100 step 10 { print(i) }
+for i = 0 to 10 { print(i) }          # counts 0..10; inclusive on both ends
+for i = 10 downto 0 { print(i) }      # counts 10..0, also inclusive
+for i = 0 to 100 step 10 { print(i) } # 0, 10, ... 100
+# `to` and `downto` include the last value; range(n) does not:
+# range(3) is [0, 1, 2], while `for i = 0 to 3` visits 0, 1, 2 and 3.
 for item in [1, 2, 3] { print(item) }
 for key, value in {a: 1, b: 2} { print(key, value) }
 break                                    # leave a loop early

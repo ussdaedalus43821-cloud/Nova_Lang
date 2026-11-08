@@ -27,6 +27,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ## [Unreleased] - Baseline continuation
 
 ### Fixed
+- The README said `for i = 0 to 10` counts 0..9. The runtime has always
+  included the upper bound (0..10), on both engines; `downto` is likewise
+  inclusive, and `range(n)` is the exclusive one. The README now says so, the
+  REPL `help` text states it, and a test pins the runtime to the documented
+  behavior. The runtime is unchanged, since changing it would break existing
+  programs (issue 4).
 - The REPL kept an unfinished draft open on a blank line when the draft
   contained a `{` inside a string, an f-string or a comment, instead of
   submitting it to show the error as it does for `1 +`. It now decides from
@@ -77,7 +83,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   state and call stack intact afterwards. A piped test cannot send Ctrl-C, so
   `tests/repl/interrupt_driver.py` raises the same `KeyboardInterrupt` through
   the real REPL (`_thread.interrupt_main` for a running program). The `repl`
-  station grows from 26 to 44 tests; the full suite stays at 1,921 parent checks.
+  station grows from 26 to 46 tests; the full suite stays at 1,921 parent checks.
 - Known limitation, not fixed: on Windows with Python before 3.11 (observed on
   3.7), a program that recurses toward the 1200-call limit under `--tree-walk`
   can overflow the native stack and end the process instead of reporting the

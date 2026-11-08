@@ -160,6 +160,17 @@ class ReplContract:
         self.assertIn("  PI = 3.14159", output)         # `vars` lists the predefined globals
         self.assertIn("BinOpNode", output)
 
+    def test_for_to_includes_the_upper_bound_as_documented(self):
+        # README and `help` say `to` and `downto` are inclusive and range(n) is
+        # not. The README once said 0..9 (issue 4); the runtime never did.
+        self.assertIn("both ends included", novalang_help())
+        output = self.session(
+            "for i = 0 to 3 { print(i) }\nfor i = 3 downto 1 { print(i) }\n"
+            "for i = 0 to 10 step 5 { print(i) }\nrange(3)\n")
+        self.assertEqual(output,
+                         PROMPT + "0\n1\n2\n3\n" + PROMPT + "3\n2\n1\n" + PROMPT + "0\n5\n10\n"
+                         + PROMPT + "[0, 1, 2]\n" + PROMPT + "\n" + GOODBYE)
+
     def test_help_inside_an_open_block_is_code_not_a_command(self):
         output = self.session("if true {\nhelp\n}\n")
         self.assertIn("undefined name 'help'", output)
