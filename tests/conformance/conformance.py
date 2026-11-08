@@ -120,6 +120,10 @@ def validate(cases, sections, log):
             problems.append("{} cites no spec section".format(where))
         if case.get("profile") == "sandbox" and "sandbox" not in case:
             problems.append("{} is a sandbox case with no 'sandbox' object".format(where))
+        for name, target in (case.get("symlinks") or {}).items():
+            if not isinstance(target, str) or name.startswith("/") or "\\" in name or ":" in name \
+                    or any(part in ("", ".", "..") for part in name.split("/")):
+                problems.append("{} has a symlinks entry {!r} that is not a relative name and a target".format(where, name))
         for cell in case.get("matrix", []):
             if not re.fullmatch(r"[a-z]+(\.[a-z-]+)*:(deny|grant|trip|uncatchable|within)", cell):
                 problems.append("{} has matrix cell {!r} that is not 'cell:kind'".format(where, cell))
@@ -278,10 +282,14 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if hosted and "bootstrap" in selected:
         print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "
               "host that binds values and functions for the program, and it has no host.".format(hosted))
+    no_links = engines.symlinks_unavailable()
+    if no_links:
+        print("  SKIPPED: {} cases that need a symbolic link did not run: this machine cannot make "
+              "one.".format(sum(1 for case in cases if case.get("symlinks"))))
     for engine in selected:
-        runnable = cases
+        runnable = [case for case in cases if not (no_links and case.get("symlinks"))]
         if engine == "tree" and tree_walker_stack_limited():
-            runnable = [case for case in cases if not case.get("deep")]
+            runnable = [case for case in runnable if not case.get("deep")]
             nova_cases = [case for case in cases if case["profile"] != "policy"]
             print("  SKIPPED: the tree-walker did not run {} of {} conformance cases (marked deep): "
                   "on Windows with Python {}.{} it overflows the native stack on runaway recursion "

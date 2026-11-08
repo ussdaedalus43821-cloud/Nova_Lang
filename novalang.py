@@ -1691,8 +1691,12 @@ class NovaFunction:
 class BuiltinFunction:
     """A function written in Python and exposed to NovaLang, such as print."""
 
-    def __init__(self, name, arity, implementation, needs_interpreter=False):
+    def __init__(self, name, arity, implementation, needs_interpreter=False, paths=()):
         self.name = name
+        # (argument index, "read" | "write") for each argument that is a file path: a
+        # `restricted` engine checks it against its grants before the call
+        # (docs/spec/16-sandbox.md [sbx.paths]).
+        self.paths = paths
         self.arity = arity              # an int, or None for "any number"
         self.implementation = implementation
         # map/filter/reduce call back into a NovaLang function value passed
@@ -1840,6 +1844,13 @@ def builtin_abspath(args, position):
     # for the host's own import machinery, exposed so the self-hosted
     # implementation does not have to reinvent it by hand.
     return os.path.abspath(text_argument(args[0], "abspath()", position))
+
+
+def builtin_realpath(args, position):
+    # abspath() with every symbolic link followed: what a path really names. The
+    # self-hosted interpreter checks a program's paths against its grants with it
+    # (docs/spec/10-host.md [host.files], docs/spec/16-sandbox.md [sbx.paths]).
+    return os.path.realpath(text_argument(args[0], "realpath()", position))
 
 
 def builtin_dirname(args, position):
@@ -2206,15 +2217,20 @@ def builtin_sum(args, position):
 
 # ---- system -----------------------------------------------------------------
 
-def builtin_env(args, position):
-    value = os.environ.get(text_argument(args[0], "env()", position))
+def builtin_env(args, position, interpreter):
+    name = text_argument(args[0], "env()", position)
+    if not interpreter.caps.env_visible(name):
+        return NOTHING                      # a hidden variable reads as an unset one ([sbx.capabilities])
+    value = os.environ.get(name)
     return NOTHING if value is None else value
 
 
-def builtin_exit(args, position):
+def builtin_exit(args, position, interpreter):
     if len(args) > 1:
         raise NovaError("exit() takes an optional status code and nothing else", position)
     code = whole_number(args[0], "exit()", position) if args else 0
+    if interpreter.caps.restricted:
+        raise ProgramExit(code)
     sys.exit(code)
 
 
@@ -2316,7 +2332,7 @@ def python_granted(module, interpreter):
     is a way round the allowlist: `re.enum.bltns` is the builtins module,
     `json.codecs` reaches builtins and sys, `statistics.sys` is sys."""
     name = getattr(module, "__name__", "")
-    if name in PYTHON_IMPORT_ALLOWLIST:
+    if name in (interpreter.python_allowlist() if interpreter is not None else PYTHON_IMPORT_ALLOWLIST):
         return True
     return interpreter is not None and name in interpreter.python_granted
 
@@ -2560,11 +2576,12 @@ def builtin_python_import(args, position, interpreter):
     name = text_argument(args[0], "python.import()", position)
     if name in interpreter.python_registry:
         return NOTHING
-    if name not in PYTHON_IMPORT_ALLOWLIST:
+    allowed = interpreter.python_allowlist()
+    if name not in allowed:
         raise NovaError(
             '"{}" is not on the list of modules python.import() allows on its own ({}) '
             '- the embedding program can add it with Nova.expose_module("{}")'
-            .format(name, ", ".join(PYTHON_IMPORT_ALLOWLIST), name),
+            .format(name, ", ".join(allowed), name),
             position, label="PythonError",
         )
     try:
@@ -2876,12 +2893,13 @@ BUILTINS = {
     "type": BuiltinFunction("type", 1, builtin_type),
     "keys": BuiltinFunction("keys", 1, builtin_keys),
     "values": BuiltinFunction("values", 1, builtin_values),
-    "read": BuiltinFunction("read", 1, builtin_read),
-    "write": BuiltinFunction("write", 2, builtin_write),
-    "exists": BuiltinFunction("exists", 1, builtin_exists),
-    "listdir": BuiltinFunction("listdir", 1, builtin_listdir),
+    "read": BuiltinFunction("read", 1, builtin_read, paths=((0, "read"),)),
+    "write": BuiltinFunction("write", 2, builtin_write, paths=((0, "write"),)),
+    "exists": BuiltinFunction("exists", 1, builtin_exists, paths=((0, "read"),)),
+    "listdir": BuiltinFunction("listdir", 1, builtin_listdir, paths=((0, "read"),)),
     "input": BuiltinFunction("input", None, builtin_input),
     "abspath": BuiltinFunction("abspath", 1, builtin_abspath),
+    "realpath": BuiltinFunction("realpath", 1, builtin_realpath),
     "dirname": BuiltinFunction("dirname", 1, builtin_dirname),
 
     # Stage 11: standard library
@@ -2907,15 +2925,15 @@ BUILTINS = {
     "min": BuiltinFunction("min", None, builtin_min),
     "max": BuiltinFunction("max", None, builtin_max),
     "sum": BuiltinFunction("sum", None, builtin_sum),
-    "env": BuiltinFunction("env", 1, builtin_env),
-    "exit": BuiltinFunction("exit", None, builtin_exit),
+    "env": BuiltinFunction("env", 1, builtin_env, needs_interpreter=True),
+    "exit": BuiltinFunction("exit", None, builtin_exit, needs_interpreter=True),
     "args": BuiltinFunction("args", 0, builtin_args),
     "platform": BuiltinFunction("platform", 0, builtin_platform),
     "cwd": BuiltinFunction("cwd", 0, builtin_cwd),
-    "mkdir": BuiltinFunction("mkdir", 1, builtin_mkdir),
-    "remove": BuiltinFunction("remove", 1, builtin_remove),
-    "rename": BuiltinFunction("rename", 2, builtin_rename),
-    "copy": BuiltinFunction("copy", 2, builtin_copy),
+    "mkdir": BuiltinFunction("mkdir", 1, builtin_mkdir, paths=((0, "write"),)),
+    "remove": BuiltinFunction("remove", 1, builtin_remove, paths=((0, "write"),)),
+    "rename": BuiltinFunction("rename", 2, builtin_rename, paths=((0, "write"), (1, "write"))),
+    "copy": BuiltinFunction("copy", 2, builtin_copy, paths=((0, "read"), (1, "write"))),
     "regex": BuiltinFunction("regex", 2, builtin_regex),
     "replace_all": BuiltinFunction("replace_all", 3, builtin_replace_all),
     "split_lines": BuiltinFunction("split_lines", 1, builtin_split_lines),
@@ -3602,14 +3620,159 @@ DEFAULT_ENGINE = "vm"
 ALLOW_PYTHON = False
 
 
+
+# ---------------------------------------------------------------------------
+# The sandbox profile (docs/spec/16-sandbox.md)
+# ---------------------------------------------------------------------------
+
+# Which capability each gated name belongs to ([sbx.capabilities]). A name that is not here
+# is a pure function (or the language itself) and is defined in every profile.
+CAPABILITY_OF = {}
+for _capability, _names in (
+    ("files.read", ("read", "exists", "listdir")),
+    ("files.write", ("write", "mkdir", "remove", "rename", "copy")),
+    ("env", ("env",)),
+    ("clock", ("time", "now", "sleep", "format_time")),
+    ("random", ("random", "randint", "choice", "shuffle")),
+    ("stdin", ("input",)),
+    ("process", ("exit", "args", "platform", "cwd", "abspath", "realpath")),
+    ("regex", ("regex", "replace_all")),
+):
+    for _name in _names:
+        CAPABILITY_OF[_name] = _capability
+
+SANDBOX_PROFILES = ("trusted", "restricted")
+SANDBOX_SETTINGS = {
+    "profile": str, "read": (list, tuple), "write": (list, tuple), "import_from": (list, tuple),
+    "env": (list, tuple), "clock": bool, "random": bool, "stdin": bool, "process": bool,
+    "regex": bool, "python": (list, tuple), "limits": dict,
+}
+SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
+
+
+def inside_folder(real, root):
+    """Is the real path `real` the folder `root` or something below it? A folder whose name merely
+    starts with `root`'s (`data2` beside `data`) is not."""
+    real, root = os.path.normcase(real), os.path.normcase(root)
+    try:
+        return os.path.commonpath([real, root]) == root
+    except ValueError:                  # another drive: certainly outside
+        return False
+
+
+def real_path(path):
+    """The real, absolute path `path` names: symbolic links followed, `..` resolved after them, a
+    part that does not exist judged by its closest existing parent ([sbx.paths] 1 and 3). A path
+    that cannot be resolved is not a path of ours: None."""
+    try:
+        return os.path.realpath(path)
+    except (ValueError, OSError):
+        return None
+
+
+class Capabilities:
+    """What an engine's programs may reach. `Capabilities()` is the `trusted` profile: everything,
+    as NovaLang has always behaved. `Capabilities(profile="restricted", read=[...], ...)` denies
+    every capability that is not granted ([sbx.profiles])."""
+
+    def __init__(self, profile="trusted", **settings):
+        self.settings = dict(settings, profile=profile)
+        for name, value in self.settings.items():
+            if name not in SANDBOX_SETTINGS:
+                raise NovaLangError("unknown sandbox setting {!r}".format(name))
+            if not isinstance(value, SANDBOX_SETTINGS[name]) or (
+                    SANDBOX_SETTINGS[name] is bool and not isinstance(value, bool)):
+                raise NovaLangError("sandbox setting {!r} has a value of the wrong kind".format(name))
+        if profile not in SANDBOX_PROFILES:
+            raise NovaLangError("sandbox profile must be one of {}, not {!r}".format(SANDBOX_PROFILES, profile))
+        self.restricted = profile == "restricted"
+        if not self.restricted and len(self.settings) > 1:
+            raise NovaLangError("grants and limits belong to the 'restricted' profile, not 'trusted'")
+        limits = settings.get("limits", {})
+        for name, value in limits.items():
+            if name not in SANDBOX_LIMITS or isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise NovaLangError("unknown sandbox limit {!r}, or a value that is not a positive "
+                                    "whole number".format(name))
+        self.limits = dict(limits)
+        here = os.getcwd()
+        resolve = lambda folder: real_path(os.path.join(here, folder))     # noqa: E731
+        self.roots = {
+            "read": [resolve(f) for f in settings.get("read", ())],
+            "write": [resolve(f) for f in settings.get("write", ())],
+            "import": [resolve(f) for f in settings.get("import_from", ())],
+        }
+        self.env_names = frozenset(settings.get("env", ()))
+        self.python = tuple(settings.get("python", ()))
+        self.flags = {name: bool(settings.get(name, False)) for name in ("clock", "random", "stdin", "process", "regex")}
+
+    def has(self, capability):
+        """Is `capability` granted? Everything is, in the trusted profile."""
+        if not self.restricted:
+            return True
+        if capability == "files.read":
+            return bool(self.roots["read"])
+        if capability == "files.write":
+            return bool(self.roots["write"])
+        if capability == "import":
+            return bool(self.roots["import"])
+        if capability == "env":
+            return bool(self.env_names)
+        if capability == "python":
+            return bool(self.python)
+        return self.flags[capability]
+
+    def defines(self, name):
+        """Is the built-in `name` defined for this engine's programs?"""
+        capability = CAPABILITY_OF.get(name)
+        return capability is None or self.has(capability)
+
+    def env_visible(self, name):
+        return not self.restricted or name in self.env_names
+
+    def denied(self, capability, position):
+        return NovaError("the {!r} capability is not granted".format(capability), position)
+
+    def check_path(self, path, kind, position, label="FileError"):
+        """Raise unless `path` lies inside a folder granted for `kind` ([sbx.paths])."""
+        if not self.restricted or not isinstance(path, str):
+            return                      # a non-string is the function's own error, in its own order
+        real = real_path(path)
+        if real is not None and any(inside_folder(real, root) for root in self.roots[kind]):
+            return
+        raise NovaError("{} is outside the folders this program may use".format(path), position, label=label)
+
+    def python_modules(self):
+        """The modules `python.import` accepts on the script's own say."""
+        return self.python if self.restricted else PYTHON_IMPORT_ALLOWLIST
+
+
+TRUSTED = Capabilities()
+
+# What the command line chose (--profile restricted --allow-read DIR ...). Like ALLOW_PYTHON it
+# is read by the programs the command line runs; Nova() does not read it, an embedding host
+# decides for itself (Nova(profile="restricted", ...)).
+DEFAULT_CAPABILITIES = TRUSTED
+
+
+class ProgramExit(Exception):
+    """exit() in a `restricted` engine: ends the run, never the embedder's process."""
+
+    def __init__(self, code):
+        Exception.__init__(self, code)
+        self.code = code
+
+
 class Interpreter:
-    def __init__(self, engine=None, allow_python=None):
+    def __init__(self, engine=None, allow_python=None, capabilities=None):
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
             raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
         # python.* is off unless asked for (docs/design/python-bridge-hardening.md,
         # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
+        self.caps = capabilities if capabilities is not None else DEFAULT_CAPABILITIES
         self.allow_python = ALLOW_PYTHON if allow_python is None else allow_python
+        if self.caps.restricted:
+            self.allow_python = self.caps.has("python")      # the grant is the switch ([sbx.capabilities])
         self.globals = self.new_global_scope()
         self.env = self.globals
         self.call_stack = []            # function names, innermost last
@@ -3634,6 +3797,17 @@ class Interpreter:
         self.modules = {}               # resolved path -> its exports dict
         self.type_cache = None          # the type gate's results (a GateCache)
         self.current_exports = {}       # name -> value, for the module now loading
+
+    def python_allowlist(self):
+        return self.caps.python_modules()
+
+    def lookup_builtin(self, name, position=None):
+        """The built-in `name`, or None when this engine's profile does not define it: a denied name
+        is exactly as undefined as one the program never wrote ([sbx.capabilities])."""
+        function = BUILTINS.get(name)
+        if function is None or not self.caps.defines(name):
+            return None
+        return function
 
     def new_global_scope(self):
         """A program's global scope, and a module's: a module is a fresh
@@ -3697,7 +3871,10 @@ class Interpreter:
 
     def visit_VarNode(self, node):
         if node.name in BUILTINS:
-            return BUILTINS[node.name]
+            function = self.lookup_builtin(node.name)
+            if function is None:
+                raise NovaError("undefined name {!r}".format(node.name), node.position)
+            return function
         if not self.env.has(node.name):
             raise NovaError("undefined name {!r}".format(node.name), node.position)
         return self.env.get(node.name)
@@ -3780,6 +3957,8 @@ class Interpreter:
 
     def import_module(self, raw_path, position):
         """Load (once) the module `raw_path` names; its exports dict."""
+        if self.caps.restricted and not self.caps.has("import"):
+            raise NovaError("the 'import' capability is not granted", position, label="ImportError")
         resolved = self.resolve_import(raw_path, position)
         return self.load_module(resolved, raw_path, position)
 
@@ -3793,11 +3972,25 @@ class Interpreter:
         searched relative to the importing file, then the current directory."""
         current_dir = self.file_stack[-1] if self.file_stack else None
         if is_package_import(raw_path):
-            return resolve_package(raw_path, current_dir, position)
+            found = resolve_package(raw_path, current_dir, position)
+            self.caps.check_path(found, "import", position, label="ImportError")
+            return found
         candidates = []
         if current_dir is not None:
             candidates.append(os.path.normpath(os.path.join(current_dir, raw_path)))
         candidates.append(os.path.normpath(os.path.join(os.getcwd(), raw_path)))
+        if self.caps.restricted:
+            # Judge every place before looking in any of them, so a path outside the grant is
+            # refused whether or not a file is there ([sbx.paths] 4).
+            granted = []
+            for candidate in candidates:
+                real = real_path(candidate)
+                if real is not None and any(inside_folder(real, root) for root in self.caps.roots["import"]):
+                    granted.append(candidate)
+            if not granted:
+                raise NovaError("{} is outside the folders this program may use".format(raw_path),
+                                position, label="ImportError")
+            candidates = granted
 
         tried = []
         seen = set()
@@ -3881,7 +4074,7 @@ class Interpreter:
         return exports
 
     def visit_DeleteFileNode(self, node):
-        return delete_file(self.evaluate(node.path), node.position)
+        return self.delete_file(self.evaluate(node.path), node.position)
 
     def visit_DeleteNode(self, node):
         target = self.evaluate(node.target)
@@ -4053,6 +4246,20 @@ class Interpreter:
         args = [self.evaluate(arg) for arg in node.args]
         return self.call_value(callee, args, node.position)
 
+    def check_file_append(self, path, position):
+        """The file form of append() is a write: it needs `files.write` and a folder."""
+        if not self.caps.has("files.write"):
+            raise self.caps.denied("files.write", position)
+        self.caps.check_path(path, "write", position)
+
+    def delete_file(self, path, position):
+        """The `delete` statement of a file: a write ([sbx.capabilities])."""
+        if self.caps.restricted:
+            if not self.caps.has("files.write"):
+                raise self.caps.denied("files.write", position)
+            self.caps.check_path(path, "write", position)
+        return delete_file(path, position)
+
     def call_value(self, callee, args, position):
         """Call an already-evaluated callee with already-evaluated args -
         shared by ordinary CallNode evaluation and by map/filter/reduce,
@@ -4066,6 +4273,12 @@ class Interpreter:
                     position,
                 )
             try:
+                if self.caps.restricted:
+                    for index, kind in callee.paths:
+                        if index < len(args):
+                            self.caps.check_path(args[index], kind, position)
+                    if callee.name == "append" and args and isinstance(args[0], str):
+                        self.check_file_append(args[0], position)
                 if callee.needs_interpreter:
                     result = callee.implementation(args, position, self)
                 else:
@@ -4392,6 +4605,7 @@ OPCODES = [
     # names
     "LOAD_FAST", "STORE_FAST", "LOAD_CELL", "STORE_CELL",
     "LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_CHAIN", "STORE_CHAIN", "NEW_CELLS", "RESET_SLOTS",
+    "LOAD_BUILTIN",
     # arithmetic, comparison, logic
     "ADD", "SUB", "MUL", "DIV", "FLOOR_DIV", "MOD", "NEG", "POS", "NOT",
     "EQ", "NE", "LT", "GT", "LE", "GE", "IN",
@@ -5270,7 +5484,12 @@ class Compiler:
 
     def e_VarNode(self, node):
         if node.name in BUILTINS:
-            self.emit("LOAD_CONST", self.code.const(BUILTINS[node.name]), node.position)
+            if node.name in CAPABILITY_OF:
+                # A gated name is looked up in the engine that runs the code, so the same compiled
+                # script is right for a trusted and for a restricted engine ([sbx.capabilities]).
+                self.emit("LOAD_BUILTIN", node.name, node.position)
+            else:
+                self.emit("LOAD_CONST", self.code.const(BUILTINS[node.name]), node.position)
             return
         self.load(self.resolution.reads[id(node)], node.position)
 
@@ -5368,6 +5587,7 @@ STACK_EFFECT = {
     "LOAD_CONST": 1, "POP": -1, "DUP": 1,
     "LOAD_FAST": 1, "STORE_FAST": -1, "LOAD_CELL": 1, "STORE_CELL": -1,
     "LOAD_GLOBAL": 1, "STORE_GLOBAL": -1, "LOAD_CHAIN": 1, "STORE_CHAIN": -1, "NEW_CELLS": 0, "RESET_SLOTS": 0,
+    "LOAD_BUILTIN": 1,
     "ADD": -1, "SUB": -1, "MUL": -1, "DIV": -1, "FLOOR_DIV": -1, "MOD": -1,
     "NEG": 0, "POS": 0, "NOT": 0,
     "EQ": -1, "NE": -1, "LT": -1, "GT": -1, "LE": -1, "GE": -1, "IN": -1,
@@ -5712,6 +5932,7 @@ def execute(interpreter, entry):
     LOAD_CONST_ = OP["LOAD_CONST"]; POP_ = OP["POP"]; DUP_ = OP["DUP"]
     LOAD_FAST_ = OP["LOAD_FAST"]; STORE_FAST_ = OP["STORE_FAST"]; LOAD_CELL_ = OP["LOAD_CELL"]
     STORE_CELL_ = OP["STORE_CELL"]; LOAD_GLOBAL_ = OP["LOAD_GLOBAL"]; STORE_GLOBAL_ = OP["STORE_GLOBAL"]
+    LOAD_BUILTIN_ = OP["LOAD_BUILTIN"]
     LOAD_CHAIN_ = OP["LOAD_CHAIN"]; STORE_CHAIN_ = OP["STORE_CHAIN"]; NEW_CELLS_ = OP["NEW_CELLS"]
     limit = INTEGER_LIMIT; negative_limit = -INTEGER_LIMIT      # locals: faster than globals
     RESET_SLOTS_ = OP["RESET_SLOTS"]; ADD_ = OP["ADD"]; SUB_ = OP["SUB"]
@@ -5755,6 +5976,11 @@ def execute(interpreter, entry):
                         if value is not False:
                             condition_check(value, consts[arg[0]], positions[ip - 1])
                         ip = arg[1]
+                elif op == LOAD_BUILTIN_:
+                    value = interpreter.lookup_builtin(arg)
+                    if value is None:
+                        raise NovaError("undefined name {!r}".format(arg), positions[ip - 1])
+                    stack.append(value)
                 elif op == LOAD_GLOBAL_:
                     value = glob.get(arg, UNSET)
                     if value is UNSET:
@@ -6130,7 +6356,7 @@ def execute(interpreter, entry):
                     for slot in consts[arg]:
                         slots[slot] = UNSET
                 elif op == DELETE_FILE_:
-                    stack[-1] = delete_file(stack[-1], positions[ip - 1])
+                    stack[-1] = interpreter.delete_file(stack[-1], positions[ip - 1])
                 elif op == RERAISE_:
                     raise slots[arg]
                 elif op == STRAY_:
@@ -6598,6 +6824,8 @@ def run_source(source, origin, script_args=None):
     interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
     try:
         run(source, interpreter)
+    except ProgramExit as stop:
+        return stop.code
     except NovaError as error:
         print("{}\n{}".format(origin, error.render(source)), file=sys.stderr)
         return 1
@@ -6653,12 +6881,19 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self, engine=None, allow_python=False):
+    def __init__(self, engine=None, allow_python=False, profile="trusted", **settings):
         """`engine` is "vm" (the default) or "tree" (the tree-walker).
         `allow_python` gives scripts the python.* namespace; without it every
         python.import/call/get/set refuses. A host that runs scripts it did
-        not write should leave it off and use expose_global instead."""
-        self.interpreter = Interpreter(engine, allow_python=allow_python)
+        not write should leave it off and use expose_global instead.
+
+        `profile="restricted"` runs scripts with no capability but the ones granted by the
+        other arguments (`read=[folders]`, `write=`, `import_from=`, `env=[names]`, `clock=True`,
+        `random=True`, `stdin=True`, `process=True`, `regex=True`, `python=[modules]`,
+        `limits={...}`): docs/spec/16-sandbox.md. The default, `trusted`, is how NovaLang has
+        always behaved and must not be used for code you did not write."""
+        self.interpreter = Interpreter(engine, allow_python=allow_python,
+                                       capabilities=Capabilities(profile, **settings))
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
@@ -6821,6 +7056,17 @@ def load_tool(filename):
     return module
 
 
+# command line flag -> (sandbox setting, does it take a value)
+SANDBOX_FLAGS = {
+    "--profile": ("profile", True), "--allow-read": ("read", True), "--allow-write": ("write", True),
+    "--allow-import": ("import_from", True), "--allow-env": ("env", True),
+    "--allow-python-module": ("python", True), "--limit": ("limits", True),
+    "--allow-clock": ("clock", False), "--allow-random": ("random", False),
+    "--allow-stdin": ("stdin", False), "--allow-process": ("process", False),
+    "--allow-regex": ("regex", False),
+}
+
+
 def main(argv):
     args = argv[1:]
 
@@ -6831,13 +7077,46 @@ def main(argv):
     # interpreter instead of the bytecode VM, for comparing the two.
     # `--allow-python ...` gives the program the python.* namespace, which is
     # off otherwise. Both come before the file or subcommand, in either order.
-    global DEFAULT_ENGINE, ALLOW_PYTHON
-    while args and args[0] in ("--tree-walk", "--allow-python"):
-        if args[0] == "--tree-walk":
+    global DEFAULT_ENGINE, ALLOW_PYTHON, DEFAULT_CAPABILITIES
+    sandbox = {}                            # docs/spec/16-sandbox.md [sbx.profiles]
+    while args and (args[0] in ("--tree-walk", "--allow-python") or args[0] in SANDBOX_FLAGS):
+        flag = args[0]
+        if flag == "--tree-walk":
             DEFAULT_ENGINE = "tree"
-        else:
+        elif flag == "--allow-python":
             ALLOW_PYTHON = True
+        elif flag in SANDBOX_FLAGS:
+            setting, takes_value = SANDBOX_FLAGS[flag]
+            if takes_value:
+                if len(args) < 2:
+                    print("{} needs a value".format(flag), file=sys.stderr)
+                    return 2
+                value, args = args[1], args[1:]
+                if setting == "limits":
+                    name, _, number = value.partition("=")
+                    if not number.isdigit():
+                        print("--limit needs NAME=VALUE with a whole number, not {!r}".format(value),
+                              file=sys.stderr)
+                        return 2
+                    sandbox.setdefault("limits", {})[name] = int(number)
+                elif setting == "profile":
+                    sandbox["profile"] = value
+                else:
+                    sandbox.setdefault(setting, []).append(value)
+            else:
+                sandbox[setting] = True
         args = args[1:]
+    if sandbox:
+        profile = sandbox.pop("profile", "trusted")
+        if profile == "restricted" and ALLOW_PYTHON:
+            print("--allow-python opens the whole default module list; with --profile restricted "
+                  "grant modules one by one with --allow-python-module NAME", file=sys.stderr)
+            return 2
+        try:
+            DEFAULT_CAPABILITIES = Capabilities(profile, **sandbox)
+        except NovaLangError as problem:
+            print("NovaLangError: {}".format(problem), file=sys.stderr)
+            return 2
     if not args:
         return repl()
 
@@ -6873,6 +7152,8 @@ def main(argv):
     interpreter = Interpreter()
     try:
         _, value = run(source, interpreter)
+    except ProgramExit as stop:
+        return stop.code
     except NovaError as error:
         print(error.render(source), file=sys.stderr)
         return 1

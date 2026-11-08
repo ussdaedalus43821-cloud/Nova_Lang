@@ -1,4 +1,1 @@
-{
- "paths.symlink:deny": "A conformance case holds text files only and cannot make a symbolic link. Tested by tests/security/ in slice 2 of M11, which builds the link in a temporary folder.",
- "paths.case:deny": "Needs a file system that ignores letter case, which the CI machines differ on. Tested by tests/security/ in slice 2 of M11, where the platform is known."
-}
+{}

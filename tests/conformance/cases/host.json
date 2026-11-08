@@ -659,6 +659,46 @@
     "tree/x.txt": "2",
     "tree/inner/c.txt": "3"
    }
+  },
+  {
+   "name": "host-realpath-resolves-dots",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "write(\"a.txt\", \"x\")\nprint(realpath(\"./sub/../a.txt\") == realpath(\"a.txt\"))\nprint(dirname(realpath(\"a.txt\")) == realpath(\".\"))\ndelete(\"a.txt\")\nprint(type(realpath(\"not-there.txt\")))",
+   "output": [
+    "true",
+    "true",
+    "string"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {}
+  },
+  {
+   "name": "host-realpath-follows-a-symbolic-link",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "print(realpath(\"link.txt\") == realpath(\"a.txt\"))\nprint(abspath(\"link.txt\") == abspath(\"a.txt\"))",
+   "output": [
+    "true",
+    "false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "a.txt": "x"
+   },
+   "symlinks": {
+    "link.txt": "a.txt"
+   }
   }
  ]
 }

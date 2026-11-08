@@ -65,24 +65,6 @@
     "secret.txt": "top secret"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "top secret"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "top secret"
-     ],
-     "error": "",
-     "exit": 0
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
@@ -124,22 +106,6 @@
     "secret.txt": "top secret"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: /nova-sandbox-outside/x.txt"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: /nova-sandbox-outside/x.txt"
-     ],
-     "error": "",
-     "exit": 0
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
@@ -157,7 +123,7 @@
     "sbx.capabilities"
    ],
    "profile": "sandbox",
-   "source": "try { write(\"newdir/new.txt\", \"x\") } catch e { print(e) }\ntry { write(\"../new.txt\", \"x\") } catch e { print(e) }\nwrite(\"data/new/new.txt\", \"x\")\nprint(read(\"data/new/new.txt\"))",
+   "source": "try { write(\"newdir/new.txt\", \"x\") } catch e { print(e) }\ntry { write(\"../new.txt\", \"x\") } catch e { print(e) }\nmkdir(\"data/new\")\nwrite(\"data/new/new.txt\", \"x\")\nprint(read(\"data/new/new.txt\"))",
    "output": [
     "FileError: newdir/new.txt is outside the folders this program may use",
     "FileError: ../new.txt is outside the folders this program may use",
@@ -185,31 +151,14 @@
     "secret.txt": "top secret"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: newdir/new.txt"
-     ],
-     "error": "FileNotFoundError: data/new/new.txt",
-     "exit": 1,
-     "error_line": 3
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "FileNotFoundError: newdir/new.txt"
-     ],
-     "error": "FileNotFoundError: data/new/new.txt",
-     "exit": 1,
-     "error_line": 3
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
-      "FileNotFoundError: newdir/new.txt"
+      "FileNotFoundError: newdir/new.txt",
+      "x"
      ],
-     "error": "FileNotFoundError: data/new/new.txt",
-     "exit": 1
+     "error": "",
+     "exit": 0
     }
    }
   },
@@ -246,28 +195,6 @@
     "secret.txt": "top secret"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "FileNotFoundError: missing.txt",
-      "true",
-      "false"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "top secret",
-      "FileNotFoundError: missing.txt",
-      "true",
-      "false"
-     ],
-     "error": "",
-     "exit": 0
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
@@ -278,6 +205,177 @@
      ],
      "error": "",
      "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-prefix-sibling-is-outside",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"data2/x.txt\")) } catch e { print(e) }\nprint(read(\"data/in.txt\"))",
+   "output": [
+    "FileError: data2/x.txt is outside the folders this program may use",
+    "hello"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.prefix:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret",
+    "data2/x.txt": "not for you"
+   },
+   "divergences": {
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "not for you",
+      "hello"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-case-does-not-bring-a-path-inside",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"SECRET.txt\")) } catch e { print(e) }\ntry { print(read(\"Data/../secret.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: SECRET.txt is outside the folders this program may use",
+    "FileError: Data/../secret.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.case:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "divergences": {
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: SECRET.txt",
+      "FileNotFoundError: Data/../secret.txt"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-symlink-out-of-the-folder",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"data/link.txt\")) } catch e { print(e) }\ntry { print(exists(\"data/link.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: data/link.txt is outside the folders this program may use",
+    "FileError: data/link.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.symlink:deny"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "symlinks": {
+    "data/link.txt": "../secret.txt"
+   },
+   "divergences": {
+    "bootstrap": {
+     "id": "D-041",
+     "output": [
+      "FileNotFoundError: data/link.txt",
+      "false"
+     ],
+     "error": "",
+     "exit": 0
+    }
+   }
+  },
+  {
+   "name": "sbx-paths-symlink-inside-the-folder-works",
+   "spec": [
+    "sbx.paths",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "print(read(\"data/inlink.txt\"))",
+   "output": [
+    "hello"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "matrix": [
+    "paths.inside:grant"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   },
+   "symlinks": {
+    "data/inlink.txt": "in.txt"
+   },
+   "divergences": {
+    "bootstrap": {
+     "id": "D-041",
+     "output": [],
+     "error": "FileNotFoundError: data/inlink.txt",
+     "exit": 1
     }
    }
   },
@@ -309,24 +407,6 @@
     "other/o.nova": "export let y = 2"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
@@ -365,24 +445,6 @@
     "other/o.nova": "export let y = 2"
    },
    "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [
-      "2"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
     "bootstrap": {
      "id": "D-041",
      "output": [
