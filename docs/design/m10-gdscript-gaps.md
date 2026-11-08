@@ -36,5 +36,7 @@ repository, and only when the owner says to touch it.
 **List size limit (owner's decision, 2026-11-08).** No list may hold more than 1,000,000
 items: `range`, `append` and list `+` fail with `a list cannot have more than 1000000
 items` (`[pol.limits]`). The Python engine and the GDScript port (evaluator and VM2) both
-need it; the port's change is in the Reactor-Game repository. **Still unbounded:** a string
-can be doubled with `s + s`; the owner has been asked whether to bound strings the same way.
+need it; the port's change is in the Reactor-Game repository. **Strings too** (decision, same day): no string may have more than 1,000,000 characters
+(`a string cannot have more than 1000000 characters`); the text of a list or dictionary is
+built with a budget (`text_checked` in the reference) so a self-sharing structure is refused
+at once. The port needs a budgeted `text` as well.

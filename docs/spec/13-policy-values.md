@@ -67,7 +67,10 @@ turn a value into text the same way:
   dictionary key is written bare, not quoted: `{a: 1, b c: "x"}`.
 
 At the top level a string is not quoted: `print("a", ["a"])` shows `a ["a"]`.
-Collections nest to any depth with the same rule.
+Collections nest to any depth with the same rule. **A display text of more than 1,000,000
+characters is an error** (`a string cannot have more than 1000000 characters`, `[pol.limits]`)
+where the dialect makes one, and it is detected as the text is built, so a structure that
+shares its parts with itself is refused at once.
 
 ## [pol.truthiness] What counts as true
 
@@ -109,7 +112,8 @@ are evaluated before either is checked, so an error in an operand wins.
 If **either** operand of `+` is a string, the result is the string made of the
 display text (`[pol.text]`) of the left operand followed by that of the right, whatever
 the other kind is: `"n=" + 42` is `n=42`, `"x" + null` is `xnull`, `1 + "a"` is `1a`,
-`"v=" + [1, "x"]` is `v=[1, "x"]`. It associates to the left, so `"a" + 1 + 2` is
+`"v=" + [1, "x"]` is `v=[1, "x"]`. A result of more than 1,000,000 characters is the
+error of `[pol.text]` (with no line, as an operator error). It associates to the left, so `"a" + 1 + 2` is
 `a12` and `1 + 2 + "a"` is `3a`.
 
 If both are lists, the result is a **new** list with the items of the left and then the
