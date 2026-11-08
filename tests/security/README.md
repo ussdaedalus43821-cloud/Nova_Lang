@@ -1,6 +1,7 @@
 # Security tests (M11)
 
 ```
+python3 -m unittest discover -s tests/security   the capability, path and command-line tests
 python3 tests/security/matrix.py            the coverage matrix: which cell is proved on which engine
 python3 tests/security/matrix.py --strict   fail while any cell is pending (M11's exit criterion)
 python3 tests/run_all.py --station security-matrix

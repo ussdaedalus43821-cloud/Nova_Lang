@@ -836,6 +836,15 @@ def station_conformance(line):
     conformance.check_all(line.check)
 
 
+def station_security(line):
+    print("13a. security (the sandbox profile through the embedding API and the command line)")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
+                           os.path.join(HERE, "security"), "-v"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=300)
+    line.check(done.returncode == 0, "sandbox capability, path and command-line tests pass",
+               done.stdout + done.stderr)
+
+
 def station_security_matrix(line):
     print("13. security matrix (which capability and limit is proved on which engine)")
     sys.path.insert(0, os.path.join(HERE, "security"))
@@ -862,6 +871,7 @@ STATIONS = [
     ("compiler", station_compiler),
     ("differential", station_differential),
     ("conformance", station_conformance),
+    ("security", station_security),
     ("security-matrix", station_security_matrix),
 ]
 

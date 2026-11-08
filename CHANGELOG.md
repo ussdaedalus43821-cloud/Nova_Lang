@@ -26,6 +26,25 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 2: capability gating on all three engines
+- The `restricted` profile exists: `Nova(profile="restricted", read=[...], write=[...], import_from=[...], env=[...],
+  clock=True, random=True, stdin=True, process=True, regex=True, python=[...], limits={...})` and
+  `--profile restricted --allow-read DIR ...` on the command line, on the bytecode VM, the tree-walker and the
+  self-hosted interpreter. `trusted` is still the default of `Nova()` and of the command line, and nothing that runs
+  today changed. A denied name is not defined (`undefined name 'read'`), even as a value; the names stay reserved.
+- Path rules: every path argument and every `import` is resolved with `realpath` and compared with the granted
+  folders before the file system is touched (`..`, absolute paths, symbolic links, a sibling folder sharing a
+  prefix, a path that does not exist yet; the same error whether or not the path exists).
+- New host function `realpath(path)` (`[host.files]`, capability `process`).
+- A Python grant replaces the default import list. `exit()` in a restricted engine raises `ProgramExit` instead
+  of ending the embedder's process. New opcode `LOAD_BUILTIN` for gated names, so one compiled script is right
+  for either profile.
+- D-040, D-041 and D-044 are resolved; D-045 is new (the self-hosted interpreter has no type gate in the
+  restricted profile). 93 of 153 matrix cells are covered; the rest are the limits of slice 3.
+- `tests/security/test_capabilities.py` (21 tests) and the station `security`. Found and fixed by them: the
+  configuration errors crashed with an `AttributeError` instead of raising `NovaLangError`.
+- The restricted profile refuses to start on Windows with Python 3.7, whose `realpath` follows no symbolic link.
+
 ### M11 slice 1: the threat model, the sandbox specification and the coverage matrix (drafts)
 - `docs/design/m11-threat-model.md`: assets, actors, the threats the `restricted` profile defends and, first,
   what it does not (ten items, N1 to N10). Draft: owner review and independent audit pending.

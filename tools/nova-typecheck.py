@@ -217,6 +217,7 @@ BUILTIN_SIGNATURES = {
     "choice": ([LIST], 1, ANY),
     "exists": ([STRING], 1, BOOL),
     "abspath": ([STRING], 1, STRING),
+    "realpath": ([STRING], 1, STRING),
     "dirname": ([STRING], 1, STRING),
     "time": ([], 0, FLOAT),
     "random": ([], 0, FLOAT),

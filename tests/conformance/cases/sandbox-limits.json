@@ -62,7 +62,7 @@
     "bootstrap": {
      "id": "D-042",
      "output": [],
-     "error": "InternalError: RecursionError: maximum recursion depth exceeded",
+     "error": "NovaError: call depth of 1200 exceeded - is the recursion missing a base case?",
      "exit": 1
     }
    }

@@ -25,7 +25,7 @@ agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
 host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message), D-040 to D-044 (the sandbox profile of `16-sandbox.md`, written before it is implemented) and D-025 and D-033 (case conversion beyond ASCII,
+difference in one error message), D-040 to D-045 (the sandbox profile of `16-sandbox.md`: D-040, D-041 and D-044 are resolved, D-042, D-043 and D-045 are open) and D-025 and D-033 (case conversion beyond ASCII,
 an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
 policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
 `13-policy-values.md`.
@@ -611,7 +611,7 @@ NovaLang functions: it stays host-defined, and the cases use ASCII only.
 
 ### D-040 — No capability gating: every host function is defined for every program
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: bytecode VM, tree-walker, self-hosted
 Spec: `[sbx.capabilities]`, `[sbx.profiles]`
@@ -629,9 +629,10 @@ ignore the `sandbox` object and record what each does instead of the specified
 Fix: a `Capabilities` object chosen when the engine is created; a denied name is not
 defined.
 
+Resolved 2026-11-08 (M11 slice 2): `Capabilities` in `novalang.py` for the bytecode VM and the tree-walker, `configure_sandbox` in `novalang.nova` for the self-hosted interpreter. A denied name is not defined (the VM looks gated names up when the program runs, `LOAD_BUILTIN`, so one compiled script is right for either profile); the names stay reserved, so `let read = 1` is the same error in both profiles.
 ### D-041 — No path confinement
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: bytecode VM, tree-walker, self-hosted
 Spec: `[sbx.paths]`
@@ -644,6 +645,7 @@ folders this program may use`. Closed by slice 2 of M11.
 Fix: resolve every path to its real path and compare it with the granted folders before
 touching the file system.
 
+Resolved 2026-11-08 (M11 slice 2): every path argument and every `import` is resolved with `realpath` and compared with the granted folders (`..`, absolute paths, symbolic links, a sibling folder that shares a prefix, a path that does not exist yet) before the file system is touched. The self-hosted interpreter uses the new host function `realpath` (`[host.files]`).
 ### D-042 — Size, depth and nesting limits are missing, or end in the host's failure
 
 Status: open
@@ -680,7 +682,7 @@ Fix: count steps and check the clock in the same place; the three errors are of 
 
 ### D-044 — Sandbox settings are not read; a Python grant does not replace the default list
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: bytecode VM, tree-walker, self-hosted
 Spec: `[sbx.capabilities]`, `[sbx.profiles]`
@@ -690,6 +692,23 @@ default list of `[py.import]`, which holds `re`, `random` and `datetime`: three 
 that would give back the `regex`, `random` and `clock` capabilities. Closed by slice 2 of M11.
 
 Fix: `python=[...]` names the only modules `python.import` accepts.
+
+Resolved 2026-11-08 (M11 slice 2): the `python` grant names the only modules `python.import` accepts, on all three engines; the plain `--allow-python` is refused with `--profile restricted`.
+### D-045 — The self-hosted interpreter has no type gate in the restricted profile
+
+Status: open
+Untested: it needs an annotated module with a wrong type, imported by a restricted program; the case is added in slice 6 of M11
+Class: implementation bug
+Engines: self-hosted
+Spec: `[sbx.profiles]`
+
+The self-hosted interpreter reads the program and its modules itself, so its launcher type-checks the whole import graph
+before it starts (`bootstrap.py`). In the restricted profile that walk would read modules wherever the program's import
+paths point before any grant is consulted, so it is skipped: a program whose annotations are wrong is not refused
+there, while the bytecode VM and the tree-walker refuse it when the module is loaded. Not a way out of a grant; a
+difference in what is refused.
+
+Fix: type-check each module as it is imported, after the path check, as the host does.
 
 ## Not divergences, but worth knowing
 

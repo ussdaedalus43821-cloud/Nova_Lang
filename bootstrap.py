@@ -58,8 +58,35 @@ def type_check_graph(target_path):
     return ["TypeCheckError: " + line for line in lines]
 
 
+def nova_literal(value):
+    """A Python value (str, bool, int, list, dict) as NovaLang source text."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return nova_string_literal(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(nova_literal(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join("{}: {}".format(nova_string_literal(key), nova_literal(item))
+                               for key, item in value.items()) + "}"
+    raise TypeError("cannot write {!r} as NovaLang".format(value))
+
+
+def sandbox_config(settings):
+    """The engine's sandbox settings (Capabilities.settings) as the dictionary novalang.nova's
+    configure_sandbox() reads: every setting present, so the engine need not default any."""
+    config = {"profile": settings.get("profile", "trusted"), "limits": settings.get("limits", {})}
+    for name in ("read", "write", "import_from", "env", "python"):
+        config[name] = list(settings.get(name, ()))
+    for name in ("clock", "random", "stdin", "process", "regex"):
+        config[name] = bool(settings.get(name, False))
+    return config
+
+
 def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, engine=None,
-                  allow_python=False):
+                  allow_python=False, sandbox=None):
     """Run `target_path` through the self-hosted interpreter defined in
     `engine_path`. `script_args` become what the target's own args() call
     sees - the Stage 11 standard-library built-in, read from novalang.py's
@@ -78,12 +105,19 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # The self-hosted interpreter reads the target and its imports itself,
     # out of sight of novalang.py's type gate, so the whole import graph
     # is type-checked here, before novalang.nova ever sees it.
-    refusal = type_check_graph(target_path)
+    # In the restricted profile the walk would read modules wherever the program's import
+    # paths point, before any grant is consulted: it is skipped, and the target alone is
+    # not type-checked either (D-040: the self-hosted interpreter has no type gate there).
+    restricted = bool(sandbox) and sandbox.get("profile") == "restricted"
+    refusal = [] if restricted else type_check_graph(target_path)
     if refusal:
         print("\n".join(refusal), file=sys.stderr)
         return 1
 
-    program = engine_source + "\nrun_file({})\n".format(nova_string_literal(target_path))
+    program = engine_source
+    if restricted:
+        program += "\nconfigure_sandbox({})\n".format(nova_literal(sandbox_config(sandbox)))
+    program += "\nrun_file({})\n".format(nova_string_literal(target_path))
 
     # `engine` ("vm" or "tree") is passed in, never read from novalang's
     # DEFAULT_ENGINE: when novalang.py runs as a script it is __main__, and
@@ -92,7 +126,13 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # read by the __main__ copy of novalang.py, not by this module's copy.
     # novalang.nova forwards python.* to this interpreter's own `python`, so
     # the one switch covers the program it runs.
+    if restricted:
+        # The engine that runs novalang.nova stays trusted (it reads files for the program), but
+        # the Python bridge it forwards to the program is limited to the granted modules.
+        allow_python = bool(sandbox.get("python"))
     interpreter = Interpreter(engine, allow_python=allow_python)
+    if restricted:
+        interpreter.python_override = tuple(sandbox.get("python", ()))
     # novalang.nova tracks "the directory of whichever file is currently
     # executing" itself, in its own FILE_STACK - run_file() pushes the
     # target's directory before running it, so the target's own relative

@@ -186,7 +186,7 @@
     },
     "builtins": {
       "name": "support.function.builtin.novalang",
-      "match": "\\b(abs|abspath|append|args|assert|ceil|choice|copy|cos|cwd|dirname|env|exists|exit|filter|floor|format_time|input|join|keys|len|listdir|ln|log|log10|lower|map|max|min|mkdir|now|num|pad|pad_left|platform|pop|pow|print|randint|random|range|read|reduce|regex|remove|rename|replace_all|reverse|round|shuffle|sin|sleep|sorted|split|split_lines|sqrt|str|sum|tan|time|trim|type|upper|values|write)\\b(?=\\s*\\()"
+      "match": "\\b(abs|abspath|append|args|assert|ceil|choice|copy|cos|cwd|dirname|env|exists|exit|filter|floor|format_time|input|join|keys|len|listdir|ln|log|log10|lower|map|max|min|mkdir|now|num|pad|pad_left|platform|pop|pow|print|randint|random|range|read|realpath|reduce|regex|remove|rename|replace_all|reverse|round|shuffle|sin|sleep|sorted|split|split_lines|sqrt|str|sum|tan|time|trim|type|upper|values|write)\\b(?=\\s*\\()"
     },
     "predefined": {
       "name": "support.constant.novalang",

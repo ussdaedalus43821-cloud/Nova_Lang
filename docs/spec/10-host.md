@@ -32,6 +32,11 @@ resolved against the working directory. Whether two names that differ only in ca
   `FileError: <path> is a directory - delete() only removes files`.
 - `rename(old, new)` renames a file or folder; `copy(src, dst)` copies a file's
   contents and metadata. Renaming onto an existing file is host-defined.
+- `realpath(path)` is `abspath(path)` with every symbolic link in it followed: the path the
+  operating system would really open. A part that does not exist is kept as written (after the
+  parts that do exist were resolved), so `realpath` of a name that is not there is still a path.
+  The sandbox checks a program's paths against its grants with it (`16-sandbox.md`
+  `[sbx.paths]`).
 - `cwd()` is the working directory as a string. `abspath(path)` is the absolute,
   normalized form of a path and `dirname(path)` is everything before its last
   separator (`""` if none). Both are helpers for tools such as the module resolver

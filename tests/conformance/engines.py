@@ -62,12 +62,30 @@ def lines_of(text):
     return parts
 
 
-def write_files(folder, source, files):
-    """The case's module files and its program (main.nova) in `folder`."""
+def write_files(folder, source, files, symlinks=None):
+    """The case's module files and its program (main.nova) in `folder`, and its symbolic links
+    (`symlinks`: {"data/link.txt": "../secret.txt"}, the target as written in the link)."""
     for name, text in dict(files or {}, **{"main.nova": source}).items():
         path = Path(folder).joinpath(*name.split("/"))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text.encode("utf-8"))
+    for name, target in (symlinks or {}).items():
+        path = Path(folder).joinpath(*name.split("/"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(target, str(path))
+
+
+def symlinks_unavailable():
+    """Can this machine make symbolic links and resolve them? (Windows without the privilege cannot
+    make one; Windows with Python 3.7 does not follow one when it resolves a path.)"""
+    if novalang.SANDBOX_UNSUPPORTED:
+        return True
+    with tempfile.TemporaryDirectory(prefix="nova-link-") as folder:
+        try:
+            os.symlink("target", os.path.join(folder, "link"))
+        except (OSError, NotImplementedError, AttributeError):
+            return True
+    return False
 
 
 @contextlib.contextmanager
@@ -86,25 +104,31 @@ def patched_environment(env):
                 os.environ[name] = old
 
 
-def run_in_process(source, engine, files=None, env=None, stdin="", args=None, allow_python=False):
+def run_in_process(source, engine, files=None, env=None, stdin="", args=None, allow_python=False,
+                   sandbox=None, symlinks=None):
     with patched_environment(env):
         if files is None:
-            return run_in_process_in(source, engine, None, stdin, args, allow_python)
+            return run_in_process_in(source, engine, None, stdin, args, allow_python, sandbox)
         with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
-            write_files(folder, source, files)
+            write_files(folder, source, files, symlinks)
             here = os.getcwd()
             os.chdir(folder)
             try:
                 return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args,
-                                         allow_python)
+                                         allow_python, sandbox)
             finally:
                 os.chdir(here)
 
 
-def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=False):
+def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=False, sandbox=None):
     out = io.StringIO()
     error, line, status = "", None, 0
-    interpreter = novalang.Interpreter(engine, allow_python=allow_python)
+    # The `sandbox` object of a case is the engine's configuration (docs/spec/16-sandbox.md): the
+    # grants are folders relative to the case's folder, which is the working directory here.
+    capabilities = None
+    if sandbox is not None:
+        capabilities = novalang.Capabilities(**sandbox)
+    interpreter = novalang.Interpreter(engine, allow_python=allow_python, capabilities=capabilities)
     if folder is not None:
         interpreter.file_stack.append(folder)       # as run_source does for a file
     real_stdin, real_args = sys.stdin, novalang.SCRIPT_ARGS
@@ -123,6 +147,8 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
                 error = "{}: {}".format(problem.label, message)
                 line = line_of(source, problem.position)
                 status = 1
+            except novalang.ProgramExit as stop:
+                status = stop.code
             except SystemExit as stop:
                 status = stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
             except RecursionError:
@@ -135,17 +161,39 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
     return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status}
 
 
-def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_python=False, timeout=120):
+SANDBOX_FLAGS = (("read", "--allow-read"), ("write", "--allow-write"), ("import_from", "--allow-import"),
+                 ("env", "--allow-env"), ("python", "--allow-python-module"))
+SANDBOX_SWITCHES = (("clock", "--allow-clock"), ("random", "--allow-random"), ("stdin", "--allow-stdin"),
+                    ("process", "--allow-process"), ("regex", "--allow-regex"))
+
+
+def sandbox_arguments(sandbox):
+    """A case's `sandbox` object as the command-line flags that select it."""
+    out = ["--profile", sandbox["profile"]]
+    for key, flag in SANDBOX_FLAGS:
+        for value in sandbox.get(key, ()):
+            out += [flag, value]
+    for key, flag in SANDBOX_SWITCHES:
+        if sandbox.get(key):
+            out.append(flag)
+    for name, value in sandbox.get("limits", {}).items():
+        out += ["--limit", "{}={}".format(name, value)]
+    return out
+
+
+def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_python=False, timeout=120,
+                  sandbox=None, symlinks=None):
     with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
         path = Path(folder) / "case.nova"
         if files is None:
             path.write_bytes(source.encode("utf-8"))
         else:
             path = Path(folder) / "main.nova"
-            write_files(folder, source, files)
+            write_files(folder, source, files, symlinks)
         try:
             done = subprocess.run(
                 [sys.executable, str(ROOT / "novalang.py")] + (["--allow-python"] if allow_python else [])
+                + (sandbox_arguments(sandbox) if sandbox else [])
                 + ["--bootstrap", str(path)] + list(args or []),
                 cwd=folder, input=(stdin or "").encode("utf-8"), capture_output=True, timeout=timeout,
                 env=dict(os.environ, PYTHONUTF8="1", **(env or {})),
@@ -165,14 +213,15 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_pytho
             "error": error, "error_line": None, "exit": done.returncode}
 
 
-def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=False):
+def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=False, sandbox=None,
+        symlinks=None):
     """`files` maps relative paths (with `/`) to text: the modules the program
     imports, or any file it reads, written beside it (as main.nova) in a folder
     of their own that is the working directory. `env` sets environment
     variables, `stdin` is what `input()` reads, `args` is what `args()` returns."""
     if engine == "bootstrap":
-        return run_bootstrap(source, files, env, stdin, args, allow_python)
-    return run_in_process(source, engine, files, env, stdin, args, allow_python)
+        return run_bootstrap(source, files, env, stdin, args, allow_python, sandbox=sandbox, symlinks=symlinks)
+    return run_in_process(source, engine, files, env, stdin, args, allow_python, sandbox, symlinks)
 
 
 def run_policy(case):
@@ -375,11 +424,12 @@ def run_case(case, engine):
         files = {}      # these cases touch the file system: a folder of their own
     if "embedding" in case:
         return run_embedding(case, engine)
-    # The `sandbox` object is not enforced yet (D-040 to D-044), except that a grant of Python
-    # modules turns the bridge on, which is what the engines can do today.
-    allow_python = bool(case.get("allow_python")) or bool(case.get("sandbox", {}).get("python"))
+    # The `sandbox` object is the engine's configuration (docs/spec/16-sandbox.md). The in-process
+    # engines take it as a Capabilities object; the self-hosted one as command-line flags.
+    sandbox = case.get("sandbox")
+    allow_python = bool(case.get("allow_python"))
     return run(case["source"], engine, files, case.get("env"),
-               case.get("stdin", ""), case.get("args"), allow_python)
+               case.get("stdin", ""), case.get("args"), allow_python, sandbox, case.get("symlinks"))
 
 
 def render_argument(value):

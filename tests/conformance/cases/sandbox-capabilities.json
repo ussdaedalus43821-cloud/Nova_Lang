@@ -29,38 +29,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "hello",
-      "true",
-      "[\"in.txt\", \"sub\"]"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "hello",
-      "true",
-      "[\"in.txt\", \"sub\"]"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "hello",
-      "true",
-      "[\"in.txt\", \"sub\"]"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -123,29 +91,7 @@
    "files": {
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
-    "secret.txt": "top secret",
-    "data/a.txt": "a",
-    "data/c.txt": "c"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
+    "secret.txt": "top secret"
    }
   },
   {
@@ -175,32 +121,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "[1, 2]"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "[1, 2]"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "[1, 2]"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -267,26 +187,6 @@
     "data/in.txt": "hello",
     "data/sub/deep.txt": "deep",
     "secret.txt": "top secret"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-041",
-     "output": [],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-041",
-     "output": [],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-041",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -310,34 +210,6 @@
    ],
    "files": {
     "lib/m.nova": "export let x = 1"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -392,32 +264,6 @@
    "env": {
     "NOVA_SECRET": "s3cret",
     "NOVA_OTHER": "other"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "s3cret"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "s3cret"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "s3cret"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -449,38 +295,6 @@
    "env": {
     "NOVA_SECRET": "s3cret",
     "NOVA_OTHER": "other"
-   },
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "s3cret",
-      "other",
-      "nothing"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "s3cret",
-      "other",
-      "nothing"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "s3cret",
-      "other",
-      "nothing"
-     ],
-     "error": "",
-     "exit": 0
-    }
    }
   },
   {
@@ -506,39 +320,7 @@
    },
    "matrix": [
     "clock:deny"
-   ],
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "string",
-      "4"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "string",
-      "4"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "string",
-      "4"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-clock-granted",
@@ -589,39 +371,7 @@
    },
    "matrix": [
     "random:deny"
-   ],
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "number",
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "number",
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "number",
-      "number",
-      "1"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-random-granted",
@@ -669,33 +419,7 @@
    "matrix": [
     "stdin:deny"
    ],
-   "stdin": "line\n",
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "line"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "line"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "line"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   "stdin": "line\n"
   },
   {
    "name": "sbx-stdin-granted",
@@ -728,13 +452,14 @@
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "try { exit(3) } catch e { print(e) }\ntry { print(args()) } catch e { print(e) }\ntry { print(platform()) } catch e { print(e) }\ntry { print(cwd()) } catch e { print(e) }\ntry { print(abspath(\"x\")) } catch e { print(e) }",
+   "source": "try { exit(3) } catch e { print(e) }\ntry { print(args()) } catch e { print(e) }\ntry { print(platform()) } catch e { print(e) }\ntry { print(cwd()) } catch e { print(e) }\ntry { print(abspath(\"x\")) } catch e { print(e) }\ntry { print(realpath(\"x\")) } catch e { print(e) }",
    "output": [
     "undefined name 'exit'",
     "undefined name 'args'",
     "undefined name 'platform'",
     "undefined name 'cwd'",
-    "undefined name 'abspath'"
+    "undefined name 'abspath'",
+    "undefined name 'realpath'"
    ],
    "error": "",
    "error_line": null,
@@ -745,27 +470,7 @@
    },
    "matrix": [
     "process:deny"
-   ],
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 3
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 3
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [],
-     "error": "",
-     "exit": 3
-    }
-   }
+   ]
   },
   {
    "name": "sbx-process-granted",
@@ -774,10 +479,11 @@
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "print(type(platform()))\nprint(args())\nprint(type(cwd()))\nprint(type(abspath(\"x\")))\nexit(3)",
+   "source": "print(type(platform()))\nprint(args())\nprint(type(cwd()))\nprint(type(abspath(\"x\")))\nprint(type(realpath(\"x\")))\nexit(3)",
    "output": [
     "string",
     "[]",
+    "string",
     "string",
     "string"
    ],
@@ -815,36 +521,7 @@
    },
    "matrix": [
     "regex:deny"
-   ],
-   "divergences": {
-    "vm": {
-     "id": "D-040",
-     "output": [
-      "true",
-      "a-b"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "tree": {
-     "id": "D-040",
-     "output": [
-      "true",
-      "a-b"
-     ],
-     "error": "",
-     "exit": 0
-    },
-    "bootstrap": {
-     "id": "D-040",
-     "output": [
-      "true",
-      "a-b"
-     ],
-     "error": "",
-     "exit": 0
-    }
-   }
+   ]
   },
   {
    "name": "sbx-regex-granted",
@@ -939,28 +616,24 @@
    },
    "matrix": [
     "python:deny"
+   ]
+  },
+  {
+   "name": "sbx-denied-names-stay-reserved",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles",
+    "scope.reserved"
    ],
-   "divergences": {
-    "vm": {
-     "id": "D-044",
-     "output": [],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "tree": {
-     "id": "D-044",
-     "output": [],
-     "error": "",
-     "exit": 0,
-     "error_line": null
-    },
-    "bootstrap": {
-     "id": "D-044",
-     "output": [],
-     "error": "",
-     "exit": 0
-    }
+   "profile": "sandbox",
+   "source": "let read = 1",
+   "output": [],
+   "error": "NovaError: 'read' is a built-in function and cannot be used as a variable name",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
    }
   },
   {

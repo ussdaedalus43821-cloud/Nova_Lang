@@ -1,9 +1,10 @@
 # 16. The sandbox profile: capabilities and limits
 
 Status: **draft, owner review pending, not independently audited.** This chapter is the
-specification of milestone M11. No implementation follows it yet: every case that cites it
-records, in the divergence log, how the engines still differ (D-040 to D-044), and each
-slice of M11 closes some of them. The threat model is
+specification of milestone M11. **Implemented** on the bytecode VM, the tree-walker and the
+self-hosted interpreter: the profiles, every capability and the path rules (`[sbx.capabilities]`,
+`[sbx.paths]`). **Not yet implemented:** the limits of `[sbx.limits]` that do not already exist
+(D-042, D-043, closed by slice 3 of M11). The threat model is
 [`../design/m11-threat-model.md`](../design/m11-threat-model.md) and the decision behind it is
 [ADR 0003](../decisions/0003-security-stance.md).
 
@@ -32,14 +33,20 @@ created.
   on the command line and `Nova(profile="restricted", ...)` in a host program. The grants and
   the limits are the other arguments (below).
 
+**Where the restricted profile starts.** It refuses to start on Windows with Python 3.7, with
+`NovaLangError: the restricted profile needs Python 3.8 or later on Windows`: that Python does not follow
+symbolic links when it resolves a path, so the path rules of `[sbx.paths]` would be weaker there without
+saying so. No other combination is refused.
+
 A profile applies to the whole engine: to the program, to every module it imports and to every
 function the host calls into it. The profile cannot be changed from inside a program, and no
 program can name a capability it was not given (`[sec.principles]`, `[sec.no-reflection]`).
 
 **Configuration.** The command line takes `--allow-read DIR`, `--allow-write DIR`,
 `--allow-import DIR`, `--allow-env NAME` (each repeatable), `--allow-clock`, `--allow-random`,
-`--allow-stdin`, `--allow-process`, `--allow-regex`, `--allow-python MODULE` (repeatable) and
-`--limit NAME=VALUE` (repeatable). The embedding names are the same, with underscores:
+`--allow-stdin`, `--allow-process`, `--allow-regex`, `--allow-python-module MODULE` (repeatable) and
+`--limit NAME=VALUE` (repeatable). The plain `--allow-python` of `[py.off]` opens the whole default
+module list and is refused with `--profile restricted`. The embedding names are the same, with underscores:
 `Nova(profile="restricted", read=[dir, ...], write=[...], import_from=[...], env=[name, ...],
 clock=True, random=True, stdin=True, process=True, regex=True, python=[module, ...],
 limits={"steps": 100000})`. In a conformance case the same settings are the `sandbox` object
@@ -61,7 +68,7 @@ In `restricted` a capability is absent unless granted.
 | `clock` | `time`, `now`, `sleep`, `format_time` | on or off | `format_time` reads the local time zone |
 | `random` | `random`, `randint`, `choice`, `shuffle` | on or off | |
 | `stdin` | `input` | on or off | |
-| `process` | `exit`, `args`, `platform`, `cwd`, `abspath` | on or off | `exit` ends the run with that status and never ends the embedder's process |
+| `process` | `exit`, `args`, `platform`, `cwd`, `abspath`, `realpath` | on or off | `exit` ends the run with that status and never ends the embedder's process; `cwd`, `abspath` and `realpath` reveal the layout of the machine |
 | `regex` | `regex`, `replace_all` | on or off | a pattern can run for ever on a small input and no engine can interrupt it, so this is off unless granted, and a host that grants it must be able to stop the run from outside (`[sbx.limits]`, `time`) |
 | `python` | the `python` bridge | module names | `[py.off]`, `[py.registry]`; a granted module is the embedder's decision. **The grant replaces the default import list of `[py.import]`**: only the modules named in it can be imported, because `re`, `random` and `datetime` are on the default list and would give back `regex`, `random` and `clock` |
 
@@ -84,7 +91,10 @@ pretend version of the function. The two forms that cannot be undefined because 
 syntax or share a name with a function that stays (the file form of `append`, the `delete`
 statement of a file) fail with `NovaError: the 'files.write' capability is not granted`.
 A program cannot tell a denied capability from a name that does not exist, except for those
-two forms. A module imported without the `import` capability fails with `ImportError: the
+two forms and for one more thing: **the names stay reserved** (`[scope.reserved]`) in every
+profile, so `let read = 1` is refused with `'read' is a built-in function and cannot be used as a
+variable name` whether or not `read` is granted. A program that compiles in `trusted` therefore
+compiles in `restricted`, and the formatter, the linter and the parser need no profile. A module imported without the `import` capability fails with `ImportError: the
 'import' capability is not granted`.
 
 **The Python bridge** is the exception to "not defined": `python` is defined in every program
@@ -131,7 +141,8 @@ Each rule is a cell of the coverage matrix, and needs a case on every engine:
 | `paths.dotdot` | a path that leaves the folder through `..` is denied |
 | `paths.absolute` | an absolute path outside the folders is denied |
 | `paths.symlink` | a symbolic link inside a folder that points outside is denied |
-| `paths.case` | on a file system that ignores case, a different spelling of an outside folder is denied |
+| `paths.case` | an outside path is outside however its letters are cased |
+| `paths.prefix` | a folder whose name starts with a granted folder's name (`data2` beside `data`) is outside |
 | `paths.missing` | a path that does not exist is judged by its closest existing parent |
 | `paths.same-error` | a denied path gives the same error whether or not it exists |
 | `paths.import` | `import` follows the same grant |

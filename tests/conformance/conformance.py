@@ -120,6 +120,10 @@ def validate(cases, sections, log):
             problems.append("{} cites no spec section".format(where))
         if case.get("profile") == "sandbox" and "sandbox" not in case:
             problems.append("{} is a sandbox case with no 'sandbox' object".format(where))
+        for name, target in (case.get("symlinks") or {}).items():
+            if not isinstance(target, str) or name.startswith("/") or "\\" in name or ":" in name \
+                    or any(part in ("", ".", "..") for part in name.split("/")):
+                problems.append("{} has a symlinks entry {!r} that is not a relative name and a target".format(where, name))
         for cell in case.get("matrix", []):
             if not re.fullmatch(r"[a-z]+(\.[a-z-]+)*:(deny|grant|trip|uncatchable|within)", cell):
                 problems.append("{} has matrix cell {!r} that is not 'cell:kind'".format(where, cell))
@@ -183,7 +187,7 @@ def normalize(engine, expected_error, result):
                 # A labelled failure of the language's own (ImportError,
                 # TypeError) carries its label in the message text.
                 inner, _, rest = message.partition(": ")
-                if inner in ("ImportError", "TypeError", "AssertionError"):
+                if inner in ("ImportError", "TypeError", "AssertionError", "FileError", "FileNotFoundError", "LimitError"):
                     label, message = inner, rest
             result["error"] = label + ": " + message
         result["error_line"] = None
@@ -234,6 +238,10 @@ def judge(case, engine, result):
     return differences(expected, got, engine)
 
 
+def novalang_sandbox_unsupported():
+    return engines.novalang.SANDBOX_UNSUPPORTED
+
+
 def tree_walker_stack_limited():
     """The tree-walker cannot run deep recursion on Windows before Python 3.11:
     it overflows the native stack and ends the process (docs/CI.md). Cases marked
@@ -263,11 +271,18 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
           "\n".join(problems[:40]))
     if problems:
         return
+    no_links = engines.symlinks_unavailable()
+    no_sandbox = novalang_sandbox_unsupported()
+
+    def runs_here(case):
+        """Cases this machine cannot run are left out for every engine, the slow one included."""
+        return not (no_links and case.get("symlinks")) and not (no_sandbox and case["profile"] == "sandbox")
+
     # Start the slow engine first so it overlaps the in-process ones.
     pending = {}
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     if "bootstrap" in selected:
-        pending["bootstrap"] = pool.submit(run_engine, cases, "bootstrap")
+        pending["bootstrap"] = pool.submit(run_engine, [case for case in cases if runs_here(case)], "bootstrap")
     names = {"vm": "the bytecode VM", "tree": "the tree-walker", "bootstrap": "the self-hosted interpreter",
              "policy": "the policy dialect engine"}
     dialect = sum(1 for case in cases if case["profile"] == "policy")
@@ -278,10 +293,16 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if hosted and "bootstrap" in selected:
         print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "
               "host that binds values and functions for the program, and it has no host.".format(hosted))
+    if no_links:
+        print("  SKIPPED: {} cases that need a symbolic link did not run: this machine cannot make "
+              "one.".format(sum(1 for case in cases if case.get("symlinks"))))
+    if no_sandbox:
+        print("  SKIPPED: {} sandbox cases did not run: the restricted profile needs Python 3.8 or later on "
+              "Windows ([sbx.profiles]).".format(sum(1 for case in cases if case["profile"] == "sandbox")))
     for engine in selected:
-        runnable = cases
+        runnable = [case for case in cases if runs_here(case)]
         if engine == "tree" and tree_walker_stack_limited():
-            runnable = [case for case in cases if not case.get("deep")]
+            runnable = [case for case in runnable if not case.get("deep")]
             nova_cases = [case for case in cases if case["profile"] != "policy"]
             print("  SKIPPED: the tree-walker did not run {} of {} conformance cases (marked deep): "
                   "on Windows with Python {}.{} it overflows the native stack on runaway recursion "
