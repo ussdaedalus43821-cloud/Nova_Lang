@@ -1641,6 +1641,10 @@ def describe(token):
         return "the string {!r}".format(token.value)
     if token.type == TT_FSTRING:
         return "an f-string"
+    if token.type == TT_NUMBER and isinstance(token.value, float):
+        # A number written with a point always shows one ([err.syntax]).
+        finite = token.value - token.value == 0
+        return float_text(token.value) if finite else format_float(token.value)
     return "{!r}".format(token.value)
 
 

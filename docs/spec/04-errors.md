@@ -106,7 +106,9 @@ Found while reading the source (`[lex.*]`), before anything runs:
 Found while parsing, before anything runs. The message says what was expected
 and what was found; `found` is followed by the token in quotes, or by a
 description: `the end of the line`, `the end of the input`, `the string 's'`, or
-a number. These are the messages the corpus pins:
+a number (an integer by its digits, a number written with a decimal point as a
+float that always shows its point: `5.` is `5.0`, `5.5` is `5.5`). These are the
+messages the corpus pins:
 
 | Message |
 | --- |

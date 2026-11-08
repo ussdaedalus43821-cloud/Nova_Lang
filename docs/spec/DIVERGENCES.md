@@ -24,7 +24,8 @@ The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001 and D-003 to D-011; D-002 and D-012 to D-014 are the host's
-own. Every entry but D-001 (normalized) is now resolved.
+own. Every entry but D-001 (normalized) and D-015 (a cosmetic difference in one
+error message) is now resolved.
 
 ### D-001 — Error headlines in the self-hosted interpreter
 
@@ -275,6 +276,25 @@ every power of two with its neighbours (subnormals included) and a large sample
 of random bit patterns. A shortcut that tries only the nearest decimal of each
 length is wrong for some powers of two (the first draft of the implementation
 was), which is why the rule and the test name the upper neighbour.
+
+### D-015 — A whole float in a syntax error loses its point
+
+Status: open
+Class: implementation bug (cosmetic)
+Engines: self-hosted
+Spec: `[err.syntax]`
+Cases: `lex-whole-float-literal-is-shown-with-its-point-in-a-syntax-error`
+
+When the offending token is a number written with a point and a whole value, such
+as `5.`, the host names it `5.0` and the self-hosted interpreter `5`: its lexer
+turns `5.` into the number 5 and the point is gone by the time the message is
+written. `5.5` and integers are the same in both. Nothing else about the error
+differs, and it can only appear inside a message about a syntax error.
+
+Accepted as a known cosmetic difference (owner, 2026-11-08) and not worth
+holding up the slice. It goes away when the self-hosted interpreter stops being
+a second implementation of the numbers, as it will once it targets the bytecode
+the VM runs.
 
 ## Not divergences, but worth knowing
 

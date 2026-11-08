@@ -968,6 +968,28 @@
    "error_line": 1,
    "exit": 1,
    "host_calls": []
+  },
+  {
+   "name": "lex-whole-float-literal-is-shown-with-its-point-in-a-syntax-error",
+   "spec": [
+    "lex.numbers",
+    "err.syntax"
+   ],
+   "profile": "core",
+   "source": "let x = 1 5.",
+   "output": [],
+   "error": "NovaError: expected a new line between statements, found 5.0",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "divergences": {
+    "bootstrap": {
+     "id": "D-015",
+     "output": [],
+     "error": "NovaError: expected a new line between statements, found 5",
+     "exit": 1
+    }
+   }
   }
  ]
 }

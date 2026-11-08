@@ -37,7 +37,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   hosts that do not exist yet (browsers, microcontrollers): an ambiguity is
   written down and tested, not left to what Python did. A versioning rule says
   what a major, minor and patch release may change in the language.
-- `tests/conformance/`: a host-neutral corpus of 358 cases (source, expected
+- `tests/conformance/`: a host-neutral corpus of 359 cases (source, expected
   output, error, line and exit status, the spec sections tested, a profile),
   in the shape the game port already uses, and a `conformance` station that
   runs it on the bytecode VM, the tree-walker and the self-hosted interpreter.
@@ -45,9 +45,11 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   section that does not exist, or a divergence is not in the log. The full
   suite is now 1,925 parent checks; the quick tier 1,852.
 - `docs/spec/DIVERGENCES.md`, the divergence log: where an engine does not
-  follow the text. 14 entries came out of this slice and 13 are closed in the
-  same slice. Only D-001 remains, a normalization: how the self-hosted
-  interpreter words error headlines.
+  follow the text. 15 entries came out of this slice and 13 are closed in the
+  same slice. Two remain: D-001, a normalization (how the self-hosted
+  interpreter words error headlines), and D-015, a cosmetic difference (a whole
+  float such as `5.` is named `5.0` by the host and `5` by the self-hosted
+  interpreter in a syntax error), accepted for now.
 - ADR 0003 (security stance) is accepted: capability gating and resource
   limits, not isolation.
 
