@@ -382,7 +382,7 @@ the module and without its name (`line 2: unknown function 'nope'` for line 2 of
 
 ## [pol.limits] Limits
 
-Two guards bound a run so a policy cannot hang or overflow its host.
+Four guards bound a run so a policy cannot hang or exhaust its host.
 
 - **Call depth.** At most 128 user-function calls may be active at once; the 129th
   fails with `call depth limit (128) exceeded -- infinite recursion?`. Built-in and
@@ -397,7 +397,27 @@ Two guards bound a run so a policy cannot hang or overflow its host.
   `let i = 0 while i < N { i = i + 1 } print(i)` takes exactly `6N + 8` steps, so
   `N = 83332` completes and `83333` does not.
 
-The counters start from zero for each run of the program and for each call a host
+- **List size.** No list may hold more than **1,000,000 items**. A call that would make one longer
+  fails at once with `a list cannot have more than 1000000 items`, before the memory is used: `range`
+  (checked from its arguments, before it builds anything), `append` (to a list that already has
+  1,000,000), and `+` on two lists whose items together would pass it. The first two carry the line
+  of the call; the error from `+` is an operator error and has no line (`[pol.errors]`). This also
+  stops a list doubled in a loop (`l = l + l`), which would otherwise use all of the host's memory
+  in about twenty steps.
+- **String size.** No string may have more than **1,000,000 characters**. Whatever would make one
+  longer fails at once with `a string cannot have more than 1000000 characters`: `+` with a string
+  (the operator error has no line), `join`, `str`, `print` (the whole entry), and every place a value
+  is turned into text (`[pol.text]`): `split`, `contains`, `upper`, `lower` and a dictionary key.
+  The text of a list or dictionary is cut off the moment it passes the limit, so a structure that
+  shares its parts with itself (`l = [l, l]` forty times, whose text would have 2^40 items) fails at
+  once instead of running for ever.
+
+**Not limited:** the number of entries in a dictionary (each costs steps, but a dictionary that
+survives from tick to tick can grow), the total memory of all the lists and strings a program
+holds, and the time `==` takes on structures that share parts with themselves. A host that needs
+those bounded has to bound them itself.
+
+The counters of the first two start from zero for each run of the program and for each call a host
 makes into it. A failure by either guard is an ordinary error (`[pol.errors]`).
 
 ## [pol.errors] Errors

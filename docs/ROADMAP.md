@@ -266,7 +266,7 @@ with NovaLang after a purely syntactic translation
 
 **Status.** Slices 1 to 3 are done: source, syntax, statements, scopes, calls, modules,
 limits and error text (`docs/spec/12-policy-syntax.md`, 23 sections); values, operators
-and the 38 built-in functions (`13-policy-values.md`, 18 sections); the game's reference
+and the 33 built-in functions (`13-policy-values.md`, 18 sections); the game's reference
 engine in `dialects/policy/`; and the rule engine (`14-policy-engine.md`, 15 sections); and 710 cases on the game's reference
 engine as the `policy` profile, including all 51 of the game's recorded oracle programs. Still to
 come, one slice each, ending in a green matrix and a PR: the reactor host contract and the 900-step

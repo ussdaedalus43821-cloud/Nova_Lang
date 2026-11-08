@@ -26,6 +26,21 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M10: list and string size limits for the policy dialect
+- No list may hold more than 1,000,000 items (owner's decision): `range`, `append` and `+` on two
+  lists fail at once with `a list cannot have more than 1000000 items`, `range` before it builds
+  anything. This closes a memory exhaustion (`range(1000000000)`, or `l = l + l` in a loop) that
+  neither the step budget nor the call depth limit could stop. Spec: `[pol.limits]`,
+  `[pol.lib-collections]`, `[pol.concat]`; 15 cases.
+- String size limit (owner's decision): no string may have more than 1,000,000 characters; `+`,
+  `join`, `str`, `print` and every conversion to text fail with `a string cannot have more than
+  1000000 characters`. The text of a list or dictionary is built with a budget, so a structure
+  that shares its parts with itself (`l = [l, l]` forty times) is refused at once instead of
+  running for ever. 17 cases; the policy corpus is 742. Dictionary size and `==` on shared
+  structures are still unbounded and are stated as such in `[pol.limits]`.
+- Correction: the policy dialect has **33** built-in functions, not 38 as the inventory, chapter 13
+  and earlier changelog entries said (NovaLang has 19 of the 33 names and lacks 14).
+
 ### M10 slice 3: the policy dialect's rule engine
 - `docs/spec/14-policy-engine.md`: 15 sections (`pol.*`) on `reactor`, `params`, `effects`,
   `signals`, `rule` (priority, `once`, `edge`), `fault`, `held`, reset, the order of one tick,
@@ -45,7 +60,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ### M10 slice 2: policy dialect values, operators and built-ins
 - `docs/spec/13-policy-values.md`: 18 sections (`pol.*`) on the dialect's values, how a
   number is written, truthiness, equality, arithmetic (division by zero is zero),
-  `+` with strings, ordering, `and`/`or`/`not`, indexing, dictionary keys, and all 38
+  `+` with strings, ordering, `and`/`or`/`not`, indexing, dictionary keys, and all 33
   built-in functions. Operator errors have no line number; that is now stated.
 - `tests/conformance/cases/policy-values.json`: 296 cases. With slice 1 the policy corpus
   is 542 cases, and **all 51 of the game's recorded oracle programs** are in it, source

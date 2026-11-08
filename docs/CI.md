@@ -196,6 +196,18 @@ Windows with older Pythons. A user program that recurses to the limit there
 still kills the process; the larger-stack thread remains the fix for that, and
 is a separate decision. Windows 3.7 stays a probe.
 
+## Python downloads that fail with HTTP 504
+
+The full jobs install old Pythons (3.7 to 3.10) with `actions/setup-python`, which
+downloads them from GitHub's `python-versions` mirror. On 2026-11-08 the mirror
+answered `Unexpected HTTP response: 504` three times in a row for runs of a few minutes at
+a time, failing `full` rows before a single test ran: it took up to three re-runs of the
+failed jobs to get one matrix through. The `full` job now tries `setup-python` up to three
+times: the first two attempts are `continue-on-error`, a pause of 45 and then 90 seconds
+follows each, and only the third can fail the job, so a real problem still fails it and only
+a flake is absorbed. A failed attempt shows in the log as a failed (but non-fatal) step.
+The quick tier uses Python 3.12, which the runner already has, and does not need this.
+
 ## Reproducing a job locally
 
 ```sh

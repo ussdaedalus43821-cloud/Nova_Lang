@@ -148,7 +148,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      # The runner downloads old Pythons (3.7 to 3.10) from GitHub's python-versions
+      # mirror, which now and then answers HTTP 504 three times in a row and fails the
+      # job before any test runs. Try again, twice, after a pause; only the last attempt
+      # may fail the job, so a real problem still does (docs/CI.md).
+      - id: python1
+        continue-on-error: true
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Pause, then retry setup-python (attempt 2)
+        if: steps.python1.outcome == 'failure'
+        shell: bash
+        run: sleep 45
+      - id: python2
+        if: steps.python1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Pause, then retry setup-python (attempt 3)
+        if: steps.python1.outcome == 'failure' && steps.python2.outcome == 'failure'
+        shell: bash
+        run: sleep 90
+      - name: setup-python (attempt 3, final)
+        if: steps.python1.outcome == 'failure' && steps.python2.outcome == 'failure'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
