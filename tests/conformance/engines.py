@@ -212,6 +212,86 @@ def policy_value(value):
     return value
 
 
+class ReactorModel:
+    """The reactor game's host, as far as the rule engine can tell (docs/spec/15-policy-reactor.md).
+
+    It registers the eight host functions with their effects on the engine, and keeps the few
+    pieces of host state that decide the inputs the policy sees on the next tick: the scram latch,
+    the time it latched, and the game-over, victory and meltdown flags. What the case supplies as
+    inputs is what the plant and the operator provide (time, the measurements, the rods,
+    `operator_scram`); `scram`, `scram_elapsed`, `game_over`, `victory` and `meltdown` are the
+    host's and are added here."""
+
+    NAMES = ("log", "alarm", "scram", "reset_trip", "meltdown", "victory", "inject_fault", "clear_fault")
+
+    def __init__(self, machine, calls, text):
+        self.machine, self.calls, self.text = machine, calls, text
+        self.reset()
+        for name in self.NAMES:
+            machine.register_function(name, self.make(name))
+
+    def reset(self):
+        self.scram, self.scram_t = False, 0.0
+        self.game_over = self.victory = self.meltdown = False
+        self.scram_requested = self.trip_reset = False
+
+    def make(self, name):
+        effect = getattr(self, "fn_" + name, None)
+
+        def call(args):
+            self.calls.append(name + "(" + ", ".join(self.text(a) for a in args) + ")")
+            if effect is not None:
+                effect(args)
+            return None
+        return call
+
+    def end_run(self):
+        self.game_over = True
+        for key, value in (("game_over", True), ("meltdown", self.meltdown), ("victory", self.victory),
+                           ("running", False)):
+            self.machine.set_global(key, value)
+
+    def fn_scram(self, args):
+        if not self.scram:
+            self.scram_requested = True
+            self.machine.set_global("scram", True)
+
+    def fn_reset_trip(self, args):
+        self.trip_reset = True
+        self.machine.set_global("scram", False)
+
+    def fn_meltdown(self, args):
+        if not self.meltdown:
+            self.meltdown = True
+            self.end_run()
+
+    def fn_victory(self, args):
+        if not self.victory:
+            self.victory = True
+            self.end_run()
+
+    def fn_inject_fault(self, args):
+        if args:
+            self.machine.inject_fault(self.text(args[0]))
+
+    def fn_clear_fault(self, args):
+        self.machine.clear_fault()
+
+    def tick(self, dt, inputs, faults):
+        given = dict(inputs)
+        given.update({"scram": self.scram, "scram_elapsed": (given.get("t", 0.0) - self.scram_t) if self.scram else 0.0,
+                      "game_over": self.game_over, "victory": self.victory, "meltdown": self.meltdown})
+        given["operator_scram"] = bool(given.get("operator_scram", False))
+        self.scram_requested = self.trip_reset = False
+        ok = self.machine.tick(dt, given, faults)
+        if ok:
+            if self.scram_requested and not self.scram:
+                self.scram, self.scram_t = True, given.get("t", 0.0)
+            elif self.trip_reset and self.scram:
+                self.scram = False
+        return ok
+
+
 def run_policy_engine(case):
     """A policy-dialect case that drives the rule engine step by step
     (docs/spec/14-policy-engine.md). `engine` is {"seed": n, "watch": [global names],
@@ -219,7 +299,8 @@ def run_policy_engine(case):
         {"tick": {"dt": s, "inputs": {...}, "faults": bool}}
         {"inject_fault": name}   {"clear_fault": true}   {"reset": seed}
         {"call": [name, args...]}   {"set": {name: value}}   {"describe": true}
-    and the case's `results` has one entry per step:
+    and, with `"host": "reactor"`, the engine runs under the reactor game's host model (ReactorModel,
+    below) in place of the plain recording host functions. The case's `results` has one entry per step:
         {"ok": bool, "error": text, "output": [...], "host_calls": [...],
          "watch": {name: value}, "value": result of a call}
     The case's own output, error, exit and host_calls are those of loading the program."""
@@ -233,10 +314,14 @@ def run_policy_engine(case):
     files = case.get("files") or {}
     machine = nova_vm.NovaVM(random.Random(spec.get("seed", 12345)), module_reader=files.get)
     calls = []
-    for name in case.get("host_functions", []):
-        machine.register_function(
-            name, (lambda n: lambda args: calls.append(
-                n + "(" + ", ".join(nova_evaluator.text(a) for a in args) + ")"))(name))
+    reactor = None
+    if spec.get("host") == "reactor":
+        reactor = ReactorModel(machine, calls, nova_evaluator.text)
+    else:
+        for name in case.get("host_functions", []):
+            machine.register_function(
+                name, (lambda n: lambda args: calls.append(
+                    n + "(" + ", ".join(nova_evaluator.text(a) for a in args) + ")"))(name))
     ok = machine.eval(case["source"], case["name"])
     result = {"output": machine.drain_output(), "error": machine.error, "error_line": None,
               "exit": 0 if ok else 1, "host_calls": list(calls)}
@@ -247,14 +332,20 @@ def run_policy_engine(case):
             entry = {"ok": True, "value": None}
             if "tick" in step:
                 tick = step["tick"]
-                entry["ok"] = machine.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
-                                           tick.get("faults", True))
+                if reactor is not None:
+                    entry["ok"] = reactor.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
+                                               tick.get("faults", True))
+                else:
+                    entry["ok"] = machine.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
+                                               tick.get("faults", True))
             elif "inject_fault" in step:
                 entry["ok"] = machine.inject_fault(step["inject_fault"])
             elif "clear_fault" in step:
                 machine.clear_fault()
             elif "reset" in step:
                 entry["ok"] = machine.reset(step["reset"])
+                if reactor is not None:
+                    reactor.reset()
             elif "call" in step:
                 machine.error = ""
                 entry["value"] = policy_value(machine.call_function(step["call"][0], list(step["call"][1:])))
