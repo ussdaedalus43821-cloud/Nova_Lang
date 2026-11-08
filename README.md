@@ -46,8 +46,10 @@ full history, from the 14 build stages of 1.x to the bytecode VM.
 ## Quick start
 
 Requires Python 3.7+. Nothing else — no `pip install`, no build step.
-CI runs the full suite on Linux for Python 3.7 through 3.13 and on macOS for
-3.12; Windows is being brought up (see [`docs/CI.md`](docs/CI.md)).
+CI runs the full suite on Linux for Python 3.7 through 3.13, on macOS for 3.12
+and on Windows for 3.12. Windows with Python 3.7 also passes, but only with the
+tree-walker's deepest recursions skipped in one comparison (see
+[`docs/CI.md`](docs/CI.md)), so it is reported, not required.
 
 ```bash
 git clone <this repository>

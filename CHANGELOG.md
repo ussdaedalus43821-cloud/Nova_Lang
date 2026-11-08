@@ -27,6 +27,11 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 ## [Unreleased] - Baseline continuation
 
 ### Fixed
+- The REPL kept an unfinished draft open on a blank line when the draft
+  contained a `{` inside a string, an f-string or a comment, instead of
+  submitting it to show the error as it does for `1 +`. It now decides from
+  tokens, not from the raw character. A real unclosed block still keeps the
+  draft open.
 - Windows portability, found by the first full CI run: the language server now
   builds canonical `file:///C:/...` URIs (it built `file://///C:/...`); the
   self-hosted interpreter names modules from native Windows paths, as the host
@@ -66,6 +71,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   limit, because it overflows the native stack there and kills the process. The
   VM decides them; the skip is printed, recorded as a check, capped at a tenth
   and tested on every platform (`docs/CI.md`). Other platforms compare all 300.
+- REPL regression tests for `help` (its text and that every command it lists
+  works, on both engines) and for Ctrl-C: at the prompt, discarding a draft,
+  and stopping a runaway loop, including inside nested calls, with the session
+  state and call stack intact afterwards. A piped test cannot send Ctrl-C, so
+  `tests/repl/interrupt_driver.py` raises the same `KeyboardInterrupt` through
+  the real REPL (`_thread.interrupt_main` for a running program). The `repl`
+  station grows from 26 to 44 tests; the full suite stays at 1,921 parent checks.
 - Known limitation, not fixed: on Windows with Python before 3.11 (observed on
   3.7), a program that recurses toward the 1200-call limit under `--tree-walk`
   can overflow the native stack and end the process instead of reporting the

@@ -6108,7 +6108,10 @@ def needs_more_input(source, *, blank_line=False):
         return True
 
     # Preserve blank-line submission for drafts outside an open block or list.
-    if blank_line and "{" not in source and not source.rstrip().endswith((",", "(")):
+    # "Has a block" is decided from tokens: a brace inside a string, an
+    # f-string or a comment is not one.
+    if (blank_line and not any(t.type == TT_LBRACE for t in tokens)
+            and not source.rstrip().endswith((",", "("))):
         return False
 
     if needs_block and not any(t.type == TT_LBRACE for t in meaningful_for_def):

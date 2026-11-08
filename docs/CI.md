@@ -21,7 +21,10 @@ set found the cause: a native stack overflow, described under
 A dispatch of both Windows rows after the skip was added (run 15, `8936ed1`)
 recorded 1,921 checks with none failing on Windows 3.12, which is now a required
 row, and 1,922 on Windows 3.7 with one failing check, a test of mine that gave
-the tree-walker depth-limit programs (fixed in `3b2edc6`).
+the tree-walker depth-limit programs (fixed in `3b2edc6`). After the merge, the
+full matrix on the default branch (run 22, 2026-11-08) passed on all ten rows:
+1,921 checks on each row but Windows 3.7, which recorded 1,922 (its two extra
+checks and one missing label are the skip, below).
 
 ## What runs
 
@@ -51,8 +54,8 @@ The `full` matrix has two kinds of row, set by `probe` in the workflow.
 
 - **Required** rows are combinations the suite has been seen passing on. A
   failure fails the workflow run. The `full` job runs after a merge, so a red
-  required row marks the default branch red; it blocks nothing, and nothing
-  can block a merge until branch protection is set (below).
+  required row marks the default branch red; it blocks nothing itself. What
+  blocks a merge is the branch rule (below), which requires `fast` only.
 - **Probes** report but cannot fail the workflow. They are for combinations the
   suite has not yet been seen passing on, or that pass only with a documented
   exception. Today that is Windows on Python 3.7 only: it passes with the
@@ -211,8 +214,10 @@ files as UTF-8 explicitly.
 ## Branch protection
 
 A workflow can report a failure; only repository settings can make it block.
-This cannot be set from the repository's files, so it is a one-time manual
-step for a repository admin:
+This cannot be set from the repository's files, so it was a one-time manual
+step for a repository admin, done on 2026-11-07 as a ruleset named **CI Gate**
+on the default branch requiring the `fast` check. The steps, for reference or
+for a new repository:
 
 1. Settings, Branches, add a rule for the default branch.
 2. Require status checks to pass before merging, and select **`fast`**
@@ -255,5 +260,7 @@ were read from their `action.yml` when this was written.
   a headless-Godot job there (milestone M8).
 - Coverage thresholds as a gate: coverage is evidence for choosing tests, not a
   release threshold (see [`COVERAGE.md`](COVERAGE.md)).
-- The REPL's known gaps (a `{` inside a quoted string in a draft, `help`,
-  Ctrl-C), the remaining M7 items.
+- A real operating-system Ctrl-C. The REPL tests deliver the same
+  `KeyboardInterrupt` to the same code (`_thread.interrupt_main`), because a
+  piped test cannot send the signal and Windows has no portable equivalent;
+  what turns the key press into the exception is the interpreter's, not ours.

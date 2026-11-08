@@ -59,7 +59,7 @@ Not established:
 | # | Milestone | Status | Needs | Size |
 | --- | --- | --- | --- | --- |
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
-| M7 | Continuous verification | In progress | | M |
+| M7 | Continuous verification | Done | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
 | M9 | Language specification and conformance corpus | Planned | M7 | L |
 | M10 | One language: dialects become profiles | Planned | M8, M9 | L |
@@ -115,19 +115,27 @@ Without CI, each change is re-verified by hand on whatever machine is at hand.
   and the full suite on merge to the main branch.
 - Branch protection requiring the fast tier.
 - The known REPL gaps closed or ticketed: a `{` inside a quoted string in a
-  draft, `help` transcript, Ctrl-C.
+  draft, `help` transcript, Ctrl-C. (Closed: the first was a bug and is fixed;
+  `help` and Ctrl-C had no bug and now have transcript tests.)
 - Windows-specific fixes the matrix exposes (paths, file URIs, newlines, the
   time limit; `chmod` was a guess that the first run disproved).
 
-**Status (2026-11-07).** Done: the workflow (a fast tier and a full matrix with
-required rows and probe rows), SHA-pinned actions with Dependabot updates,
-[`CI.md`](CI.md), and the first full run. `fast` passed on GitHub three times
-(80-102 s). The full matrix passed on Linux for Python 3.7 through 3.13 and on
-macOS for 3.12, which is the first run-based evidence for "3.7+" (Linux only).
-Windows failed on four portability bugs; fixes and a `portability` station
-that pins them on every platform are in the next change, pending a run.
-Remaining: confirming the Windows fixes by a run, branch protection (a
-repository setting), and the REPL gaps below.
+**Status (2026-11-08).** Done. The workflow (a fast tier and a full matrix with
+required rows and one probe row), SHA-pinned actions with Dependabot updates,
+and [`CI.md`](CI.md). `fast` passes on pull requests in about 1 m 45 s and is
+required by the repository's CI Gate ruleset. The full matrix on the default
+branch (run 22) passed on all ten rows: Linux 3.7 to 3.13, macOS 3.12 and
+Windows 3.12, each 1,921 checks, and Windows 3.7 (a probe) at 1,922. The first
+Windows run found four portability bugs, now fixed and pinned by the
+`portability` station. Windows with Python before 3.11 cannot run the
+tree-walker on the 16 of 300 generated programs that recurse to the call-depth
+limit (a native stack overflow), so the comparison skips them, visibly, and
+compares 284; a larger-stack thread for the tree-walker is a deferred decision.
+The three REPL gaps are closed.
+
+Exit criteria, checked: a pull request cannot merge without `fast` (the CI Gate
+ruleset); the full suite passes on the declared matrix; the README states the
+versions CI covers.
 
 **Exit criteria**
 

@@ -1,6 +1,7 @@
 """Exercise the real REPL entry points using piped input."""
 
 from pathlib import Path
+import json
 import subprocess
 import sys
 import unittest
@@ -9,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PROMPT = "nova> "
 CONTINUE = "  ... "
 GOODBYE = "Goodbye, star-traveller.\n"
+STOPPED = "\n(stopped)\n"
+DISCARDED = "\n(input discarded)\n"
 
 
 class ReplContract:
@@ -77,6 +80,23 @@ class ReplContract:
         self.assertIn("a number and a boolean", output)
         self.assertTrue(output.endswith(PROMPT + "42\n" + PROMPT + "\n" + GOODBYE))
 
+    def test_blank_line_ignores_braces_that_are_not_blocks(self):
+        # A "{" inside a string, an f-string or a comment opens no block, so a
+        # blank line submits the unfinished draft (to show the error) exactly as
+        # it does for `1 +`. It once kept the draft open, on the raw character.
+        for draft in ('let text = "{" +', "1 + # {", 'let text = f"{1}" +'):
+            with self.subTest(draft=draft):
+                output = self.session(draft + "\n\n40 + 2\n")
+                self.assertIn("expression ends too early", output)
+                self.assertTrue(output.endswith(PROMPT + "42\n" + PROMPT + "\n" + GOODBYE))
+
+    def test_blank_line_still_keeps_a_real_open_block(self):
+        for draft in ("if true {", "if true { 1 } else", "def f() {"):
+            with self.subTest(draft=draft):
+                output = self.session(draft + "\n\n}\n" if draft.endswith("{") else draft + "\n\n{ 2 }\n")
+                self.assertNotIn("expression ends too early", output)
+                self.assertNotIn("NovaError", output)
+
     def test_empty_eof(self):
         self.assertEqual(self.session(""), PROMPT + "\n" + GOODBYE)
 
@@ -118,6 +138,84 @@ class ReplContract:
                                  PROMPT + GOODBYE)
         self.assertEqual(self.session("exit()"), PROMPT)
         self.assertEqual(self.session("exit(7)", status=7), PROMPT)
+
+    # -- help ----------------------------------------------------------------
+
+    def test_help_prints_the_reference_and_changes_nothing(self):
+        output = self.session("let base = 40\nhelp\nHELP\nbase + 2\n")
+        self.assertEqual(output, PROMPT + "40\n" + (PROMPT + novalang_help() + "\n") * 2
+                         + PROMPT + "42\n" + PROMPT + "\n" + GOODBYE)
+
+    def test_help_documents_commands_that_work(self):
+        text = novalang_help()
+        self.assertTrue(text.startswith("NovaLang v"))
+        commands = text.split("REPL commands")[1].split("Values")[0]
+        for command in ("vars", "tree <code>", "help", "exit | quit"):
+            self.assertIn(command, commands)
+        for claim in ("Ctrl-C", "--tree-walk", "--dis", "--bootstrap"):
+            self.assertIn(claim, text)
+        # Each documented command is real: none is reported as an error.
+        output = self.session("vars\ntree 1 + 2\nhelp\nquit\n")
+        self.assertNotIn("NovaError", output)
+        self.assertIn("  PI = 3.14159", output)         # `vars` lists the predefined globals
+        self.assertIn("BinOpNode", output)
+
+    def test_help_inside_an_open_block_is_code_not_a_command(self):
+        output = self.session("if true {\nhelp\n}\n")
+        self.assertIn("undefined name 'help'", output)
+        self.assertNotIn("REPL commands", output)
+
+    # -- Ctrl-C --------------------------------------------------------------
+
+    def interrupted(self, steps):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tests" / "repl" / "interrupt_driver.py"),
+             json.dumps(steps), json.dumps(list(self.flags))],
+            cwd=ROOT, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertNotIn("Traceback", result.stdout)
+        self.assertNotIn("InternalError:", result.stdout)
+        _, prompt, transcript = result.stdout.partition(PROMPT)
+        return prompt + transcript
+
+    def test_ctrl_c_at_the_prompt_starts_a_fresh_line(self):
+        self.assertEqual(self.interrupted(["let base = 40", "^C", "^C", "base + 2"]),
+                         PROMPT + "40\n" + PROMPT + "\n" + PROMPT + "\n"
+                         + PROMPT + "42\n" + PROMPT + "\n" + GOODBYE)
+
+    def test_ctrl_c_discards_a_draft_and_nothing_of_it_runs(self):
+        output = self.interrupted(["let base = 40", "def f(x) {", "return 1", "^C",
+                                   "f", "base + 2"])
+        self.assertIn(PROMPT + CONTINUE * 2 + DISCARDED + PROMPT, output)
+        self.assertIn("undefined name 'f'", output)       # the draft was thrown away
+        self.assertTrue(output.endswith(PROMPT + "42\n" + PROMPT + "\n" + GOODBYE))
+
+    def test_ctrl_c_stops_a_runaway_loop_and_the_session_carries_on(self):
+        output = self.interrupted(["let base = 40", ["interrupt", "while true { }"],
+                                   "base + 2", "let after = 1", "after + base"])
+        self.assertEqual(output, PROMPT + "40\n" + PROMPT + STOPPED + PROMPT + "42\n"
+                         + PROMPT + "1\n" + PROMPT + "41\n" + PROMPT + "\n" + GOODBYE)
+
+    def test_ctrl_c_inside_nested_calls_leaves_no_stale_state(self):
+        output = self.interrupted([
+            "let base = 40", "def spin(n) { while true { n = n + 1 } }",
+            "def outer() { return spin(0) }", ["interrupt", "outer()"],
+            "base + 2", "def boom() { return 1 / 0 }", "boom()", "vars"])
+        self.assertIn(PROMPT + STOPPED + PROMPT + "42\n", output)
+        # The call stack was unwound: a later error names only its own frame.
+        frames = [line for line in output.splitlines() if line.startswith("  in ")]
+        self.assertEqual(frames, ["  in boom()"])
+        self.assertIn("  base = 40\n", output)
+        self.assertTrue(output.endswith(PROMPT + "\n" + GOODBYE))
+
+
+def novalang_help():
+    """The text `help` prints, read from the module the REPL runs."""
+    sys.path.insert(0, str(ROOT))
+    import novalang
+    return novalang.HELP
 
 
 class VmReplTests(ReplContract, unittest.TestCase):
