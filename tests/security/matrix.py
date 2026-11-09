@@ -139,6 +139,39 @@ def render(cells, status):
     return "\n".join(lines)
 
 
+def classification_problems(cases):
+    """Drift between the code and the specification: a built-in nobody classified, a gated name the
+    specification does not list, a gated name no case shows to be denied."""
+    sys.path.insert(0, str(ROOT))
+    import novalang
+    problems = []
+    pure = set(json.loads((HERE / "pure_builtins.json").read_text(encoding="utf-8"))["pure"])
+    gated = set(novalang.CAPABILITY_OF)
+    builtins = set(novalang.BUILTINS)
+    for name in sorted(builtins - gated - pure):
+        problems.append("the built-in {!r} is neither gated by a capability nor listed in "
+                        "tests/security/pure_builtins.json: decide which it is".format(name))
+    for name in sorted(pure - builtins):
+        problems.append("pure_builtins.json lists {!r}, which is not a built-in".format(name))
+    for name in sorted(pure & gated):
+        problems.append("{!r} is both gated and listed as pure".format(name))
+    text = SPEC.read_text(encoding="utf-8")
+    listed = set()
+    for row in table_rows(section(text, "sbx.capabilities")):
+        if len(row) >= 2:
+            listed |= set(re.findall(r"`([a-z_]+)`", row[1]))
+    for name in sorted(gated - listed):
+        problems.append("the gated built-in {!r} is not in the capability table of 16-sandbox.md".format(name))
+    denied = set()
+    for case in cases:
+        if case["profile"] == "sandbox":
+            for line in case.get("output", []):
+                denied |= set(re.findall(r"^undefined name '([a-z_]+)'$", line))
+    for name in sorted(gated - denied):
+        problems.append("no sandbox case shows the gated built-in {!r} to be undefined without its capability".format(name))
+    return problems
+
+
 def check_all(check, strict=False, verbose=False):
     cells = derive_cells()
     pending = json.loads(PENDING.read_text(encoding="utf-8")) if PENDING.exists() else {}
@@ -147,6 +180,9 @@ def check_all(check, strict=False, verbose=False):
     check(not problems, "security matrix: every claim is a cell of the specification and every hole is "
           "explained ({} cells, {} of {} covered)".format(len(cells), covered, total),
           "\n".join(problems))
+    classification = classification_problems(load_cases())
+    check(not classification, "security matrix: every built-in is classified, listed and shown to be denied",
+          "\n".join(classification))
     if strict:
         open_cells = ["{} on {}".format(cell, engine) for cell, row in status.items()
                       for engine, s in row.items() if s != "covered"]

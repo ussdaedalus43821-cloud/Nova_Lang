@@ -1962,6 +1962,17 @@ def check_binop_limits(op, left, right) {
     if op == "+" and lt == "list" and rt == "list" and len(left) + len(right) > LIMITS["list"] {
         list_too_long()
     }
+    if op == "+" and lt == "dict" and rt == "dict" {
+        let merged = len(left)
+        for key in keys(right) {
+            if not (key in left) {
+                merged = merged + 1
+            }
+        }
+        if merged > LIMITS["dict"] {
+            throw("a dictionary cannot hold more than " + str(LIMITS["dict"]) + " entries")
+        }
+    }
     if op == "*" {
         if (lt == "string" and rt == "number") or (lt == "number" and rt == "string") {
             let text = left
@@ -2857,7 +2868,13 @@ def exec_for(node, scope) {
     }
     let iterations = 0
     if span >= 0 {
-        iterations = int_floor(span / step_value) + 1
+        let quotient = span / step_value
+        if quotient != 0 and quotient + quotient == quotient {
+            # An infinite count (a float span over a step so small that the count passes the largest float):
+            # the same error as any other arithmetic on a number too large for this operation.
+            raise_error("a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float", node["pos"])
+        }
+        iterations = int_floor(quotient) + 1
     }
 
     let loop_env = make_env(scope, false, false)

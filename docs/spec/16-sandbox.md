@@ -173,7 +173,7 @@ matrix; each row needs a case that makes the limit trip, on every engine.
 | `string.join` | characters of the result of `join`, `pad`, `pad_left`, `replace_all`, `upper`, `lower` | `a string cannot grow beyond <N> characters` | catchable |
 | `string.text` | characters of the text of a value (`str`, `print`, interpolation) | `a string cannot grow beyond <N> characters` | catchable |
 | `string.read` | characters of what `read` and `input` return | `a string cannot grow beyond <N> characters` | catchable |
-| `dict.entries` | entries of a dictionary: 1,000,000 | `a dictionary cannot hold more than <N> entries` | catchable |
+| `dict.entries` | entries of a dictionary, made by assignment or by `+` of two dictionaries: 1,000,000 | `a dictionary cannot hold more than <N> entries` | catchable |
 | `steps` | steps of one run: 5,000,000 | `LimitError: step budget of <N> steps exhausted - is there a loop that never ends?` | **fatal** |
 | `time` | milliseconds of wall-clock time of one run: 5,000 | `LimitError: time limit of <N> ms exceeded` | **fatal** |
 | `time.sleep` | a `sleep` that would pass the time limit | `LimitError: time limit of <N> ms exceeded`, at once, without sleeping | **fatal** |

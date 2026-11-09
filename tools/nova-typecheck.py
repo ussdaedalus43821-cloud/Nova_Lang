@@ -681,6 +681,8 @@ class Program:
         self.modules = {}           # absolute path -> Module (None while loading)
 
     def resolve(self, raw_path, base_dir):
+        if "\0" in raw_path:
+            return None             # never a path (Python 3.7 raises ValueError from os.path.isfile for one)
         if nl.is_package_import(raw_path):
             # The interpreter's own resolver, so the two cannot disagree.
             try:

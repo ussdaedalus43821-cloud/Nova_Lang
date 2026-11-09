@@ -70,6 +70,11 @@ decided up front, as the whole number of steps that fit between `start` and `end
 plus one, or none if `start` is already past `end`: the loop does not compare the
 variable with `end` as it goes.
 
+When that count is more than a float can hold (the span is an integer too large to be a float, or a float span
+over a step so small that the count is infinite) the loop does not start: it is the error of `[err.arithmetic]`,
+`a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed
+with a float`, and never a failure of the host.
+
 Each value is `start` plus **k times step**, worked out afresh, not the previous
 value plus `step`. With floats this is visible and exact:
 

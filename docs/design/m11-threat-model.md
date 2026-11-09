@@ -20,7 +20,7 @@ embedder allowed, on any of the three engines.* The specification is
 | # | Not defended | Why, and what to do instead |
 | --- | --- | --- |
 | N1 | The Python process the engine runs in. | CPython has no strong in-process isolation. A bug in the interpreter, in the standard library it uses, or in CPython itself is outside the model. Run untrusted code in a separate process or container as well. |
-| N2 | Memory in total. | The size limits bound each list, string and dictionary. They do not bound how many of them a program keeps. A program can still use a lot of memory. The subprocess runner adds an address-space limit on POSIX only. |
+| N2 | Memory in total. | The size limits bound each list, string and dictionary. They do not bound how many of them a program keeps. A program can still use a lot of memory: with limits of 2,000 items and 30,000 steps the fuzzer saw one grow by about 450 MB in 4 s, and two thousand lists of two thousand items take 130 MB in 2,000 steps; with the defaults (1,000,000 items, 5,000,000 steps) the bound is far above any machine. The subprocess runner adds an address-space limit on Linux only; that, or a container, is the answer to this threat. |
 | N3 | Side channels: timing, cache, resource contention, the content of error messages the embedder shows. | Not modelled. |
 | N4 | A host function the embedder writes badly. | A granted host function runs with the embedder's authority. The sandbox gates *whether* a script can call it, not what it does. |
 | N5 | Time between a path check and the use of the path (TOCTOU) in a folder that another process can change. | The check resolves the real path and the use opens it, as two steps. A folder shared with a hostile process is not safe. Grant only folders you control. |
@@ -29,6 +29,8 @@ embedder allowed, on any of the three engines.* The specification is
 | N8 | The Python bridge once the embedder grants a module. | A granted module is the embedder's decision and extends what the program can do to whatever that module can do (`socket`, `os`, `subprocess` are never to be granted to code you do not trust). The bridge's own gate (private names, writes) is defended and tested ([python-bridge-hardening](python-bridge-hardening.md)). |
 | N9 | The policy dialect's host functions. | They are host-registered by definition (N4). Its limits are in scope in slice 7. |
 | N10 | Anything about the editor tools, the package registry or the REPL. | Out of M11. Packages declare capabilities in M13. |
+| N11 | Hard links, bind mounts and other aliases of a file that the file system itself presents as a path inside a granted folder. | A hard link is the same file under a second name; no path check can tell. A folder that holds a hard link to a file you did not mean to share, or a mount of another volume, is a granted folder that contains that file. Grant only folders you have built for the purpose. |
+| N12 | The file system names that only Windows has (short 8.3 names, alternate data streams, reserved device names such as `CON` and `NUL`) beyond what the corpus tests there. | The corpus has a Windows case for device names and the CI matrix runs it; names beyond it are not tested. Where it matters, run the program on a system whose paths you control. |
 
 ## Assets
 
@@ -75,8 +77,9 @@ Each row becomes cases in the corpus and a cell of the coverage matrix
 | T11 A script exhausts the call stack or the parser | Call depth limit; parser nesting limit; both are NovaLang errors. | `sbx.limits` | none known |
 | T12 A script catches a limit error and carries on | The budget, time and output errors cannot be caught. | `sbx.limits`, `sbx.errors` | none known |
 | T13 A host failure reaches the program as a Python traceback | `[sec.error-boundary]` extends to every limit in the table: a limit is an error of the specified kind, never the host's report. | `sec.error-boundary`, `sbx.errors` | an unknown leak is a bug, fixed with a case |
-| T14 A replay differs from the original | Deterministic mode (slice 4). | planned | planned |
+| T14 A replay differs from the original | Deterministic mode: a seeded generator, a virtual clock and a UTC `format_time`. | `sbx.determinism` | none known |
 | T15 One engine is looser than another | Every capability and limit is tested on all three engines. | `sbx.claims` | the coverage matrix reports any cell without a test |
+| T16 A hostile input finds a hole the cases did not think of | The escape corpus (`sandbox-escape.json`, about seventy programs: names, path spellings, links, modules, fatal limits in every syntactic position, size evasion, parser and stack depth, the Python bridge) and two seeded fuzzers (`tests/security/fuzz.py`: random hostile programs; random operations on random path spellings, judged by what changed on disk). The fuzzers found one host leak when first run (a `for` bound beyond a float), fixed with its case. | `sbx.claims` | whatever neither the corpus nor the fuzzers reach: a fuzzer is evidence of absence only for what it generates |
 
 ## How a claim is made
 

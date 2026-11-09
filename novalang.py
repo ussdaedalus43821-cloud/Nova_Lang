@@ -1796,8 +1796,18 @@ def builtin_append(args, position):
     return target
 
 
+def reject_null_byte(path, position):
+    """A null byte cannot be part of a file name: Python raises ValueError from every call that takes
+    one, where the language has a FileError for a path it cannot use."""
+    if "\0" in path:
+        raise NovaError("{}: the path contains a null character".format(path.replace("\0", "\\0")), position,
+                        label="FileError")
+    return path
+
+
 def open_file(path, mode, position):
     """Open a file, turning the operating system's complaint into a NovaError."""
+    reject_null_byte(path, position)
     if os.path.isdir(path):
         # Asked first, because Linux and Windows word this refusal differently
         # (a PermissionError on Windows) and the message is part of the language.
@@ -1839,7 +1849,8 @@ def builtin_write(args, position):
 
 
 def builtin_exists(args, position):
-    return os.path.exists(text_argument(args[0], "exists()", position))
+    path = text_argument(args[0], "exists()", position)
+    return "\0" not in path and os.path.exists(path)
 
 
 def builtin_abspath(args, position):
@@ -1854,7 +1865,14 @@ def builtin_realpath(args, position):
     # abspath() with every symbolic link followed: what a path really names. The
     # self-hosted interpreter checks a program's paths against its grants with it
     # (docs/spec/10-host.md [host.files], docs/spec/16-sandbox.md [sbx.paths]).
-    return os.path.realpath(text_argument(args[0], "realpath()", position))
+    path = text_argument(args[0], "realpath()", position)
+    try:
+        if "\0" in path or names_a_device(path):
+            raise ValueError(path)
+        return os.path.realpath(path)
+    except (ValueError, OSError):
+        # A null byte, or a name the system cannot take: an error of the program, not Python's report.
+        raise NovaError("{} is not a path this system can resolve".format(path), position, label="FileError") from None
 
 
 def builtin_dirname(args, position):
@@ -1862,7 +1880,7 @@ def builtin_dirname(args, position):
 
 
 def builtin_listdir(args, position):
-    path = text_argument(args[0], "listdir()", position)
+    path = reject_null_byte(text_argument(args[0], "listdir()", position), position)
     if os.path.isfile(path):
         raise NovaError("{} is a file, not a directory".format(path), position,
                         label="FileError")
@@ -2191,7 +2209,13 @@ def builtin_round(args, position):
         return round(finite_argument(value, "round()", position))
     # With a digit count Python returns NaN and infinity unchanged and raises
     # nothing, so that path is left as it was.
-    return round(value, whole_number(args[1], "round()", position))
+    digits = whole_number(args[1], "round()", position)
+    if type(value) is int and digits < 0:
+        # Python rounds an integer to a negative digit count by building 10 ** -digits, which for a count
+        # of a hundred million takes minutes in one uninterruptible C call (a hole in every time limit).
+        # Beyond the integer's own size the answer is 0 whatever the count, so the count stops there.
+        digits = max(digits, -(value.bit_length() // 3 + 3))
+    return round(value, digits)
 
 
 def builtin_floor(args, position):
@@ -2758,7 +2782,7 @@ def builtin_cwd(args, position):
 
 
 def builtin_mkdir(args, position):
-    path = text_argument(args[0], "mkdir()", position)
+    path = reject_null_byte(text_argument(args[0], "mkdir()", position), position)
     try:
         os.makedirs(path, exist_ok=True)
     except OSError as problem:
@@ -2769,7 +2793,7 @@ def builtin_mkdir(args, position):
 
 
 def builtin_remove(args, position):
-    path = text_argument(args[0], "remove()", position)
+    path = reject_null_byte(text_argument(args[0], "remove()", position), position)
     try:
         if os.path.isdir(path):
             os.rmdir(path)
@@ -2785,8 +2809,8 @@ def builtin_remove(args, position):
 
 
 def builtin_rename(args, position):
-    old = text_argument(args[0], "the old name for rename()", position)
-    new = text_argument(args[1], "the new name for rename()", position)
+    old = reject_null_byte(text_argument(args[0], "the old name for rename()", position), position)
+    new = reject_null_byte(text_argument(args[1], "the new name for rename()", position), position)
     try:
         os.rename(old, new)
     except OSError as problem:
@@ -2795,8 +2819,8 @@ def builtin_rename(args, position):
 
 
 def builtin_copy(args, position):
-    src = text_argument(args[0], "the source for copy()", position)
-    dst = text_argument(args[1], "the destination for copy()", position)
+    src = reject_null_byte(text_argument(args[0], "the source for copy()", position), position)
+    dst = reject_null_byte(text_argument(args[1], "the destination for copy()", position), position)
     try:
         shutil.copy2(src, dst)
     except OSError as problem:
@@ -3360,12 +3384,16 @@ def binary_operation(op, left, right, position, limits=None):
                     "repeating that string {} times would be too long".format(times),
                     position,
                 )
+            if not text:
+                return ""               # nothing repeated any number of times: Python cannot take a count that large
             return text * times
 
     # Two dictionaries merge with '+'; the right-hand side wins.
     if op == "+" and isinstance(left, dict) and isinstance(right, dict):
         merged = dict(left)
         merged.update(right)
+        if limits is not None and len(merged) > limits.dict:
+            raise NovaError("a dictionary cannot hold more than {} entries".format(limits.dict), position)
         return merged
 
     # Lists join with '+' and repeat with '*', always into a new list.
@@ -3394,6 +3422,8 @@ def binary_operation(op, left, right, position, limits=None):
                 ),
                 position,
             )
+        if not items:
+            return []                   # likewise: the empty list however many times
         return items * times
 
     if not is_number(left) or not is_number(right):
@@ -3600,6 +3630,7 @@ def delete_file(path, position):
         raise NovaError(
             "delete() needs a file name, but got {}".format(type_name(path)), position
         )
+    reject_null_byte(path, position)
     if os.path.isdir(path):
         raise NovaError(
             "{} is a directory - delete() only removes files".format(path),
@@ -3665,7 +3696,19 @@ def range_iterations(start, end, step, descending, position):
             position,
         )
     span = (start - end) if descending else (end - start)
-    return 0 if span < 0 else int(span / step + 1e-9) + 1
+    if span < 0:
+        return 0
+    try:
+        return int(span / step + 1e-9) + 1
+    except OverflowError:
+        # A span beyond the range of a float (an integer of 309 digits, or a float divided by a step so
+        # small that the count is infinite): the same error as any other arithmetic on such a number, not
+        # Python's OverflowError reaching the program.
+        raise NovaError(
+            "a number is too large for this operation - an integer beyond the range of "
+            "a float cannot be divided or mixed with a float",
+            position,
+        ) from None
 
 
 def range_value(start, step, index, descending):
@@ -3885,10 +3928,35 @@ def inside_folder(real, root):
         return False
 
 
+WINDOWS_DEVICES = frozenset(["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"]
+                            + ["COM%d" % n for n in range(1, 10)] + ["LPT%d" % n for n in range(1, 10)])
+
+
+def names_a_device(path, windows=None):
+    """Does `path` name a Windows device (`CON`, `NUL`, `COM1`, `data/con.txt`, `\\\\.\\COM1`)? Windows
+    opens such a name as the device whatever folder it is in, so no folder grant can contain it. On other
+    systems these are ordinary names. `windows` forces the answer for the tests."""
+    if windows is None:
+        windows = sys.platform == "win32"
+    if not windows:
+        return False
+    flat = path.replace("\\", "/")
+    if flat.startswith("//.") or flat.startswith("//?"):
+        return True                     # \\.\COM1, \\?\GLOBALROOT: the device namespace itself
+    for part in flat.split("/"):
+        name = part.split(".")[0].split(":")[0].strip(" ").upper()
+        if name in WINDOWS_DEVICES:
+            return True
+    return False
+
+
 def real_path(path):
     """The real, absolute path `path` names: symbolic links followed, `..` resolved after them, a
     part that does not exist judged by its closest existing parent ([sbx.paths] 1 and 3). A path
-    that cannot be resolved is not a path of ours: None."""
+    that cannot be resolved is not a path of ours: None. A null byte is never a path: Windows
+    resolves one without complaint and the open that follows then fails with Python's own error."""
+    if "\0" in path or names_a_device(path):
+        return None
     try:
         return os.path.realpath(path)
     except (ValueError, OSError):
@@ -4291,6 +4359,12 @@ class Interpreter:
         """A package name goes through resolve_package; a file path is
         searched relative to the importing file, then the current directory."""
         current_dir = self.file_stack[-1] if self.file_stack else None
+        if "\0" in raw_path:
+            # Never a path: Python 3.7 raises ValueError from the first os.path call that sees one.
+            raise NovaError(
+                "{} is outside the folders this program may use".format(raw_path) if self.caps.restricted
+                else "{}: the path contains a null character".format(raw_path.replace("\0", "\\0")),
+                position, label="ImportError")
         if is_package_import(raw_path):
             found = resolve_package(raw_path, current_dir, position)
             self.caps.check_path(found, "import", position, label="ImportError")
