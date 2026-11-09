@@ -26,6 +26,31 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 6: the escape-attempt corpus, the fuzzers and the strict classification check
+- `tests/conformance/cases/sandbox-escape.json`: 77 hostile programs on all three engines. Names that must stay undefined (46 foreign names,
+  every gated name as a value, aliased, passed to `map`, redefined), 29 spellings of a path that leaves the grant and the write, rename
+  and copy forms of them, null bytes and a 5,000-character name, symbolic links (out of the folder, chained, `..` through a link, a link in an
+  imported module), modules that reach for `read`, `env` or an outside import, the environment by guessable names, the fatal limits caught in
+  every position a `try` can stand (catch-all loop, catch block, `finally`, nested, function, `map`/`filter`/`reduce` callback, module, `for`,
+  nested `for`), size evasion (nested repeats, doubling, shared structures, huge counts, dictionary merges), parser and stack depth (eleven shapes
+  of 20,000 to 60,000 levels), the Python bridge with one module granted, and Windows device names (`CON`, `NUL`, ...).
+  `tests/security/test_escape.py` runs the same programs on the two Python engines in a temporary tree and compares a snapshot of every file and
+  link before and after: nothing outside the folders a case may write to may change, and no text of a file outside the grant may be printed.
+- `tests/security/fuzz.py`: two seeded fuzzers. `programs` writes random, type-aware hostile programs (huge counts and numbers, recursion, callbacks,
+  endless loops, every statement in its own `try`) and runs them with small limits on the VM and the tree-walker; a finding is a Python exception
+  reaching the caller, a run that outlives its time limit, output past its limit, or the engines printing different things. `paths` runs random
+  file operations on random spellings of paths in a tree with links that lead out of the granted folder, and judges by what changed on disk.
+  `test_fuzz.py` runs a fixed-seed budget on every run and puts three holes back (a path check that lets everything in, one that ignores links, the
+  old `for` count) to require that the fuzzers report them.
+- `tests/security/matrix.py` (strict) also fails when a built-in is neither gated by a capability nor listed as pure in
+  `tests/security/pure_builtins.json`, when a gated name is not in the capability table of `16-sandbox.md`, or when no sandbox case shows it undefined.
+- **Four host leaks found by the fuzzers and fixed**, each with a case: a `for` bound beyond the range of a float raised Python's `OverflowError`
+  (also in `trusted`; now the arithmetic error of `[err.arithmetic]`, also for a float span over a tiny step; the self-hosted interpreter counted it as
+  infinite); `""` or `[]` repeated by a count past Python's index range raised `OverflowError`; two dictionaries merged with `+` could pass the
+  dictionary limit (also on the self-hosted interpreter); and `round(n, -100000000)` took minutes in one uninterruptible C call, a hole in every
+  time limit (also in `trusted`; the digit count is now clamped to the size of the integer, which changes no result).
+- The threat model gains N11 (hard links and mounts inside a granted folder), N12 (Windows-only names beyond the corpus), the worked size of N2, and T16.
+
 ### M11 slice 5: the subprocess runner
 - `novalang.py --isolate [flags] program.nova` and `run_isolated(source, ..., **settings)` run the interpreter in a **separate process**
   and watch it from outside: the child is killed if it outlives its time limit plus two seconds (`LimitError: time limit of N ms

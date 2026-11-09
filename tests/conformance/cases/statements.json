@@ -1078,6 +1078,25 @@
    "error_line": 2,
    "exit": 1,
    "host_calls": []
+  },
+  {
+   "name": "stmt-for-count-beyond-a-float-is-an-error",
+   "spec": [
+    "stmt.for-range",
+    "err.arithmetic"
+   ],
+   "profile": "core",
+   "source": "let big = pow(10, 400)\ntry { for i = 0 to big { print(i) } } catch e { print(e) }\ntry { for i = big downto 0 { print(i) } } catch e { print(e) }\ntry { for i = 0 to pow(10.0, 300) step 0.0000000001 { print(i) } } catch e { print(e) }\nprint(\"done\")",
+   "output": [
+    "a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float",
+    "a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float",
+    "a number is too large for this operation - an integer beyond the range of a float cannot be divided or mixed with a float",
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

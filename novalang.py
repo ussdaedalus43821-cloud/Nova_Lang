@@ -2191,7 +2191,13 @@ def builtin_round(args, position):
         return round(finite_argument(value, "round()", position))
     # With a digit count Python returns NaN and infinity unchanged and raises
     # nothing, so that path is left as it was.
-    return round(value, whole_number(args[1], "round()", position))
+    digits = whole_number(args[1], "round()", position)
+    if type(value) is int and digits < 0:
+        # Python rounds an integer to a negative digit count by building 10 ** -digits, which for a count
+        # of a hundred million takes minutes in one uninterruptible C call (a hole in every time limit).
+        # Beyond the integer's own size the answer is 0 whatever the count, so the count stops there.
+        digits = max(digits, -(value.bit_length() // 3 + 3))
+    return round(value, digits)
 
 
 def builtin_floor(args, position):
@@ -3360,12 +3366,16 @@ def binary_operation(op, left, right, position, limits=None):
                     "repeating that string {} times would be too long".format(times),
                     position,
                 )
+            if not text:
+                return ""               # nothing repeated any number of times: Python cannot take a count that large
             return text * times
 
     # Two dictionaries merge with '+'; the right-hand side wins.
     if op == "+" and isinstance(left, dict) and isinstance(right, dict):
         merged = dict(left)
         merged.update(right)
+        if limits is not None and len(merged) > limits.dict:
+            raise NovaError("a dictionary cannot hold more than {} entries".format(limits.dict), position)
         return merged
 
     # Lists join with '+' and repeat with '*', always into a new list.
@@ -3394,6 +3404,8 @@ def binary_operation(op, left, right, position, limits=None):
                 ),
                 position,
             )
+        if not items:
+            return []                   # likewise: the empty list however many times
         return items * times
 
     if not is_number(left) or not is_number(right):
@@ -3665,7 +3677,19 @@ def range_iterations(start, end, step, descending, position):
             position,
         )
     span = (start - end) if descending else (end - start)
-    return 0 if span < 0 else int(span / step + 1e-9) + 1
+    if span < 0:
+        return 0
+    try:
+        return int(span / step + 1e-9) + 1
+    except OverflowError:
+        # A span beyond the range of a float (an integer of 309 digits, or a float divided by a step so
+        # small that the count is infinite): the same error as any other arithmetic on such a number, not
+        # Python's OverflowError reaching the program.
+        raise NovaError(
+            "a number is too large for this operation - an integer beyond the range of "
+            "a float cannot be divided or mixed with a float",
+            position,
+        ) from None
 
 
 def range_value(start, step, index, descending):
