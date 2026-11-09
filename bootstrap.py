@@ -42,10 +42,11 @@ def nova_string_literal(text):
     return '"' + escaped + '"'
 
 
-def type_check_graph(target_path):
+def type_check_graph(target_path, allow=None):
     """Lines describing every type error in `target_path` and the modules
     it imports, or [] if there are none (or the target cannot be read or
-    parsed - novalang.nova reports those problems itself)."""
+    parsed - novalang.nova reports those problems itself). `allow(path)`
+    limits which modules the walk may read (the restricted profile's import grants)."""
     try:
         with open(target_path, "r", encoding="utf-8") as handle:
             source = handle.read()
@@ -54,7 +55,7 @@ def type_check_graph(target_path):
         return []          # novalang.nova reports a text it cannot read, or one nested too deeply, itself
     if not (ast.annotated or ast.imports):
         return []
-    lines = novalang.typecheck_tool().check_file_graph(target_path)
+    lines = novalang.typecheck_tool().check_file_graph(target_path, allow)
     return ["TypeCheckError: " + line for line in lines]
 
 
@@ -108,12 +109,22 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # The self-hosted interpreter reads the target and its imports itself,
     # out of sight of novalang.py's type gate, so the whole import graph
     # is type-checked here, before novalang.nova ever sees it.
-    # In the restricted profile the walk would read modules wherever the program's import
-    # paths point, before any grant is consulted: it is skipped, and the target alone is
-    # not type-checked either (D-040: the self-hosted interpreter has no type gate there).
+    # In the restricted profile the walk reads only what the program could itself import: the
+    # target, and modules whose real path lies inside an import grant, judged before the file is
+    # opened (the same rule the engine applies, [sbx.paths]). A module outside the grants is left
+    # unchecked here and refused by the engine when the program imports it (D-045).
     restricted = bool(sandbox) and sandbox.get("profile") == "restricted"
     configured = restricted or bool(sandbox and sandbox.get("deterministic"))
-    refusal = [] if restricted else type_check_graph(target_path)
+    if restricted:
+        roots = novalang.Capabilities(**sandbox).roots["import"]
+
+        def granted(path):
+            real = novalang.real_path(path)
+            return real is not None and any(novalang.inside_folder(real, root) for root in roots)
+
+        refusal = type_check_graph(target_path, granted)
+    else:
+        refusal = type_check_graph(target_path)
     if refusal:
         print("\n".join(refusal), file=sys.stderr)
         return 1
