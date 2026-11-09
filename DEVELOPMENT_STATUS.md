@@ -5,7 +5,7 @@ Baseline: NovaLang v2.1.0 (the 2.0.1 engine plus the verification work, the Wind
 ## What the verification work added
 
 The work after 2.0.1 closes gaps in how the language is verified, and fixes the
-defects the new tests exposed. The full suite now records 1,926 parent checks;
+defects the new tests exposed. The full suite now records 1,951 parent checks;
 all pass locally.
 
 New stations (run one with `python3 tests/run_all.py --station NAME`):
@@ -18,9 +18,9 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | `repl` | 46 | multiline drafts, error recovery, EOF, session state, `help`, Ctrl-C, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
 | `portability` | 14 | Windows paths, file URIs, newlines, the time limit and the tree-walker skip, simulated on any platform |
-| `conformance` | 1,468 cases (700 NovaLang, 768 policy dialect) | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter, and the policy dialect's cases on its own engine; every spec section cited, every divergence logged. Five parent checks |
-| `security` | 62 | the sandbox profile through the embedding API and the command line: configuration errors, every fatal and catchable limit, one compiled script for both profiles, `exit()`, paths, symbolic links, the Python grant, command-line flags |
-| `security-matrix` | 2 checks (201 cells, 201 covered, strict) | the sandbox coverage matrix of M11 (`tests/security/`): every claim is a cell of `docs/spec/16-sandbox.md` and every hole is explained |
+| `conformance` | 1,548 cases (780 NovaLang, 768 policy dialect) | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter, and the policy dialect's cases on its own engine; every spec section cited, every divergence logged. Five parent checks |
+| `security` | 216 | the sandbox profile through the embedding API and the command line: configuration errors, every fatal and catchable limit, one compiled script for both profiles, `exit()`, paths, symbolic links, the Python grant, command-line flags, the escape-attempt corpus checked against the file system, and the seeded fuzzers (with proof that they see a hole put back) |
+| `security-matrix` | 3 checks (201 cells, 201 covered, strict; every built-in classified) | the sandbox coverage matrix of M11 (`tests/security/`): every claim is a cell of `docs/spec/16-sandbox.md` and every hole is explained |
 
 The `cli`, `embedding`, `repl` and `input-errors` suites fail against the 2.0.1
 source and pass with the fixes, which are listed under "Unreleased" in the

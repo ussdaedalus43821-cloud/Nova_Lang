@@ -44,11 +44,17 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   old `for` count) to require that the fuzzers report them.
 - `tests/security/matrix.py` (strict) also fails when a built-in is neither gated by a capability nor listed as pure in
   `tests/security/pure_builtins.json`, when a gated name is not in the capability table of `16-sandbox.md`, or when no sandbox case shows it undefined.
-- **Four host leaks found by the fuzzers and fixed**, each with a case: a `for` bound beyond the range of a float raised Python's `OverflowError`
+- **Host leaks found by the fuzzers, the full suite and the CI matrix, and fixed**, each with a case: a `for` bound beyond the range of a float raised Python's `OverflowError`
   (also in `trusted`; now the arithmetic error of `[err.arithmetic]`, also for a float span over a tiny step; the self-hosted interpreter counted it as
   infinite); `""` or `[]` repeated by a count past Python's index range raised `OverflowError`; two dictionaries merged with `+` could pass the
   dictionary limit (also on the self-hosted interpreter); and `round(n, -100000000)` took minutes in one uninterruptible C call, a hole in every
   time limit (also in `trusted`; the digit count is now clamped to the size of the integer, which changes no result).
+  A null byte in a path was the fifth: Python 3.7 and 3.8 and Windows resolved it without complaint, so the folder check passed and the open
+  raised `ValueError`; it is now never inside a granted folder, `realpath()` and every file function raise `FileError` for one in every profile, and
+  an `import` of one is an `ImportError` before anything touches the file system (the type checker's import lookup too). On Windows the names
+  `CON`, `NUL`, `COMn`, `LPTn` and the `\\.\` and `\\?\` prefixes are devices in every folder, and are outside every grant.
+- Found by the matrix on the way to green: two Slice 4 determinism tests lacked the Windows 3.7 skip. The fuzz tests now make any machine behave like
+  Python 3.7 (the `os.path` functions raise for a null byte) and build their links with the platform's separator.
 - The threat model gains N11 (hard links and mounts inside a granted folder), N12 (Windows-only names beyond the corpus), the worked size of N2, and T16.
 
 ### M11 slice 5: the subprocess runner
