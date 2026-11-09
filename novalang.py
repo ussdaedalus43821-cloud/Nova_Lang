@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# NovaLang v2.1.0 - a small language built from a hand-written lexer,
+# NovaLang v2.2.0 - a small language built from a hand-written lexer,
 # recursive-descent parser, bytecode compiler and virtual machine.
 """
-NovaLang v2.1.0 - a bytecode compiler and VM
+NovaLang v2.2.0 - a bytecode compiler and VM
 
 Since 2.0.0 a program runs as bytecode:
 
@@ -76,6 +76,10 @@ Stage 14: an Entity-Component-System library (lib/ecs.nova) and a grid
           python.* bridge: off unless --allow-python or
           Nova(allow_python=True), private and module-alias names
           unreachable (docs/design/python-bridge-hardening.md).
+2.2.0:    the specification and its conformance corpus (M9), the policy
+          dialect (M10) and the opt-in restricted profile: capability
+          gating, resource limits, a deterministic mode and a subprocess
+          runner (M11). trusted stays the default and is unchanged.
 
 No eval(). No exec(). Everything is still built by hand.
 """
@@ -99,7 +103,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 # A NovaLang call burns several Python frames, so give CPython some headroom
 # and enforce our own, friendlier limit in the interpreter (MAX_CALL_DEPTH).
@@ -6990,7 +6994,7 @@ def render_tree(node):
 # ---------------------------------------------------------------------------
 
 WELCOME = """╔═══════════════════════════════════╗
-║       NOVALANG v2.1.0            ║
+║       NOVALANG v2.2.0            ║
 ║   A star-born programming lang   ║
 ║   Type an expression or 'exit'   ║
 ╚═══════════════════════════════════╝"""
