@@ -63,6 +63,9 @@ rename()`, `the source for copy()`, `delete() needs a file name, but got a numbe
 
 - `time()` is the seconds since 1970-01-01 00:00:00 UTC as a float. Two calls never
   go backwards unless the system clock was set back.
+- `monotonic()` is a float, in seconds, from a clock that never goes backwards and starts at an
+  arbitrary moment: only the difference of two calls means anything. Use it, not `time()`, to measure how long
+  something took, because `time()` follows the system clock and a clock that is set back makes it jump.
 - `now()` is the current UTC time as an ISO 8601 string,
   `2026-11-08T05:00:00.123456+00:00`; the fraction `.dddddd` is left out when it is
   zero, so the length varies.

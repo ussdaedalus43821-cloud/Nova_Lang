@@ -1245,6 +1245,38 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "lib-byte-length-counts-utf8-bytes",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "print(byte_length(\"\"), byte_length(\"abc\"), byte_length(\"é\"), byte_length(\"€\"), byte_length(\"a\\nb\"))\nprint(len(\"é\"), byte_length(\"é\"))",
+   "output": [
+    "0 3 2 3 3",
+    "1 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-byte-length-needs-a-string",
+   "spec": [
+    "lib.text"
+   ],
+   "profile": "core",
+   "source": "try { byte_length(5) } catch e { print(e) }\ntry { byte_length() } catch e { print(e) }",
+   "output": [
+    "byte_length() needs a string, but got a number",
+    "byte_length() takes 1 argument(s) but got 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

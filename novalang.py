@@ -2107,6 +2107,12 @@ def builtin_sleep(args, position, interpreter):
     return NOTHING
 
 
+def builtin_monotonic(args, position):
+    # Seconds on a clock that never goes backwards, from an arbitrary start: for measuring how long
+    # something took (docs/spec/10-host.md [host.time]).
+    return time.monotonic()
+
+
 def builtin_now(args, position):
     return datetime.now(timezone.utc).isoformat()
 
@@ -2802,6 +2808,11 @@ def builtin_split_lines(args, position):
     return lines
 
 
+def builtin_byte_length(args, position):
+    # The number of bytes of the UTF-8 form of the text ([lib.text]): what a limit in bytes counts.
+    return len(text_argument(args[0], "byte_length()", position).encode("utf-8", "replace"))
+
+
 def builtin_pad(args, position):
     text = text_argument(args[0], "pad()", position)
     return text.ljust(whole_number(args[1], "pad()", position))
@@ -2951,6 +2962,8 @@ BUILTINS = {
 
     # Stage 11: standard library
     "time": BuiltinFunction("time", 0, builtin_time),
+    "monotonic": BuiltinFunction("monotonic", 0, builtin_monotonic),
+    "byte_length": BuiltinFunction("byte_length", 1, builtin_byte_length),
     "sleep": BuiltinFunction("sleep", 1, builtin_sleep, needs_interpreter=True),
     "now": BuiltinFunction("now", 0, builtin_now),
     "format_time": BuiltinFunction("format_time", 2, builtin_format_time),
@@ -3688,7 +3701,7 @@ for _capability, _names in (
     ("files.read", ("read", "exists", "listdir")),
     ("files.write", ("write", "mkdir", "remove", "rename", "copy")),
     ("env", ("env",)),
-    ("clock", ("time", "now", "sleep", "format_time")),
+    ("clock", ("time", "monotonic", "now", "sleep", "format_time")),
     ("random", ("random", "randint", "choice", "shuffle")),
     ("stdin", ("input",)),
     ("process", ("exit", "args", "platform", "cwd", "abspath", "realpath")),

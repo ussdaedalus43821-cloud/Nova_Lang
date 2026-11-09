@@ -66,7 +66,7 @@ In `restricted` a capability is absent unless granted.
 | `files.write` | `write`, `mkdir`, `remove`, `rename`, `copy`, the file form of `append` and the `delete` statement of a file | folders | `rename` and `copy` need `files.write` for both paths; `copy` also needs `files.read` for the source |
 | `import` | `import` of a module | folders | modules are read from these folders only, `[sbx.paths]` |
 | `env` | `env` | variable names | other names read as `nothing`, as an unset variable does |
-| `clock` | `time`, `now`, `sleep`, `format_time` | on or off | `format_time` reads the local time zone |
+| `clock` | `time`, `monotonic`, `now`, `sleep`, `format_time` | on or off | `format_time` reads the local time zone |
 | `random` | `random`, `randint`, `choice`, `shuffle` | on or off | |
 | `stdin` | `input` | on or off | |
 | `process` | `exit`, `args`, `platform`, `cwd`, `abspath`, `realpath` | on or off | `exit` ends the run with that status and never ends the embedder's process; `cwd`, `abspath` and `realpath` reveal the layout of the machine |
@@ -213,7 +213,8 @@ by the engine's own check, which is why `regex` is a capability and why the subp
 runner (slice 5 of M11) stops a run from outside.
 
 **Output.** The write that would take the total over the limit is **not made at all**: the
-output never exceeds it. Output counts the bytes as written (UTF-8, with the line break).
+output never exceeds it. Output counts the bytes as written (UTF-8, with the line break), the number
+`byte_length` gives (`[lib.text]`).
 
 **Sizes.** A size limit is checked **before** the memory is used, from the operands, so a
 program cannot build the object first and be refused afterwards. This covers every operation

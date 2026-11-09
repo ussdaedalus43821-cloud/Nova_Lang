@@ -220,6 +220,8 @@ BUILTIN_SIGNATURES = {
     "realpath": ([STRING], 1, STRING),
     "dirname": ([STRING], 1, STRING),
     "time": ([], 0, FLOAT),
+    "monotonic": ([], 0, FLOAT),
+    "byte_length": ([STRING], 1, INT),
     "random": ([], 0, FLOAT),
     "randint": ([INT, INT], 2, INT),
     "abs": ([FLOAT], 1, SAME),
