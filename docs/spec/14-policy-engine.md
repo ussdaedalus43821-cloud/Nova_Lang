@@ -24,7 +24,7 @@ random generator. A host creates it with a generator, may register **host functi
 | --- | --- |
 | `eval(source)` | parse the program and then `reset(0)`; a syntax error fails before anything runs |
 | `reset(seed)` | `[pol.reset]` |
-| `tick(dt, inputs, faults)` | `[pol.tick]`; true if the cycle ran without error |
+| `tick(dt, inputs, faults, overrides)` | `[pol.tick]`, `[pol.overrides]`; true if the cycle ran without error. `overrides` is optional |
 | `call_function(name, args)` | `[pol.host-api]` |
 | `get_global(name, fallback)`, `set_global(name, value)` | read or define a global |
 | `inject_fault(name)`, `clear_fault()` | `[pol.fault-api]` |
@@ -88,7 +88,7 @@ names in order.
 
 `signals { name = expr ... }` defines values **derived on every tick** from the inputs,
 the effects and the faults: after the fault scheduler and before any rule, each signal
-expression is evaluated in the order written and the result assigned to a global of that
+expression is evaluated in the order written (after the host's overrides, `[pol.overrides]`) and the result assigned to a global of that
 name, so a signal sees earlier signals and a rule sees all of them. A signal is a
 snapshot for the cycle: a rule that changes a variable the signal was computed from does
 not change the signal until the next tick. Blocks add up, and a name defined twice takes
@@ -147,8 +147,9 @@ followed by `reset(0)`, so the first load is a reset.
 
 ## [pol.tick] One control cycle
 
-`tick(dt, inputs, faults_enabled)` runs one cycle. `dt` is the number of seconds the cycle
-stands for and `inputs` a set of named values from the host. In this order:
+`tick(dt, inputs, faults_enabled, overrides)` runs one cycle. `dt` is the number of seconds the cycle
+stands for, `inputs` a set of named values from the host and `overrides` (optional, none by
+default) a second set of named values that the host forces (`[pol.overrides]`). In this order:
 
 1. The guards of `[pol.limits]` start from zero, and `dt` is remembered for `held`.
 2. Every effect that is not `persistent` is set to its default.
@@ -158,13 +159,51 @@ stands for and `inputs` a set of named values from the host. In this order:
    `""`, `""`, 0 and 0, if they are not yet.
 5. The fault scheduler runs, and then the body of the active fault, if any
    (`[pol.fault-schedule]`).
-6. The signals are evaluated in order.
-7. The rules are tried in order (`[pol.rule-fire]`).
+6. The overrides are set as globals (`[pol.overrides]`).
+7. The signals are evaluated in order.
+8. The rules are tried in order (`[pol.rule-fire]`).
 
 The tick succeeds if nothing failed. What the host reads afterwards is the globals (the
 effects, above all), the host functions that were called, and the output. **The engine
 reads the global `t`, the time in seconds, as "now"** (0 if the host gave none); it must
 be a number, or the tick fails with `expected a number, got string`.
+
+## [pol.overrides] Overrides
+
+`overrides` is how a host puts its hand on a value whatever the policy and the active fault
+say: the operator holding a valve open, a test forcing a measurement. Each name in it is
+set as a global with its value, exactly as an input is (`tick` step 3), but **later**: after
+the fault scheduler and the fault body (step 5) and before the signals (step 7). So:
+
+- An override **beats a fault**. A fault body that sets the same name has run already, and the
+  override replaces what it set.
+- **Signals and rules see the overridden value**, so every condition that reads it sees the plant
+  as the host says it is.
+- An override replaces whatever the name held: the effect's default, an input of the same name,
+  the value a fault set, or what an earlier tick left in a `persistent` effect.
+- An override is **not a lock.** It is a value set before the signals and the rules run. A rule
+  whose body sets the name changes it for the rest of the cycle, and a signal with the same name
+  is evaluated after the override and replaces it. The host that wants the value held passes it
+  again on every tick.
+- Overrides are **not remembered.** A name that is not overridden on the next tick is back to
+  what the effect's default, the inputs and the policy make it (a `persistent` effect keeps the
+  value it was last left with, which is the override's value if nothing set it since).
+- The engine reads the global `t` for the fault scheduler in step 5, before the overrides: an
+  override of `t` reaches the signals and the rules but not the scheduler.
+- A name the program never declared is defined by the override like any other global. An empty
+  or missing `overrides` changes nothing, and the cycle is then the one of `[pol.tick]` without
+  step 6.
+
+```
+reactor "DEMO" version 1
+effects { valve = 0.5 }
+signals { open_enough = valve >= 0.4 }
+fault stuck { duration 5  body { set valve = 0.0 } }
+```
+
+With the fault `stuck` active, a tick without overrides ends with `valve` at 0.0 and
+`open_enough` false; the same tick with the override `valve = 0.9` ends with `valve` at 0.9 and
+`open_enough` true.
 
 ## [pol.rule-fire] When a rule fires
 

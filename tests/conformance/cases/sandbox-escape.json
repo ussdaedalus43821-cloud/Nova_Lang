@@ -1342,6 +1342,200 @@
    }
   },
   {
+   "name": "esc-steps-in-a-catch-all-loop",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "while true {\n  try {\n    let i = 0\n    while true { i = i + 1 }\n  } catch e {\n    print(\"caught\")\n  }\n}",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-the-catch-block",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  throw(\"first\")\n} catch e {\n  while true { let i = 0 }\n}\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-the-finally-block",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  print(\"body\")\n} finally {\n  while true { let i = 0 }\n}\nprint(\"after\")",
+   "output": [
+    "body"
+   ],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-nested-try-both-catching",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  try {\n    while true { let i = 0 }\n  } catch a {\n    print(\"inner\")\n  }\n} catch b {\n  print(\"outer\")\n} finally {\n  print(\"fin\")\n}\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-a-function-called-in-try",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "def spin() {\n  while true { let i = 0 }\n}\ntry { spin() } catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-a-map-callback",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "def spin(x) {\n  while true { let i = 0 }\n}\ntry { map(spin, [1]) } catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-a-filter-callback",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "def spin(x) {\n  while true { let i = 0 }\n}\ntry { filter(spin, [1]) } catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-in-a-reduce-callback",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "def spin(a, x) {\n  while true { let i = 0 }\n}\ntry { reduce(spin, [1], 0) } catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
    "name": "esc-stack-a-caught-depth-error-at-every-level",
    "spec": [
     "sbx.capabilities",
@@ -1396,6 +1590,102 @@
    },
    "files": {
     "lib/spin.nova": "try {\n  while true { let i = 0 }\n} catch e { print(\"caught\") }"
+   }
+  },
+  {
+   "name": "esc-steps-in-a-for-loop",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  for i = 1 to 100000000 { let j = i }\n} catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-nested-for-loops",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  for i = 1 to 10000 { for j = 1 to 10000 { let k = j } }\n} catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-for-each-over-a-big-range",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  for x in range(900000) { let j = x }\n} catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "esc-steps-with-sleep-free-busy-wait",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try {\n  while true { try { throw(\"x\") } catch e { let z = 1 } }\n} catch e { print(\"caught\") }\nprint(\"after\")",
+   "output": [],
+   "error": "LimitError: step budget of 20000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: step budget of 20000 steps exhausted - is there a loop that never ends\\?$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 20000,
+     "time": 120000
+    }
    }
   },
   {

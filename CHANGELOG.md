@@ -26,9 +26,23 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 7: `overrides` in the policy dialect, and a note on starting the suite from a background job
+- `tick(dt, inputs, faults, overrides)`: the fourth argument the reactor game added for its valve fix is now in the specification
+  (`docs/spec/14-policy-engine.md`, new section `[pol.overrides]`, step 6 of `[pol.tick]`) and in the policy engine (`dialects/policy/nova_vm.py`).
+  The host's values are set as globals after the fault scheduler and the fault body and before the signals, so they beat a fault and every signal and
+  rule sees them; they are not a lock (a rule's `set` or a signal of the same name replaces one), they are not remembered between ticks, and `t` reaches
+  the signals and rules but not the scheduler. Ten new cases (`policy_overrides_*`, 778 policy cases in all) pin each of those edges. The Reactor-Game
+  Python reference passes all 778 unchanged; the GDScript port is checked by `corpus_check.gd`, which now passes a step's `overrides` on.
+- **A correction to slice 6.** The escape corpus as merged lacked 12 of its fatal-limit cases (a `try` that catches a step-budget trip in a catch-all loop,
+  in the catch block, in `finally`, nested, in a function and in `map`/`filter`/`reduce` callbacks, in a module, in `for` and nested `for`): an indentation slip
+  in the generator left them out of the file, and the case count that would have shown it was not checked against the plan. They are restored (90 cases in all), pass
+  on all three engines, and the review package states the count the file really has.
+- `docs/CI.md` explains why the REPL station's Ctrl-C tests time out when the suite is started from a background job (SIGINT is inherited as
+  "ignored") and how to start it correctly.
+
 ### M11 slice 6: the escape-attempt corpus, the fuzzers and the strict classification check
-- `tests/conformance/cases/sandbox-escape.json`: 77 hostile programs on all three engines. Names that must stay undefined (46 foreign names,
-  every gated name as a value, aliased, passed to `map`, redefined), 29 spellings of a path that leaves the grant and the write, rename
+- `tests/conformance/cases/sandbox-escape.json`: 90 hostile programs on all three engines (the entry as first merged said 77; see slice 7). Names that must stay undefined (48 foreign names,
+  every gated name as a value, aliased, passed to `map`, redefined), 27 spellings of a path that leaves the grant and the write, rename
   and copy forms of them, null bytes and a 5,000-character name, symbolic links (out of the folder, chained, `..` through a link, a link in an
   imported module), modules that reach for `read`, `env` or an outside import, the environment by guessable names, the fatal limits caught in
   every position a `try` can stand (catch-all loop, catch block, `finally`, nested, function, `map`/`filter`/`reduce` callback, module, `for`,

@@ -223,6 +223,25 @@ with `--station NAME` (see the list at the top of `tests/run_all.py`). The
 being the thing that fails on Windows; the interpreter itself opens source
 files as UTF-8 explicitly.
 
+### Starting the suite from a background job
+
+A shell starts a background job (`command &`, `nohup`, most task runners) with SIGINT **ignored**,
+and every process it starts inherits that. Python then does not install its `KeyboardInterrupt`
+handler, so the REPL station's Ctrl-C tests (`tests/repl/interrupt_driver.py`) send an interrupt that
+nothing answers: the loop they interrupt never ends and the station fails after its 120-second timeout
+with `subprocess.TimeoutExpired`, although the same tests pass when run in the foreground. This
+looks like a hang in the REPL and is not one. Start the suite with SIGINT restored:
+
+```sh
+python3 - <<'PY'
+import signal, subprocess
+subprocess.Popen(["python3", "tests/run_all.py"], stdout=open("suite.log", "w"), stderr=subprocess.STDOUT,
+                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL), start_new_session=True)
+PY
+```
+
+(or run it in the foreground). GitHub's runners start the job in the foreground and are not affected.
+
 ## Branch protection
 
 A workflow can report a failure; only repository settings can make it block.

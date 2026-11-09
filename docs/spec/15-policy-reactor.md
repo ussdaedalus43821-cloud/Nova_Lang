@@ -17,7 +17,9 @@ them.
 A reactor host runs the engine once per physics step (0.05 s) of a simulated plant. Each step it:
 
 1. moves the rods and integrates the core, which gives the measurements;
-2. builds the inputs of `[pol.host-inputs]` and calls `tick(dt, inputs, faults_enabled)`;
+2. builds the inputs of `[pol.host-inputs]` and calls `tick(dt, inputs, faults_enabled, overrides)`, where
+   `overrides` holds the values the operator is forcing by hand (the game's manual valve positions
+   `flow_frac` and `load_frac`, when set) and is otherwise empty (`[pol.overrides]`);
 3. if the tick succeeded, reads the policy's outputs back (`[pol.host-inputs]`, "Read back") and
    does the bookkeeping of `[pol.host-latch]`;
 4. if the tick failed, stops the step there: the error is shown to the operator (`CONTROL LOGIC
