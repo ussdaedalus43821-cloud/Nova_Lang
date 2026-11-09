@@ -456,7 +456,9 @@ def build_tree(folder, links):
         for name, target in {"data/linkout": "../secret.txt", "data/linkdir": "../private", "data/sub/up": "..",
                              "data/up": "../..", "data/loop": "loop", "data/hop": "linkout",
                              "lib/evil.nova": "../other/o.nova"}.items():
-            os.symlink(target, os.path.join(folder, *name.split("/")))
+            path = os.path.join(folder, *name.split("/"))
+            # Windows must be told that a link leads to a folder; elsewhere the flag is ignored.
+            os.symlink(target, path, target_is_directory=os.path.isdir(os.path.join(os.path.dirname(path), target)))
 
 
 def snapshot(folder):

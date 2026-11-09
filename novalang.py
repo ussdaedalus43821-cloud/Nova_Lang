@@ -4359,6 +4359,12 @@ class Interpreter:
         """A package name goes through resolve_package; a file path is
         searched relative to the importing file, then the current directory."""
         current_dir = self.file_stack[-1] if self.file_stack else None
+        if "\0" in raw_path:
+            # Never a path: Python 3.7 raises ValueError from the first os.path call that sees one.
+            raise NovaError(
+                "{} is outside the folders this program may use".format(raw_path) if self.caps.restricted
+                else "{}: the path contains a null character".format(raw_path.replace("\0", "\\0")),
+                position, label="ImportError")
         if is_package_import(raw_path):
             found = resolve_package(raw_path, current_dir, position)
             self.caps.check_path(found, "import", position, label="ImportError")

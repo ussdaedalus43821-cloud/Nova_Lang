@@ -41,6 +41,28 @@ class Fuzzers(unittest.TestCase):
         found = fuzz.fuzz_paths("ci", 200, report=lambda text: None, links=links_available())
         self.assertEqual([(index, found_text) for index, _, found_text in found], [])
 
+    def test_random_paths_leave_no_finding_on_a_python_that_raises_for_a_null_byte(self):
+        # Python 3.7 raises ValueError from os.path.isfile/isdir/exists/lexists for a null byte where 3.8 and later
+        # return False (the matrix found this on 3.7 only). Make every system behave like 3.7.
+        names = ("isfile", "isdir", "exists", "lexists", "islink")
+        saved = {name: getattr(os.path, name) for name in names}
+
+        def strict(name):
+            def call(path, *rest):
+                if "\0" in os.fspath(path):
+                    raise ValueError("embedded null byte")
+                return saved[name](path, *rest)
+            return call
+
+        for name in names:
+            setattr(os.path, name, strict(name))
+        try:
+            found = fuzz.fuzz_paths("ci", 300, report=lambda text: None, links=links_available())
+        finally:
+            for name in names:
+                setattr(os.path, name, saved[name])
+        self.assertEqual([(index, found_text) for index, _, found_text in found], [])
+
     def test_the_path_fuzzer_sees_a_check_that_lets_everything_in(self):
         original = nl.inside_folder
         # the hole is confined to the test's own temporary tree: a folder is taken to be its parent
@@ -53,9 +75,8 @@ class Fuzzers(unittest.TestCase):
 
     @unittest.skipUnless(links_available(), "this machine cannot make symbolic links")
     def test_the_path_fuzzer_sees_a_check_that_ignores_links(self):
-        import posixpath
         original = nl.real_path
-        nl.real_path = lambda path: posixpath.normpath(os.path.abspath(path))
+        nl.real_path = lambda path: os.path.normpath(os.path.abspath(path))     # lexical: links are not followed
         try:
             found = fuzz.fuzz_paths("ci", 400, report=lambda text: None, links=True)
         finally:
