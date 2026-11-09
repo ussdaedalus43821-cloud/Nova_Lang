@@ -51,7 +51,8 @@ PROFILES = ("core", "host", "modules", "embedding", "python", "policy", "sandbox
 SANDBOX_SETTINGS = {"profile": str, "read": list, "write": list, "import_from": list, "env": list,
                     "clock": bool, "random": bool, "stdin": bool, "process": bool, "regex": bool,
                     "python": list, "limits": dict, "deterministic": bool, "seed": int,
-                    "clock_start": (int, float)}
+                    "clock_start": (int, float), "isolate": dict}
+ISOLATE_SETTINGS = {"wall_ms": int, "memory_mb": int, "output_cap": int, "pass_env": list}
 SANDBOX_PROFILES = ("trusted", "restricted")
 SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
@@ -137,6 +138,9 @@ def validate(cases, sections, log):
             for key, value in config.items():
                 if key not in SANDBOX_SETTINGS or not isinstance(value, SANDBOX_SETTINGS[key]):
                     problems.append("{} has sandbox setting {!r}={!r} that is not valid".format(where, key, value))
+            for key, value in config.get("isolate", {}).items():
+                if key not in ISOLATE_SETTINGS or not isinstance(value, ISOLATE_SETTINGS[key]):
+                    problems.append("{} has isolate setting {!r} that is not valid".format(where, key))
             for key in config.get("limits", {}):
                 if key not in SANDBOX_LIMITS:
                     problems.append("{} has sandbox limit {!r}, which is not one of {}".format(where, key, SANDBOX_LIMITS))
@@ -216,6 +220,8 @@ def differences(wanted, got, engine):
 def judge(case, engine, result):
     """[] if the engine behaves as the corpus says it should, else the reasons."""
     got = normalize(engine, case["error"], result)
+    if case.get("output_unchecked"):
+        got["output"] = case["output"]          # a run killed from outside leaves an unspecified amount of output
     spec = {key: case[key] for key in ("output", "error", "exit")}
     spec["error_line"] = case.get("error_line")
     spec["error_like"] = case.get("error_like")
@@ -277,6 +283,8 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
 
     def runs_here(case):
         """Cases this machine cannot run are left out for every engine, the slow one included."""
+        if case.get("platforms") and not any(sys.platform.startswith(p) for p in case["platforms"]):
+            return False
         return not (no_links and case.get("symlinks")) and not (no_sandbox and case["profile"] == "sandbox")
 
     # Start the slow engine first so it overlaps the in-process ones.

@@ -219,6 +219,37 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_pytho
             "error": error, "error_line": None, "exit": done.returncode}
 
 
+def run_isolated_case(source, engine, files, env, stdin, args, sandbox, symlinks, timeout=180):
+    """A case whose `sandbox` object has an `isolate` part runs through the subprocess runner
+    (docs/spec/16-sandbox.md [sbx.runner]): `novalang.py --isolate ...`, whatever the engine."""
+    isolate = sandbox.get("isolate", {})
+    settings = {key: value for key, value in sandbox.items() if key != "isolate"}
+    with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
+        path = Path(folder) / "main.nova"
+        write_files(folder, source, files, symlinks)
+        command = [sys.executable, str(ROOT / "novalang.py")] + (["--tree-walk"] if engine == "tree" else [])
+        command += sandbox_arguments(settings) + ["--isolate"]
+        for key, flag in (("wall_ms", "--wall-ms"), ("memory_mb", "--memory-mb"), ("output_cap", "--output-cap")):
+            if key in isolate:
+                command += [flag, str(isolate[key])]
+        for name in isolate.get("pass_env", ()):
+            command += ["--pass-env", name]
+        command += (["--bootstrap"] if engine == "bootstrap" else []) + [str(path)] + list(args or [])
+        try:
+            done = subprocess.run(command, cwd=folder, input=(stdin or "").encode("utf-8"), capture_output=True,
+                                  timeout=timeout, env=dict(os.environ, PYTHONUTF8="1", **(env or {})))
+        except subprocess.TimeoutExpired:
+            return {"output": [], "error": "InternalError: timed out", "error_line": None, "exit": 70}
+    error = ""
+    for line in done.stderr.decode("utf-8", "replace").splitlines():
+        match = HEADLINE.match(line)
+        if match and not line.startswith(" "):
+            error = line
+            break
+    return {"output": lines_of(done.stdout.decode("utf-8", "replace").replace("\r\n", "\n")),
+            "error": error, "error_line": None, "exit": done.returncode}
+
+
 def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=False, sandbox=None,
         symlinks=None):
     """`files` maps relative paths (with `/`) to text: the modules the program
@@ -434,6 +465,9 @@ def run_case(case, engine):
     # engines take it as a Capabilities object; the self-hosted one as command-line flags.
     sandbox = case.get("sandbox")
     allow_python = bool(case.get("allow_python"))
+    if sandbox and "isolate" in sandbox:
+        return run_isolated_case(case["source"], engine, files, case.get("env"), case.get("stdin", ""),
+                                 case.get("args"), sandbox, case.get("symlinks"))
     return run(case["source"], engine, files, case.get("env"),
                case.get("stdin", ""), case.get("args"), allow_python, sandbox, case.get("symlinks"))
 

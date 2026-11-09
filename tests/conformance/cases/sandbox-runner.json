@@ -1,0 +1,262 @@
+{
+ "area": "sandbox-runner",
+ "version": 1,
+ "cases": [
+  {
+   "name": "sbx-runner-kills-a-regex-that-never-returns",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(regex(\"(a+)+$\", \"a\" * 40 + \"!\"))",
+   "output": [],
+   "error": "LimitError: time limit of 500 ms exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "regex": true,
+    "limits": {
+     "time": 500
+    },
+    "isolate": {}
+   },
+   "matrix": [
+    "runner.time:trip"
+   ]
+  },
+  {
+   "name": "sbx-runner-kills-an-endless-trusted-loop",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "while true {\n}",
+   "output": [],
+   "error": "LimitError: time limit of 700 ms exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "trusted",
+    "isolate": {
+     "wall_ms": 700
+    }
+   },
+   "matrix": [
+    "runner.time:trip"
+   ]
+  },
+  {
+   "name": "sbx-runner-cuts-a-flood-off-at-the-cap",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "while true {\n  print(\"x\" * 1000)\n}",
+   "output": [],
+   "error": "LimitError: output limit of 200000 bytes exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "output": 1000000000,
+     "time": 60000
+    },
+    "isolate": {
+     "output_cap": 200000
+    }
+   },
+   "matrix": [
+    "runner.output:trip"
+   ],
+   "output_unchecked": true
+  },
+  {
+   "name": "sbx-runner-limits-memory-on-linux",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "let big = []\nlet i = 0\nwhile i < 600 {\n  append(big, \"x\" * 900000 + str(i))\n  i = i + 1\n}\nprint(len(big))",
+   "output": [],
+   "error": "LimitError: memory limit of 400 MB exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "time": 60000
+    },
+    "isolate": {
+     "memory_mb": 400
+    }
+   },
+   "matrix": [
+    "runner.memory:trip"
+   ],
+   "platforms": [
+    "linux"
+   ]
+  },
+  {
+   "name": "sbx-runner-starts-the-child-with-an-empty-environment",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(env(\"NOVA_SECRET\"))",
+   "output": [
+    "nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "env": [
+     "NOVA_SECRET"
+    ],
+    "isolate": {}
+   },
+   "matrix": [
+    "runner.env:deny"
+   ],
+   "env": {
+    "NOVA_SECRET": "s3cret"
+   }
+  },
+  {
+   "name": "sbx-runner-hands-over-only-the-named-variables",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(env(\"NOVA_SECRET\"))\nprint(env(\"NOVA_OTHER\"))",
+   "output": [
+    "s3cret",
+    "nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "env": [
+     "NOVA_SECRET",
+     "NOVA_OTHER"
+    ],
+    "isolate": {
+     "pass_env": [
+      "NOVA_SECRET"
+     ]
+    }
+   },
+   "matrix": [
+    "runner.env:grant"
+   ],
+   "env": {
+    "NOVA_SECRET": "s3cret",
+    "NOVA_OTHER": "other"
+   }
+  },
+  {
+   "name": "sbx-runner-gives-the-same-output-error-and-status",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(read(\"data/in.txt\"))\nlet i = 0\nwhile i < 100 {\n  i = i + 1\n}\nprint(i)\nprint(1 / 0)\nprint(\"never\")",
+   "output": [
+    "hello",
+    "100"
+   ],
+   "error": "NovaError: division by zero",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "limits": {
+     "time": 60000
+    },
+    "isolate": {}
+   },
+   "matrix": [
+    "runner.same:replay"
+   ],
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret"
+   }
+  },
+  {
+   "name": "sbx-runner-passes-a-fatal-limit-through",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "let i = 0\nwhile i < 20000 {\n  i = i + 1\n}\nprint(i)",
+   "output": [],
+   "error": "LimitError: step budget of 10000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 10000,
+     "time": 120000
+    },
+    "isolate": {}
+   },
+   "matrix": [
+    "runner.same:replay"
+   ]
+  },
+  {
+   "name": "sbx-runner-passes-the-exit-status-and-the-input",
+   "spec": [
+    "sbx.runner",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(input())\nexit(3)",
+   "output": [
+    "line"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 3,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "process": true,
+    "stdin": true,
+    "isolate": {}
+   },
+   "matrix": [
+    "runner.same:replay"
+   ],
+   "stdin": "line\n"
+  }
+ ]
+}
