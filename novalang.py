@@ -1854,7 +1854,12 @@ def builtin_realpath(args, position):
     # abspath() with every symbolic link followed: what a path really names. The
     # self-hosted interpreter checks a program's paths against its grants with it
     # (docs/spec/10-host.md [host.files], docs/spec/16-sandbox.md [sbx.paths]).
-    return os.path.realpath(text_argument(args[0], "realpath()", position))
+    path = text_argument(args[0], "realpath()", position)
+    try:
+        return os.path.realpath(path)
+    except (ValueError, OSError):
+        # A null byte, or a name the system cannot take: an error of the program, not Python's report.
+        raise NovaError("{} is not a path this system can resolve".format(path), position, label="FileError") from None
 
 
 def builtin_dirname(args, position):

@@ -619,6 +619,35 @@
    ]
   },
   {
+   "name": "esc-paths-realpath-of-a-null-byte-is-an-error",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(realpath(\"data/a\\0b\")) } catch e { print(str(e)[-37:]) }",
+   "output": [
+    "is not a path this system can resolve"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "process": true
+   },
+   "files": {
+    "data/in.txt": "hello",
+    "data/sub/deep.txt": "deep",
+    "secret.txt": "top secret",
+    "private/x.txt": "PRIVATE-X-CONTENT",
+    "data2/x.txt": "SIBLING-X-CONTENT"
+   }
+  },
+  {
    "name": "esc-symlinks-every-link-out-is-outside",
    "spec": [
     "sbx.capabilities",
