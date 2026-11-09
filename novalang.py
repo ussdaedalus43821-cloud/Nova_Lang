@@ -93,7 +93,7 @@ import shutil
 import sys
 import contextlib
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
 
 __version__ = "2.1.0"
@@ -2094,33 +2094,40 @@ def list_argument(value, who, position):
 
 # ---- time -----------------------------------------------------------------
 
-def builtin_time(args, position):
-    return time.time()
+def builtin_time(args, position, interpreter):
+    return interpreter.det.time() if interpreter.det else time.time()
 
 
 def builtin_sleep(args, position, interpreter):
     ms = finite_argument(numeric_argument(args[0], "sleep()", position), "sleep()", position)
     if ms < 0:
         raise NovaError("sleep() cannot pause for a negative time", position, label="TypeError")
+    if interpreter.det:
+        interpreter.det.elapsed += ms / 1000.0          # virtual time passes; nobody waits
+        return NOTHING
     interpreter.check_time(position, extra_ms=ms)       # a sleep that would pass the limit does not start
     time.sleep(ms / 1000.0)
     return NOTHING
 
 
-def builtin_monotonic(args, position):
+def builtin_monotonic(args, position, interpreter):
     # Seconds on a clock that never goes backwards, from an arbitrary start: for measuring how long
     # something took (docs/spec/10-host.md [host.time]).
-    return time.monotonic()
+    return interpreter.det.elapsed if interpreter.det else time.monotonic()
 
 
-def builtin_now(args, position):
+def builtin_now(args, position, interpreter):
+    if interpreter.det:
+        return deterministic_iso(interpreter.det.time(), position)
     return datetime.now(timezone.utc).isoformat()
 
 
-def builtin_format_time(args, position):
+def builtin_format_time(args, position, interpreter):
     timestamp, fmt = args
     timestamp = numeric_argument(timestamp, "format_time()", position)
     fmt = text_argument(fmt, "the format for format_time()", position)
+    if interpreter.det:
+        return deterministic_format(timestamp, fmt, position)
     try:
         return datetime.fromtimestamp(timestamp).strftime(fmt)
     except (ValueError, OSError, OverflowError) as problem:
@@ -2129,29 +2136,40 @@ def builtin_format_time(args, position):
 
 # ---- random -----------------------------------------------------------------
 
-def builtin_random(args, position):
+def builtin_random(args, position, interpreter):
+    if interpreter.det:
+        return interpreter.det.next53() / 9007199254740992        # 2**53, exact
     return random.random()
 
 
-def builtin_randint(args, position):
+def builtin_randint(args, position, interpreter):
     low = whole_number(args[0], "randint()", position)
     high = whole_number(args[1], "randint()", position)
     if low > high:
         raise NovaError(
             "randint() needs its first argument no greater than its second", position, label="TypeError"
         )
+    if interpreter.det:
+        return low + interpreter.det.below(high - low + 1)
     return random.randint(low, high)
 
 
-def builtin_choice(args, position):
+def builtin_choice(args, position, interpreter):
     target = list_argument(args[0], "choice()", position)
     if not target:
         raise NovaError("choice() cannot pick from an empty list", position)
+    if interpreter.det:
+        return target[interpreter.det.below(len(target))]
     return random.choice(target)
 
 
-def builtin_shuffle(args, position):
+def builtin_shuffle(args, position, interpreter):
     target = list_argument(args[0], "shuffle()", position)
+    if interpreter.det:
+        for i in range(len(target) - 1, 0, -1):             # Fisher-Yates from the end
+            j = interpreter.det.below(i + 1)
+            target[i], target[j] = target[j], target[i]
+        return target
     random.shuffle(target)
     return target
 
@@ -2961,16 +2979,16 @@ BUILTINS = {
     "dirname": BuiltinFunction("dirname", 1, builtin_dirname),
 
     # Stage 11: standard library
-    "time": BuiltinFunction("time", 0, builtin_time),
-    "monotonic": BuiltinFunction("monotonic", 0, builtin_monotonic),
+    "time": BuiltinFunction("time", 0, builtin_time, needs_interpreter=True),
+    "monotonic": BuiltinFunction("monotonic", 0, builtin_monotonic, needs_interpreter=True),
     "byte_length": BuiltinFunction("byte_length", 1, builtin_byte_length),
     "sleep": BuiltinFunction("sleep", 1, builtin_sleep, needs_interpreter=True),
-    "now": BuiltinFunction("now", 0, builtin_now),
-    "format_time": BuiltinFunction("format_time", 2, builtin_format_time),
-    "random": BuiltinFunction("random", 0, builtin_random),
-    "randint": BuiltinFunction("randint", 2, builtin_randint),
-    "choice": BuiltinFunction("choice", 1, builtin_choice),
-    "shuffle": BuiltinFunction("shuffle", 1, builtin_shuffle),
+    "now": BuiltinFunction("now", 0, builtin_now, needs_interpreter=True),
+    "format_time": BuiltinFunction("format_time", 2, builtin_format_time, needs_interpreter=True),
+    "random": BuiltinFunction("random", 0, builtin_random, needs_interpreter=True),
+    "randint": BuiltinFunction("randint", 2, builtin_randint, needs_interpreter=True),
+    "choice": BuiltinFunction("choice", 1, builtin_choice, needs_interpreter=True),
+    "shuffle": BuiltinFunction("shuffle", 1, builtin_shuffle, needs_interpreter=True),
     "abs": BuiltinFunction("abs", 1, builtin_abs),
     "round": BuiltinFunction("round", None, builtin_round),
     "floor": BuiltinFunction("floor", 1, builtin_floor),
@@ -3719,7 +3737,10 @@ SANDBOX_SETTINGS = {
     "profile": str, "read": (list, tuple), "write": (list, tuple), "import_from": (list, tuple),
     "env": (list, tuple), "clock": bool, "random": bool, "stdin": bool, "process": bool,
     "regex": bool, "python": (list, tuple), "limits": dict,
+    "deterministic": bool, "seed": int, "clock_start": (int, float),
 }
+# These three belong to both profiles ([sbx.determinism]); every other setting is a grant or a limit.
+DETERMINISM_SETTINGS = ("deterministic", "seed", "clock_start")
 SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
 
 
@@ -3768,6 +3789,78 @@ class Limits:
 TRUSTED_LIMITS = Limits()
 
 
+class Determinism:
+    """The deterministic mode of an engine ([sbx.determinism]): a random generator the specification
+    fixes, and a clock the program cannot read from the machine. The same program, seed and start
+    time give the same output on every engine."""
+
+    MODULUS = 1 << 64
+    MULTIPLIER = 6364136223846793005          # Knuth's MMIX linear congruential generator
+    INCREMENT = 1442695040888963407
+    FIRST, LAST = -62135596800, 253402300800   # the years 1 to 9999, as seconds from 1970
+
+    def __init__(self, seed, start):
+        self.state = seed % self.MODULUS
+        self.start = start
+        self.elapsed = 0.0                      # virtual seconds slept so far
+
+    def next53(self):
+        """The next 53 random bits, as a whole number below 2**53."""
+        self.state = (self.MULTIPLIER * self.state + self.INCREMENT) % self.MODULUS
+        return self.state >> 11
+
+    def below(self, n):
+        """A whole number from 0 up to but not including n (n a positive whole number)."""
+        return (self.next53() * n) >> 53
+
+    def time(self):
+        return self.start + self.elapsed
+
+
+def utc_parts(seconds, position, who):
+    """(datetime, microseconds) for a time given in seconds, in UTC, or the error of a time out of range."""
+    if seconds != seconds or seconds in (float("inf"), float("-inf")) or not Determinism.FIRST <= seconds < Determinism.LAST:
+        raise NovaError("{}: that time is out of range".format(who), position, label="TypeError")
+    whole = math.floor(seconds)
+    micro = round((seconds - whole) * 1000000)
+    if micro >= 1000000:
+        whole, micro = whole + 1, micro - 1000000
+    return datetime(1970, 1, 1) + timedelta(seconds=whole), micro
+
+
+def deterministic_iso(seconds, position):
+    stamp, micro = utc_parts(seconds, position, "now()")
+    return stamp.isoformat() + (".{:06d}".format(micro) if micro else "") + "+00:00"
+
+
+DETERMINISTIC_DIRECTIVES = "YmdHMSjy%"
+
+
+def deterministic_format(seconds, fmt, position):
+    """format_time() in the deterministic mode: UTC, and exactly the directives every host must support."""
+    stamp, _ = utc_parts(seconds, position, "format_time()")
+    out, i = [], 0
+    while i < len(fmt):
+        ch = fmt[i]
+        if ch != "%":
+            out.append(ch)
+            i += 1
+            continue
+        if i + 1 >= len(fmt):
+            raise NovaError("format_time(): a format cannot end with '%'", position, label="TypeError")
+        d = fmt[i + 1]
+        if d not in DETERMINISTIC_DIRECTIVES:
+            raise NovaError("format_time(): '%{}' is not supported in the deterministic mode".format(d),
+                            position, label="TypeError")
+        out.append({"Y": "{:04d}".format(stamp.year), "m": "{:02d}".format(stamp.month),
+                    "d": "{:02d}".format(stamp.day), "H": "{:02d}".format(stamp.hour),
+                    "M": "{:02d}".format(stamp.minute), "S": "{:02d}".format(stamp.second),
+                    "j": "{:03d}".format(stamp.timetuple().tm_yday), "y": "{:02d}".format(stamp.year % 100),
+                    "%": "%"}[d])
+        i += 2
+    return "".join(out)
+
+
 def fatal_error(fatal):
     """The error the embedding API raises for a fatal limit: `LimitError: step budget of ...`."""
     return NovaLangError(NovaError(fatal.message, fatal.position, label="LimitError"))
@@ -3810,6 +3903,7 @@ class Capabilities:
             if name not in SANDBOX_SETTINGS:
                 raise sandbox_error("unknown sandbox setting {!r}".format(name))
             if not isinstance(value, SANDBOX_SETTINGS[name]) or (
+                    isinstance(value, bool) and name in ("seed", "clock_start")) or (
                     SANDBOX_SETTINGS[name] is bool and not isinstance(value, bool)):
                 raise sandbox_error("sandbox setting {!r} has a value of the wrong kind".format(name))
         if profile not in SANDBOX_PROFILES:
@@ -3818,8 +3912,14 @@ class Capabilities:
         if self.restricted and SANDBOX_UNSUPPORTED:
             raise sandbox_error("the restricted profile needs Python 3.8 or later on Windows: Python 3.7 "
                                 "does not follow symbolic links when it resolves a path")
-        if not self.restricted and len(self.settings) > 1:
+        if not self.restricted and any(name not in DETERMINISM_SETTINGS and name != "profile" for name in self.settings):
             raise sandbox_error("grants and limits belong to the 'restricted' profile, not 'trusted'")
+        if ("seed" in settings or "clock_start" in settings) and not settings.get("deterministic"):
+            raise sandbox_error("'seed' and 'clock_start' need deterministic=True")
+        self.determinism = ((settings.get("seed", 0), float(settings.get("clock_start", 0.0)))
+                            if settings.get("deterministic") else None)
+        if self.determinism is not None and not -62135596800 <= self.determinism[1] < 253402300800:
+            raise sandbox_error("'clock_start' must be a time in the years 1 to 9999")
         limits = settings.get("limits", {})
         for name, value in limits.items():
             if name not in SANDBOX_LIMITS or isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -3908,6 +4008,7 @@ class Interpreter:
         # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
         self.caps = capabilities if capabilities is not None else DEFAULT_CAPABILITIES
         self.limits = self.caps.limit_values
+        self.det = Determinism(*self.caps.determinism) if self.caps.determinism else None
         self.counting = self.caps.restricted           # steps, time and output are counted
         self.entries = 0                                # runs in progress (a host callback is not a new run)
         self.begin_counters()
@@ -7328,7 +7429,8 @@ def run_bootstrap(args):
     import bootstrap
     return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE,
                                    allow_python=ALLOW_PYTHON,
-                                   sandbox=DEFAULT_CAPABILITIES.settings if DEFAULT_CAPABILITIES.restricted else None)
+                                   sandbox=DEFAULT_CAPABILITIES.settings
+                                   if DEFAULT_CAPABILITIES.restricted or DEFAULT_CAPABILITIES.determinism else None)
 
 
 def dis_main(paths):
@@ -7379,6 +7481,7 @@ SANDBOX_FLAGS = {
     "--allow-clock": ("clock", False), "--allow-random": ("random", False),
     "--allow-stdin": ("stdin", False), "--allow-process": ("process", False),
     "--allow-regex": ("regex", False),
+    "--deterministic": ("deterministic", False), "--seed": ("seed", True), "--clock-start": ("clock_start", True),
 }
 
 
@@ -7416,6 +7519,12 @@ def main(argv):
                     sandbox.setdefault("limits", {})[name] = int(number)
                 elif setting == "profile":
                     sandbox["profile"] = value
+                elif setting in ("seed", "clock_start"):
+                    try:
+                        sandbox[setting] = int(value) if setting == "seed" else float(value)
+                    except ValueError:
+                        print("{} needs a number, not {!r}".format(flag, value), file=sys.stderr)
+                        return 2
                 else:
                     sandbox.setdefault(setting, []).append(value)
             else:

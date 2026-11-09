@@ -1,0 +1,441 @@
+{
+ "area": "sandbox-determinism",
+ "version": 1,
+ "cases": [
+  {
+   "name": "sbx-det-random-draws-the-specified-sequence",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(random())\nprint(random())\nprint(random())",
+   "output": [
+    "0.5682303266439076",
+    "0.2254634289477513",
+    "0.41283831882951183"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 42,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.random:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-randint-draws-the-specified-numbers",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "let l = []\nfor i = 1 to 12 {\n  append(l, randint(1, 6))\n}\nprint(l)\nprint(randint(5, 5), randint(-10, -5))",
+   "output": [
+    "[3, 6, 6, 2, 2, 1, 3, 2, 6, 5, 3, 4]",
+    "5 -7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 7,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.randint:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-choice-picks-the-specified-items",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(choice([\"a\", \"b\", \"c\", \"d\"]), choice([1, 2, 3]), choice([\"x\"]))",
+   "output": [
+    "a 1 x"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 3,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.choice:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-shuffle-makes-the-specified-permutation",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "let l = [1, 2, 3, 4, 5, 6, 7, 8]\nprint(shuffle(l))\nprint(l)\nprint(shuffle([]), shuffle([9]))\nprint(random())",
+   "output": [
+    "[2, 8, 3, 4, 6, 1, 5, 7]",
+    "[2, 8, 3, 4, 6, 1, 5, 7]",
+    "[] [9]",
+    "0.159818270628719"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 11,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.shuffle:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-seed-zero-is-taken-modulo-2-to-the-64",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(random(), random())",
+   "output": [
+    "0.07820865487829387 0.10169876029679303"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.seed:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-seed-negative-is-taken-modulo-2-to-the-64",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(random(), random())",
+   "output": [
+    "0.35320607490619693 0.06315534736215511"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": -5,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.seed:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-seed-huge-is-taken-modulo-2-to-the-64",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(random(), random())",
+   "output": [
+    "0.11321020286155192 0.32482480805757574"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 1180591620717411303427,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.seed:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-time-starts-at-the-clock-start",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(time(), monotonic())\nprint(now())\nprint(type(time()), type(now()), type(monotonic()))",
+   "output": [
+    "1700000000.5 0",
+    "2023-11-14T22:13:20.500000+00:00",
+    "number string number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 1700000000.5
+   },
+   "matrix": [
+    "det.time:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-sleep-advances-the-virtual-clock-and-does-not-wait",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "sleep(250)\nsleep(1250.5)\nprint(time(), monotonic())\nprint(sleep(3600000))\nprint(now(), monotonic())",
+   "output": [
+    "1700000002.0005 1.5005",
+    "nothing",
+    "2023-11-14T23:13:22.000500+00:00 3601.5005"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 1700000000.5
+   },
+   "matrix": [
+    "det.sleep:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-format-time-writes-utc-with-the-specified-directives",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(format_time(0, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(951782400, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(-2203891200, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(253402214400, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(-62135596800, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(1709208000, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(1609459199.75, \"%Y-%m-%d %H:%M:%S day %j year %y 100%% done\"))\nprint(format_time(time(), \"%Y\"))\nprint(format_time(0, \"no directives\"), format_time(0, \"\"))",
+   "output": [
+    "1970-01-01 00:00:00 day 001 year 70 100% done",
+    "2000-02-29 00:00:00 day 060 year 00 100% done",
+    "1900-03-01 00:00:00 day 060 year 00 100% done",
+    "9999-12-31 00:00:00 day 365 year 99 100% done",
+    "0001-01-01 00:00:00 day 001 year 01 100% done",
+    "2024-02-29 12:00:00 day 060 year 24 100% done",
+    "2020-12-31 23:59:59 day 366 year 20 100% done",
+    "2024",
+    "no directives "
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 1709208000.0
+   },
+   "matrix": [
+    "det.format:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-format-time-refuses-the-other-directives",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { format_time(0, \"%A\") } catch e { print(e) }\ntry { format_time(0, \"ab%\") } catch e { print(e) }\ntry { format_time(\"x\", \"%Y\") } catch e { print(e) }\ntry { format_time(0, 5) } catch e { print(e) }",
+   "output": [
+    "TypeError: format_time(): '%A' is not supported in the deterministic mode",
+    "TypeError: format_time(): a format cannot end with '%'",
+    "TypeError: format_time() needs a number, but got a string",
+    "the format for format_time() needs a string, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.format:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-a-time-outside-the-years-1-to-9999-is-an-error",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(now())\nsleep(1000)\ntry { print(now()) } catch e { print(e) }\ntry { print(format_time(time(), \"%Y\")) } catch e { print(e) }\ntry { print(format_time(-62135596801, \"%Y\")) } catch e { print(e) }\nprint(format_time(-62135596800, \"%Y-%m-%d\"))",
+   "output": [
+    "9999-12-31T23:59:59+00:00",
+    "TypeError: now(): that time is out of range",
+    "TypeError: format_time(): that time is out of range",
+    "TypeError: format_time(): that time is out of range",
+    "0001-01-01"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 0,
+    "clock_start": 253402300799.0
+   },
+   "matrix": [
+    "det.range:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-works-in-the-trusted-profile-too",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "print(random(), now())",
+   "output": [
+    "0.5682303266439076 1970-01-01T00:00:00+00:00"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "trusted",
+    "deterministic": true,
+    "seed": 42,
+    "clock_start": 0
+   },
+   "matrix": [
+    "det.profiles:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-does-not-define-a-name-the-profile-does-not-grant",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { random() } catch e { print(e) }\ntry { time() } catch e { print(e) }\ntry { sleep(1) } catch e { print(e) }",
+   "output": [
+    "undefined name 'random'",
+    "undefined name 'time'",
+    "undefined name 'sleep'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "deterministic": true,
+    "seed": 1,
+    "clock_start": 5.0
+   },
+   "matrix": [
+    "det.profiles:replay"
+   ]
+  },
+  {
+   "name": "sbx-det-a-failed-call-draws-nothing",
+   "spec": [
+    "sbx.determinism",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "try { randint(3, 1) } catch e { print(e) }\ntry { choice([]) } catch e { print(e) }\ntry { shuffle(5) } catch e { print(e) }\ntry { sleep(-1) } catch e { print(e) }\ntry { sleep(\"x\") } catch e { print(e) }\nprint(random())\nprint(monotonic())",
+   "output": [
+    "TypeError: randint() needs its first argument no greater than its second",
+    "choice() cannot pick from an empty list",
+    "TypeError: shuffle() needs a list, but got a number",
+    "TypeError: sleep() cannot pause for a negative time",
+    "TypeError: sleep() needs a number, but got a string",
+    "0.18321329882806825",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "random": true,
+    "clock": true,
+    "deterministic": true,
+    "seed": 9,
+    "clock_start": 0.0
+   },
+   "matrix": [
+    "det.random:replay",
+    "det.randint:replay"
+   ]
+  }
+ ]
+}

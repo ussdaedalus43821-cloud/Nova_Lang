@@ -50,7 +50,8 @@ PROFILES = ("core", "host", "modules", "embedding", "python", "policy", "sandbox
 # enforce it yet (D-040 to D-044); the corpus records what they do instead.
 SANDBOX_SETTINGS = {"profile": str, "read": list, "write": list, "import_from": list, "env": list,
                     "clock": bool, "random": bool, "stdin": bool, "process": bool, "regex": bool,
-                    "python": list, "limits": dict}
+                    "python": list, "limits": dict, "deterministic": bool, "seed": int,
+                    "clock_start": (int, float)}
 SANDBOX_PROFILES = ("trusted", "restricted")
 SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
 REQUIRED = ("name", "spec", "profile", "source", "output", "error", "exit")
@@ -125,7 +126,7 @@ def validate(cases, sections, log):
                     or any(part in ("", ".", "..") for part in name.split("/")):
                 problems.append("{} has a symlinks entry {!r} that is not a relative name and a target".format(where, name))
         for cell in case.get("matrix", []):
-            if not re.fullmatch(r"[a-z]+(\.[a-z-]+)*:(deny|grant|trip|uncatchable|within)", cell):
+            if not re.fullmatch(r"[a-z]+(\.[a-z-]+)*:(deny|grant|trip|uncatchable|within|replay)", cell):
                 problems.append("{} has matrix cell {!r} that is not 'cell:kind'".format(where, cell))
         if "sandbox" in case:
             config = case["sandbox"]

@@ -68,6 +68,10 @@ def derive_cells(spec_text=None):
             cells["{}:trip".format(name)] = "limit"
             if "fatal" in row[-1] and "catchable" not in row[-1].replace("fatal", ""):
                 cells["{}:uncatchable".format(name)] = "limit"
+    for row in table_rows(section(text, "sbx.determinism")):
+        name = row[0].strip("`")
+        if re.fullmatch(r"det\.[a-z]+", name):
+            cells["{}:replay".format(name)] = "determinism"
     for row in table_rows(section(text, "sbx.paths")):
         name = row[0].strip("`")
         if name.startswith("paths."):

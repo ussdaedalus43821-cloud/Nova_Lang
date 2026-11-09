@@ -77,7 +77,10 @@ def nova_literal(value):
 def sandbox_config(settings):
     """The engine's sandbox settings (Capabilities.settings) as the dictionary novalang.nova's
     configure_sandbox() reads: every setting present, so the engine need not default any."""
-    config = {"profile": settings.get("profile", "trusted"), "limits": settings.get("limits", {})}
+    config = {"profile": settings.get("profile", "trusted"), "limits": settings.get("limits", {}),
+              "deterministic": bool(settings.get("deterministic", False)),
+              "seed": settings.get("seed", 0),
+              "clock_start": "{:.9f}".format(float(settings.get("clock_start", 0.0)))}
     for name in ("read", "write", "import_from", "env", "python"):
         config[name] = list(settings.get(name, ()))
     for name in ("clock", "random", "stdin", "process", "regex"):
@@ -109,13 +112,14 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # paths point, before any grant is consulted: it is skipped, and the target alone is
     # not type-checked either (D-040: the self-hosted interpreter has no type gate there).
     restricted = bool(sandbox) and sandbox.get("profile") == "restricted"
+    configured = restricted or bool(sandbox and sandbox.get("deterministic"))
     refusal = [] if restricted else type_check_graph(target_path)
     if refusal:
         print("\n".join(refusal), file=sys.stderr)
         return 1
 
     program = engine_source
-    if restricted:
+    if configured:
         program += "\nconfigure_sandbox({})\n".format(nova_literal(sandbox_config(sandbox)))
     program += "\nrun_file({})\n".format(nova_string_literal(target_path))
 

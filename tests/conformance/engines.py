@@ -181,6 +181,9 @@ def sandbox_arguments(sandbox):
             out.append(flag)
     for name, value in sandbox.get("limits", {}).items():
         out += ["--limit", "{}={}".format(name, value)]
+    if sandbox.get("deterministic"):
+        out.append("--deterministic")
+        out += ["--seed", str(sandbox.get("seed", 0)), "--clock-start", repr(float(sandbox.get("clock_start", 0.0)))]
     return out
 
 
