@@ -40,7 +40,7 @@ native or alternative runtimes.
   * The fatal limits (`FatalLimit`, a `BaseException`) are checked between steps; the time limit cannot interrupt one C-level
     call (the review package, section 6). A fast path must not make a loop body un-interruptible.
   * The 201-cell coverage matrix is per engine. A new engine is 67 new cells to cover, not a free addition.
-* D-045 (the self-hosted interpreter has no type gate in `restricted`) is open and was deferred to M12 by ADR 0005. See slice 7.
+* D-045 (the self-hosted interpreter had no type gate in `restricted`) was deferred to M12 by ADR 0005 and **closed before M12 started** (2.2.0): the launcher's type-check walk takes the import grants. Slice 7 below is therefore withdrawn.
 
 ## 3. Decisions the plan needs from the owner
 
@@ -61,10 +61,12 @@ when green, no merge without the owner's go-ahead, documents labelled with their
 
 ### Slice 1: a baseline and the benchmark suite
 
-* Grow `tests/bench/` from four programs to about a dozen that cover what programs do: recursion (`fib`), loops and arithmetic,
+* Start from `tests/benchmarks/run.py`, which exists before M12 and already measures cold start-up, the front end by stage, a tight
+  loop on the VM, the tree-walker and the `restricted` profile, and the embedding API, and records its baseline in
+  `docs/benchmarks.md`. Grow `tests/bench/` and it from four programs to about a dozen that cover what programs do: recursion (`fib`), loops and arithmetic,
   string building, list and dictionary work, closures, `map`/`filter`/`reduce`, a module-heavy start-up, `try`/`catch` in a loop,
   and the policy-dialect tick loop of the reactor (the 900-step trace is a real workload).
-* `python3 tests/bench/run_bench.py --json` is the one command: runs each program N times after a warm-up on each engine and
+* `python3 tests/benchmarks/run.py --json` is the one command: runs each program N times after a warm-up on each engine and
   both profiles, reports median, minimum and spread, the machine and Python version, and the commit.
 * **Measure the cost of M11 itself**: `restricted` against `trusted` on every program, so the price of the limit checks is a
   number in the report and a regression is visible.
@@ -143,13 +145,11 @@ argument tuple in calls to user functions; caching the global and builtin lookup
 functions; specialising `for` over a range. A fast path that needs a changed step count or a weaker check is dropped, not
 negotiated.
 
-### Slice 7: the self-hosted interpreter and D-045
+### Slice 7: withdrawn (D-045 was closed in 2.2.0)
 
-Decide with the owner whether the self-hosted interpreter's launcher can obtain a type-checked import graph under `restricted`
-without reading modules before a grant is consulted (for example by loading **verified artifacts** produced by the host
-compiler, which has already type-checked them), which would close D-045 with a case; or whether D-045 stays open with the
-reasoning written down. Either way the divergence log is brought up to date. This slice is small and may be merged into
-slice 4 or 5 if the answer is easy.
+The self-hosted interpreter now type-checks the program and the modules inside the import grants without reading anything outside
+them, so there is nothing left to decide here. One question stays for slice 4 or 5: if the artifact loader ever feeds the
+self-hosted interpreter, its `restricted` launcher must keep the same rule (judge a module by its real path before opening it).
 
 ### Slice 8: the evaluation of native and alternative runtimes (the decision document)
 
@@ -176,7 +176,7 @@ its review state.
 
 1. Bytecode produced by one version is accepted or cleanly rejected by another: the fixture corpus of slice 4 passes in CI on every
    platform, and the corruption fuzzer finds no input that loads unverified or raises an unnamed error.
-2. Benchmarks are reproducible from one command (`python3 tests/bench/run_bench.py --json`) and run in CI, with the spread
+2. Benchmarks are reproducible from one command (`python3 tests/benchmarks/run.py --json`) and run in CI, with the spread
    reported and regressions alerted by the rule of D6.
 3. Every conformance case and every cell of the sandbox matrix passes unchanged, on all engines, after every slice. The
    step totals recorded in slice 6 are unchanged.
