@@ -65,8 +65,7 @@ class Restricted(unittest.TestCase):
     def test_the_self_hosted_interpreter_refuses_it_too(self):
         done = self.run_bootstrap("main.nova")
         self.assertEqual(done.returncode, 1, done.stderr)
-        self.assertIn("TypeCheckError: lib/bad.nova:1:", done.stderr)
-        self.assertIn("T006", done.stderr)
+        self.assertRegex(done.stderr, r"TypeCheckError: .*lib[\\/]bad\.nova:1:\d+: T006")
         self.assertEqual(done.stdout, "", "the wrong code ran before it was refused")
 
     def test_the_self_hosted_interpreter_checks_the_program_itself(self):
@@ -116,7 +115,7 @@ class Restricted(unittest.TestCase):
         done = subprocess.run(command, cwd=self.root, capture_output=True, text=True, timeout=300,
                               env=dict(os.environ, PYTHONUTF8="1"))
         self.assertEqual(done.returncode, 1)
-        self.assertIn("TypeCheckError: lib/bad.nova:1:", done.stderr)
+        self.assertRegex(done.stderr, r"TypeCheckError: .*lib[\\/]bad\.nova:1:\d+:")
 
 
 if __name__ == "__main__":
