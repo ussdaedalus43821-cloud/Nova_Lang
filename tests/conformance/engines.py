@@ -363,13 +363,13 @@ class ReactorModel:
     def fn_clear_fault(self, args):
         self.machine.clear_fault()
 
-    def tick(self, dt, inputs, faults):
+    def tick(self, dt, inputs, faults, overrides=None):
         given = dict(inputs)
         given.update({"scram": self.scram, "scram_elapsed": (given.get("t", 0.0) - self.scram_t) if self.scram else 0.0,
                       "game_over": self.game_over, "victory": self.victory, "meltdown": self.meltdown})
         given["operator_scram"] = bool(given.get("operator_scram", False))
         self.scram_requested = self.trip_reset = False
-        ok = self.machine.tick(dt, given, faults)
+        ok = self.machine.tick(dt, given, faults, overrides)
         if ok:
             if self.scram_requested and not self.scram:
                 self.scram, self.scram_t = True, given.get("t", 0.0)
@@ -418,12 +418,13 @@ def run_policy_engine(case):
             entry = {"ok": True, "value": None}
             if "tick" in step:
                 tick = step["tick"]
+                overrides = dict(tick.get("overrides", {}))
                 if reactor is not None:
                     entry["ok"] = reactor.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
-                                               tick.get("faults", True))
+                                               tick.get("faults", True), overrides)
                 else:
                     entry["ok"] = machine.tick(tick.get("dt", 0.05), dict(tick.get("inputs", {})),
-                                               tick.get("faults", True))
+                                               tick.get("faults", True), overrides)
             elif "inject_fault" in step:
                 entry["ok"] = machine.inject_fault(step["inject_fault"])
             elif "clear_fault" in step:

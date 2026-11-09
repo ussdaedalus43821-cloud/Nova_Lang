@@ -18,7 +18,7 @@ New stations (run one with `python3 tests/run_all.py --station NAME`):
 | `repl` | 46 | multiline drafts, error recovery, EOF, session state, `help`, Ctrl-C, on both engines |
 | `input-errors` | 6 | formatter refusal checks, malformed lockfiles, language-server framing |
 | `portability` | 14 | Windows paths, file URIs, newlines, the time limit and the tree-walker skip, simulated on any platform |
-| `conformance` | 1,548 cases (780 NovaLang, 768 policy dialect) | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter, and the policy dialect's cases on its own engine; every spec section cited, every divergence logged. Five parent checks |
+| `conformance` | 1,558 cases (780 NovaLang, 778 policy dialect) | the specification's corpus (`tests/conformance/`) on the VM, the tree-walker and the self-hosted interpreter, and the policy dialect's cases on its own engine; every spec section cited, every divergence logged. Five parent checks |
 | `security` | 216 | the sandbox profile through the embedding API and the command line: configuration errors, every fatal and catchable limit, one compiled script for both profiles, `exit()`, paths, symbolic links, the Python grant, command-line flags, the escape-attempt corpus checked against the file system, and the seeded fuzzers (with proof that they see a hole put back) |
 | `security-matrix` | 3 checks (201 cells, 201 covered, strict; every built-in classified) | the sandbox coverage matrix of M11 (`tests/security/`): every claim is a cell of `docs/spec/16-sandbox.md` and every hole is explained |
 
