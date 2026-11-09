@@ -270,11 +270,11 @@ renaming it in Settings is safe for the workflow.
 
 ## Releases
 
-A release is a tag `vX.Y.Z` on a commit of the default branch whose CI run (the push run of its merge) is green on all twelve
-jobs. Before tagging, `__version__` in `novalang.py`, the README's "Current release" line and a dated `## [X.Y.Z]` section in
-`CHANGELOG.md` must already be on that commit. Pushing the tag starts `.github/workflows/release.yml`, which publishes the GitHub
-Release with that section as its notes (it fails, and publishes nothing, if the section is missing). The workflow needs
-`contents: write`, the only workflow that does.
+A release is made by hand. It is a tag `vX.Y.Z` on a commit of the default branch whose CI run (the push run of its merge) is
+green on every job. Before tagging, `__version__` in `novalang.py`, the README's "Current release" line and a dated
+`## [X.Y.Z]` section in `CHANGELOG.md` must already be on that commit, and the GitHub Release takes the summary of that
+section (the text above its first `###` sub-heading) as its notes. No workflow publishes a release: nothing in this
+repository holds the permission to.
 
 ## Line endings
 
