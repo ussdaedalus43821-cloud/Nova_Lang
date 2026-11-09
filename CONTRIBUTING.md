@@ -68,7 +68,7 @@ a note explaining why, not a quiet workaround.
 - **`python.*` stays a curated bridge, not open process access.** `
   python.import()`'s allowlist and the explicit `expose()`/
   `expose_module()`/`expose_global()` registration model are a deliberate
-  security boundary, and `python.*` is off unless `--allow-python` or
+  narrowing of what a script can reach (not a security boundary, ADR 0003), and `python.*` is off unless `--allow-python` or
   `Nova(allow_python=True)` asks for it. Every access goes through
   `bridge_lookup` (names starting with `_` and ungranted modules are
   hidden); do not add a path around it. The reachability test in

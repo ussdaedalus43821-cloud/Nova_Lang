@@ -699,7 +699,7 @@ Resolved 2026-11-08 (M11 slice 2): the `python` grant names the only modules `py
 ### D-045 — The self-hosted interpreter has no type gate in the restricted profile
 
 Status: open
-Untested: it needs an annotated module with a wrong type, imported by a restricted program; the case is added in slice 6 of M11
+Untested: it needs an annotated module with a wrong type, imported by a restricted program; the case is deferred to M12 with the fix (ADR 0005)
 Class: implementation bug
 Engines: self-hosted
 Spec: `[sbx.profiles]`

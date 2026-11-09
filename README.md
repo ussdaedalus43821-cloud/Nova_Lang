@@ -488,7 +488,7 @@ except NovaLangError as error:
 
 | Method | Purpose |
 |---|---|
-| `Nova(engine=None, allow_python=False)` | A fresh, isolated interpreter — nothing is shared between instances. `python.*` is **off** unless `allow_python=True` |
+| `Nova(engine=None, allow_python=False)` | A fresh interpreter — nothing is shared between instances. `python.*` is **off** unless `allow_python=True` |
 | `eval(code)` / `exec(code)` | Run a string of NovaLang, returning its value (or discarding it) — cached by source text, so calling the same script every frame costs no repeated parsing |
 | `compile(code)` | Lex and parse once, returning a `CompiledScript` you can `run()` repeatedly yourself |
 | `load_file(path)` | Read and run a `.nova` file; its own relative imports resolve against its directory |
@@ -746,6 +746,44 @@ This design was a deliberate departure from an earlier, broader spec
 If your embedding program needs more, opt it in explicitly with
 `expose()` / `expose_module()` / `expose_global()`; don't loosen the
 allowlist itself without deciding that's actually what you want.
+
+## Running a program you did not write: the `restricted` profile
+
+Status: **Owner-reviewed and Architect-reviewed, pending independent third-party audit.** The words below are the
+whole claim; [`docs/spec/16-sandbox.md`](docs/spec/16-sandbox.md) (`[sbx.claims]`) is the only place that may say more.
+
+NovaLang has two profiles. `trusted` (the default) is the language as it has always behaved. `restricted` is opt-in and
+is **capability gating plus resource limits**: the program can reach only what the embedder grants, and cannot use more
+steps, time, output or collection size than the embedder allows.
+
+```sh
+python3 novalang.py --profile restricted --allow-read data --allow-write out --limit steps=100000 --limit time=2000 prog.nova
+python3 novalang.py --profile restricted --deterministic --seed 42 --clock-start 1700000000 prog.nova   # replayable
+python3 novalang.py --isolate --profile restricted --allow-regex --wall-ms 3000 prog.nova               # in a child process
+```
+
+```python
+from novalang import Nova
+nova = Nova(profile="restricted", read=["data"], env=["HOME_NAME"], limits={"steps": 100_000, "time": 2000})
+nova.exec('print(read("data/in.txt"))')       # fine
+nova.exec('print(read("/etc/hosts"))')        # FileError: /etc/hosts is outside the folders this program may use
+nova.exec('print(env("PATH"))')               # nothing: PATH was not granted
+```
+
+What is guaranteed, on the bytecode VM, the tree-walker and the self-hosted interpreter: a `restricted` program defines no
+name of a capability it was not granted (files, imports, environment, clock, random, stdin, process, regex, the Python
+bridge), and reaches files, imports and environment variables only inside the grants; it writes no more output, takes no
+more steps or time, and builds no longer string, list or dictionary than the limits allow, and a fatal limit (steps, time,
+output) cannot be caught by the program; each of these is a NovaLang error, never a failure of the host.
+
+What is **not** guaranteed: isolation (the engine runs in your process, on a Python that is not a security boundary);
+the total memory a program uses; anything about a Python module or host function you grant; paths in folders that
+another process can change while the program runs; side channels; hard links and mounts inside a granted folder;
+Windows-only file names beyond the tested ones; and the `trusted` profile, which has no limits. `--isolate` /
+`run_isolated()` adds a child process that is killed on a wall-clock or output overrun (and, on Linux only, an
+address-space limit): it is not a container. Run code you do not trust in a container or a separate machine as well.
+The threat model, the test inventory and the known gaps are in
+[`docs/design/m11-review-package.md`](docs/design/m11-review-package.md).
 
 ## Specification
 
