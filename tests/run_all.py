@@ -838,10 +838,11 @@ def station_conformance(line):
 
 def station_security(line):
     print("13a. security (the sandbox profile through the embedding API and the command line)")
+    # Not -v: a failure is what the report should show, not 60 lines of passes.
     done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s",
-                           os.path.join(HERE, "security"), "-v"],
+                           os.path.join(HERE, "security")],
                           cwd=ROOT, capture_output=True, text=True, timeout=300)
-    line.check(done.returncode == 0, "sandbox capability, path and command-line tests pass",
+    line.check(done.returncode == 0, "sandbox capability, path, limit, determinism, runner and command-line tests pass",
                done.stdout + done.stderr)
 
 

@@ -7675,8 +7675,9 @@ def run_isolated(source=None, path=None, *, engine="vm", bootstrap=False, args=(
     finally:
         if temp is not None:
             shutil.rmtree(temp, ignore_errors=True)
-    stdout = b"".join(out).decode("utf-8", "replace")
-    stderr = b"".join(err).decode("utf-8", "replace")
+    # Text with "\n" line ends on every platform: Windows writes "\r\n".
+    stdout = b"".join(out).decode("utf-8", "replace").replace("\r\n", "\n")
+    stderr = b"".join(err).decode("utf-8", "replace").replace("\r\n", "\n")
     error = runner_error(killed, status, stderr, limits.time if limits.time is not None else wall_ms,
                          output_cap, memory_mb)
     if error and killed:
