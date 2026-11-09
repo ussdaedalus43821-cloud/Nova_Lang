@@ -50,8 +50,8 @@ def type_check_graph(target_path):
         with open(target_path, "r", encoding="utf-8") as handle:
             source = handle.read()
         ast = novalang.Parser(novalang.Lexer(source).tokenize()).parse()
-    except (OSError, UnicodeDecodeError, NovaError):
-        return []
+    except (OSError, UnicodeDecodeError, NovaError, RecursionError):
+        return []          # novalang.nova reports a text it cannot read, or one nested too deeply, itself
     if not (ast.annotated or ast.imports):
         return []
     lines = novalang.typecheck_tool().check_file_graph(target_path)

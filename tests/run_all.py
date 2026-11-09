@@ -849,7 +849,7 @@ def station_security_matrix(line):
     print("13. security matrix (which capability and limit is proved on which engine)")
     sys.path.insert(0, os.path.join(HERE, "security"))
     import matrix
-    matrix.check_all(line.check)
+    matrix.check_all(line.check, strict=True)           # M11's exit criterion: every cell is covered
 
 
 STATIONS = [

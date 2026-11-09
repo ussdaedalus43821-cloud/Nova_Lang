@@ -26,6 +26,28 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 3: resource limits on all three engines
+- The limits of `[sbx.limits]` exist on the bytecode VM, the tree-walker and the self-hosted interpreter, in the
+  `restricted` profile only (ADR 0005); `trusted` is unchanged. **Fatal, uncatchable:** the step budget (a step is one pass
+  of a loop or one call), the time limit (a `sleep` that would pass it does not start) and the output limit (the write that
+  would pass it is not made). They end the run with `LimitError`; no `try`, `catch` or `finally` sees one. In the Python
+  engines `FatalLimit` is a `BaseException`, so not even the host's own `except Exception` conversions can swallow it.
+  **Catchable:** call depth, nesting, integer digits, and the sizes of lists, strings and dictionaries.
+- Sizes are checked from the operands before anything is built, on every operation that can grow a value: `+` and `*` on
+  strings and lists, `append`, `range`, `join`, `pad`, `pad_left`, `replace_all`, `str`, `print`, `log`, interpolation, dictionary
+  assignment (`d[k] = v`, `d.k = v`); built-ins that cannot grow a value by more than a small multiple are checked on the result.
+  A structure that contains itself many times over (`l = [l, l]` forty times) is refused after `limit` steps and never turned
+  into text. A Python `MemoryError` can no longer reach a restricted program.
+- `limits={"list": ..., "string": ..., "dict": ..., "depth": ...}` can be lowered, never raised; `steps`, `time` and `output`
+  take any positive number. Embedding: a host function that calls back into the script is part of the same run and cannot
+  reset the budget; a call a host makes into the script has a budget of its own; an engine works again after a fatal limit.
+- A program nested too deeply is `NovaError: the interpreter ran out of stack - recursion too deep` on all three engines (the
+  self-hosted parser limits itself to the specification's minimum of 100 levels); the library no longer lets a `RecursionError` out.
+- D-042 and D-043 are resolved; D-046 is new (the self-hosted engine counts output in characters). **All 153 matrix cells are
+  covered** and the station `security-matrix` now runs strict: a cell without a passing case fails the build.
+- `tests/security/test_limits.py` (13 tests). Review labels: the threat model and `16-sandbox.md` are now "Owner-reviewed and
+  Architect-reviewed, pending independent third-party audit".
+
 ### M11 slice 2: capability gating on all three engines
 - The `restricted` profile exists: `Nova(profile="restricted", read=[...], write=[...], import_from=[...], env=[...],
   clock=True, random=True, stdin=True, process=True, regex=True, python=[...], limits={...})` and

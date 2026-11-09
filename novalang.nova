@@ -529,7 +529,24 @@ def p_optional_keyword(p, kind) {
     return false
 }
 
+# How deeply the program's own text may nest (brackets, blocks): the specification's minimum,
+# 100 levels ([sbx.limits], nesting). Each level costs about ten calls of this parser, so the
+# host's own call-depth limit would end a deeper program with the wrong words.
+let NESTING = {depth: 0, limit: 100}
+
+def nesting_enter() {
+    NESTING["depth"] = NESTING["depth"] + 1
+    if NESTING["depth"] > NESTING["limit"] {
+        throw("the interpreter ran out of stack - recursion too deep")
+    }
+}
+
+def nesting_leave() {
+    NESTING["depth"] = NESTING["depth"] - 1
+}
+
 def parse_program(source) {
+    NESTING["depth"] = 0
     let p = {tokens: tokenize(source), index: 0, last_statement: {kind: "Program"}}
     let statements = []
     p_skip_newlines(p)
@@ -544,6 +561,7 @@ def parse_program(source) {
 }
 
 def parse_block(p) {
+    nesting_enter()
     p_skip_newlines(p)
     let opening = p_expect(p, "LBRACE", "a '{' to open the block")
     let statements = []
@@ -559,6 +577,7 @@ def parse_block(p) {
         p_error("this block is never closed with '}'", opening["pos"])
     }
     p_advance(p)
+    nesting_leave()
     return {kind: "Block", statements: statements, pos: opening["pos"]}
 }
 
@@ -999,7 +1018,10 @@ def parse_expression_statement(p) {
 }
 
 def parse_expression(p) {
-    return parse_or(p)
+    nesting_enter()
+    let node = parse_or(p)
+    nesting_leave()
+    return node
 }
 
 def parse_or(p) {
@@ -1427,6 +1449,13 @@ def configure_sandbox(config) {
     SANDBOX["env"] = config["env"]
     SANDBOX["python"] = config["python"]
     SANDBOX["limits"] = config["limits"]
+    for name in config["limits"] {
+        LIMITS[name] = config["limits"][name]
+    }
+    if config["limits"] != {} and "depth" in config["limits"] {
+        LIMITS["depth"] = min(config["limits"]["depth"], 60)
+    }
+    begin_counters()
     for flag in ["clock", "random", "stdin", "process", "regex"] {
         SANDBOX[flag] = config[flag]
     }
@@ -1529,6 +1558,260 @@ def check_builtin_paths(name, call_args) {
     }
     if name == "append" and type(call_args[0]) == "string" {
         check_file_write(call_args[0])
+    }
+}
+
+# ---- the limits of a run (docs/spec/16-sandbox.md [sbx.limits]) ---------
+
+# The numbers in force. Only the restricted profile counts anything (set by configure_sandbox);
+# `depth` is the host's call depth for this interpreter, 60, unless the embedder lowers it.
+let LIMITS = {
+    steps: 5000000, time: 5000, output: 1000000, list: 1000000, string: 1000000,
+    dict: 1000000, depth: 60
+}
+
+# What this run has used.
+let RUN = {steps: 0, output: 0, started: 0, next_check: 1000}
+
+# The three fatal limits end the run with a message that begins "LimitError: ". A `try` of the
+# program never sees one, and no `finally` block runs ([sbx.limits]).
+def limit_error(message) {
+    throw("LimitError: " + message)
+}
+
+def is_fatal(e) {
+    return type(e) == "string" and e[0:12] == "LimitError: "
+}
+
+def begin_counters() {
+    RUN["steps"] = 0
+    RUN["output"] = 0
+    RUN["started"] = time()
+    RUN["next_check"] = min(1000, LIMITS["steps"] + 1)
+}
+
+def check_time(extra_ms) {
+    if (time() - RUN["started"]) * 1000 + extra_ms > LIMITS["time"] {
+        limit_error("time limit of " + str(LIMITS["time"]) + " ms exceeded")
+    }
+}
+
+def step_slow() {
+    if RUN["steps"] > LIMITS["steps"] {
+        limit_error("step budget of " + str(LIMITS["steps"]) + " steps exhausted - is there a loop that never ends?")
+    }
+    check_time(0)
+    RUN["next_check"] = min(RUN["steps"] + 1000, LIMITS["steps"] + 1)
+}
+
+# One pass of a loop or one call.
+def count_step() {
+    if SANDBOX["restricted"] {
+        RUN["steps"] = RUN["steps"] + 1
+        if RUN["steps"] >= RUN["next_check"] {
+            step_slow()
+        }
+    }
+}
+
+def count_output(text) {
+    let size = len(text) + 1
+    if RUN["output"] + size > LIMITS["output"] {
+        limit_error("output limit of " + str(LIMITS["output"]) + " bytes exceeded")
+    }
+    RUN["output"] = RUN["output"] + size
+}
+
+def string_too_long() {
+    throw("a string cannot grow beyond " + str(LIMITS["string"]) + " characters")
+}
+
+def list_too_long() {
+    throw("a list cannot grow beyond " + str(LIMITS["list"]) + " items")
+}
+
+# Does the display text of these values certainly have more than `limit` characters? A lower
+# bound that stops the moment it passes the limit, so a structure that shares its parts with
+# itself is refused after `limit` steps and never turned into text.
+def text_would_exceed(parts, limit) {
+    let remaining = limit
+    let stack = []
+    for part in parts {
+        append(stack, [part, 0])
+    }
+    while len(stack) > 0 {
+        let entry = pop(stack)
+        let value = entry[0]
+        let depth = entry[1]
+        let kind = type(value)
+        if kind == "string" {
+            remaining = remaining - len(value)
+        } else if kind == "list" or kind == "dict" {
+            if depth > 200 {
+                # a structure that contains itself prints as [...]: cut it off rather than follow it
+                remaining = remaining - 5
+            } else {
+                remaining = remaining - 2 - max(len(value) - 1, 0) * 2
+                if kind == "list" {
+                    for item in value {
+                        append(stack, [item, depth + 1])
+                    }
+                } else {
+                    for key, item in value {
+                        append(stack, [key, depth + 1])
+                        append(stack, [item, depth + 1])
+                    }
+                }
+            }
+        } else {
+            remaining = remaining - 1
+        }
+        if remaining < 0 {
+            return true
+        }
+    }
+    return false
+}
+
+# How many items range(...) would make, or -1 when range() is about to refuse its arguments.
+def limits_range_count(call_args) {
+    let start = 0
+    let end = 0
+    let stride = 1
+    if len(call_args) == 1 {
+        end = call_args[0]
+    } else if len(call_args) == 2 {
+        start = call_args[0]
+        end = call_args[1]
+    } else {
+        start = call_args[0]
+        end = call_args[1]
+        stride = call_args[2]
+    }
+    for value in [start, end, stride] {
+        if type(value) != "number" or value - value != 0 or value != value // 1 {
+            return -1
+        }
+    }
+    if stride == 0 {
+        return -1
+    }
+    let span = end - start
+    if stride < 0 {
+        span = start - end
+    }
+    if span <= 0 {
+        return 0
+    }
+    if stride < 0 {
+        stride = 0 - stride
+    }
+    return (span - 1) // stride + 1
+}
+
+# What a built-in's operands allow to be checked before it builds anything.
+def check_builtin_limits(name, call_args) {
+    if name == "append" and len(call_args) == 2 and type(call_args[0]) == "list" and len(call_args[0]) >= LIMITS["list"] {
+        list_too_long()
+    }
+    if name == "range" and len(call_args) >= 1 and len(call_args) <= 3 {
+        let count = limits_range_count(call_args)
+        if count > LIMITS["list"] {
+            throw("range() would build a list of " + str(count) + " items, which is too large")
+        }
+    }
+    if name == "join" and len(call_args) == 2 and type(call_args[0]) == "list" and type(call_args[1]) == "string" {
+        if len(call_args[0]) + len(call_args[1]) * max(len(call_args[0]) - 1, 0) > LIMITS["string"] {
+            string_too_long()
+        }
+    }
+    if (name == "pad" or name == "pad_left") and len(call_args) == 2 and type(call_args[1]) == "number" and call_args[1] > LIMITS["string"] {
+        string_too_long()
+    }
+    if name == "replace_all" and len(call_args) == 3 and type(call_args[0]) == "string" and type(call_args[1]) == "string" and type(call_args[2]) == "string" and call_args[1] != "" {
+        let grown = len(call_args[0]) + (len(split(call_args[0], call_args[1])) - 1) * max(len(call_args[2]) - len(call_args[1]), 0)
+        if grown > LIMITS["string"] {
+            string_too_long()
+        }
+    }
+    if name == "sleep" and len(call_args) == 1 and type(call_args[0]) == "number" {
+        check_time(call_args[0])
+    }
+    if name == "input" {
+        check_time(0)
+    }
+    if (name == "str" or name == "join") and len(call_args) >= 1 {
+        if text_would_exceed([call_args[0]], LIMITS["string"]) {
+            string_too_long()
+        }
+    }
+    if name == "print" or name == "log" {
+        if text_would_exceed(call_args, LIMITS["string"]) {
+            string_too_long()
+        }
+        let text = ""
+        let i = 0
+        while i < len(call_args) {
+            if i > 0 {
+                text = text + " "
+            }
+            text = text + target_str(call_args[i])
+            i = i + 1
+        }
+        count_output(text)
+    }
+}
+
+def check_result_size(value) {
+    let kind = type(value)
+    if kind == "string" and len(value) > LIMITS["string"] {
+        string_too_long()
+    }
+    if kind == "list" and len(value) > LIMITS["list"] {
+        list_too_long()
+    }
+}
+
+# The operators + and * on strings and lists, checked from the operands.
+def check_binop_limits(op, left, right) {
+    let lt = type(left)
+    let rt = type(right)
+    if op == "+" and lt == "string" and rt == "string" and len(left) + len(right) > LIMITS["string"] {
+        string_too_long()
+    }
+    if op == "+" and lt == "list" and rt == "list" and len(left) + len(right) > LIMITS["list"] {
+        list_too_long()
+    }
+    if op == "*" {
+        if (lt == "string" and rt == "number") or (lt == "number" and rt == "string") {
+            let text = left
+            let times = right
+            if lt == "number" {
+                text = right
+                times = left
+            }
+            if times == times // 1 and times > 0 and len(text) * times > LIMITS["string"] {
+                throw("repeating that string " + str(times) + " times would be too long")
+            }
+        }
+        if (lt == "list" and rt == "number") or (lt == "number" and rt == "list") {
+            let items = left
+            let times = right
+            if lt == "number" {
+                items = right
+                times = left
+            }
+            if times == times // 1 and times > 0 and len(items) * times > LIMITS["list"] {
+                throw("repeating that list " + str(times) + " times would exceed " + str(LIMITS["list"]) + " items")
+            }
+        }
+    }
+}
+
+# A new key in a dictionary: the number of entries is bounded.
+def check_dict_entry(target, key) {
+    if SANDBOX["restricted"] and type(target) == "dict" and not (key in target) and len(target) >= LIMITS["dict"] {
+        throw("a dictionary cannot hold more than " + str(LIMITS["dict"]) + " entries")
     }
 }
 
@@ -1649,6 +1932,17 @@ def numbers_from_call_args(call_args) {
 }
 
 def call_builtin(name, call_args, pos) {
+    if not SANDBOX["restricted"] {
+        return call_builtin_raw(name, call_args, pos)
+    }
+    count_step()
+    check_builtin_limits(name, call_args)
+    let result = call_builtin_raw(name, call_args, pos)
+    check_result_size(result)
+    return result
+}
+
+def call_builtin_raw(name, call_args, pos) {
     check_builtin_paths(name, call_args)
     if name == "print" {
         let text = ""
@@ -2006,17 +2300,17 @@ def target_reduce(call_args, pos) {
 # ---- calling a target function -----------------------------------------
 
 let CALL_DEPTH = {n: 0}
-let MAX_TARGET_DEPTH = 60
 
 def call_function(fn, call_args, pos) {
     if len(call_args) != len(fn["params"]) {
         raise_error(fn["name"] + "() expects " + str(len(fn["params"])) + " argument(s) but got " + str(len(call_args)), pos)
     }
 
+    count_step()
     CALL_DEPTH["n"] = CALL_DEPTH["n"] + 1
-    if CALL_DEPTH["n"] > MAX_TARGET_DEPTH {
+    if CALL_DEPTH["n"] > LIMITS["depth"] {
         CALL_DEPTH["n"] = CALL_DEPTH["n"] - 1
-        raise_error("call depth of " + str(MAX_TARGET_DEPTH) + " exceeded - is the recursion missing a base case?", pos)
+        raise_error("call depth of " + str(LIMITS["depth"]) + " exceeded - is the recursion missing a base case?", pos)
     }
 
     let frame = make_env(fn["closure"], true, false)
@@ -2108,6 +2402,9 @@ def eval_binop(node, scope) {
     let left = eval_expr(node["left"], scope)
     let right = eval_expr(node["right"], scope)
     let op = node["op"]
+    if SANDBOX["restricted"] {
+        check_binop_limits(op, left, right)
+    }
     if op == "+" {
         return left + right
     }
@@ -2217,8 +2514,18 @@ def eval_dict(node, scope) {
 
 def eval_fstring(node, scope) {
     let text = ""
+    let pieces = []
     for part in node["parts"] {
-        text = text + target_str(eval_expr(part, scope))
+        append(pieces, eval_expr(part, scope))
+    }
+    if SANDBOX["restricted"] and text_would_exceed(pieces, LIMITS["string"]) {
+        string_too_long()
+    }
+    for piece in pieces {
+        text = text + target_str(piece)
+    }
+    if SANDBOX["restricted"] {
+        check_result_size(text)
     }
     return text
 }
@@ -2316,6 +2623,7 @@ def exec_if(node, scope) {
 def exec_while(node, scope) {
     let broke = false
     while eval_condition(node, scope, "while") {
+        count_step()
         let result = exec_scoped_block(node["body"], scope)
         if result["kind"] == "break" {
             broke = true
@@ -2367,6 +2675,7 @@ def exec_for(node, scope) {
     let broke = false
     let index = 0
     while index < iterations {
+        count_step()
         let offset = index * step_value
         if node["descending"] {
             loop_env["vars"][node["name"]] = start - offset
@@ -2407,6 +2716,7 @@ def exec_for_in(node, scope) {
 
     if node["has_second"] {
         for a, b in collection {
+            count_step()
             loop_env["vars"][node["name"]] = a
             loop_env["vars"][node["second_name"]] = b
             let result = exec_block(node["body"]["statements"], make_env(loop_env, false, false))
@@ -2423,6 +2733,7 @@ def exec_for_in(node, scope) {
         }
     } else {
         for a in collection {
+            count_step()
             loop_env["vars"][node["name"]] = a
             let result = exec_block(node["body"]["statements"], make_env(loop_env, false, false))
             if result["kind"] == "break" {
@@ -2446,11 +2757,12 @@ def exec_for_in(node, scope) {
 
 def exec_try(node, scope) {
     let result = sig_normal()
+    let fatal = false
     try {
         try {
             result = exec_scoped_block(node["body"], scope)
         } catch e {
-            if not node["has_catch"] {
+            if not node["has_catch"] or is_fatal(e) {
                 throw(e)
             }
             let catch_env = make_env(scope, false, false)
@@ -2459,8 +2771,13 @@ def exec_try(node, scope) {
             }
             result = exec_block(node["catch_block"]["statements"], catch_env)
         }
+    } catch outer {
+        if is_fatal(outer) {
+            fatal = true
+        }
+        throw(outer)
     } finally {
-        if node["has_finally"] {
+        if node["has_finally"] and not fatal {
             let finally_result = exec_scoped_block(node["finally_block"], scope)
             if finally_result["kind"] != "normal" {
                 result = finally_result
@@ -2474,6 +2791,7 @@ def exec_index_assign(node, scope) {
     let target = eval_expr(node["target"], scope)
     let index_value = eval_expr(node["index"], scope)
     let value = eval_expr(node["value"], scope)
+    check_dict_entry(target, index_value)
     target[index_value] = value
     return sig_normal()
 }
@@ -2483,7 +2801,9 @@ def exec_member_assign(node, scope) {
     if type(target) != "dict" {
         raise_error("only a dictionary can have fields set, but this is a " + target_type(target), node["pos"])
     }
-    target[node["name"]] = eval_expr(node["value"], scope)
+    let member_value = eval_expr(node["value"], scope)
+    check_dict_entry(target, node["name"])
+    target[node["name"]] = member_value
     return sig_normal()
 }
 
@@ -2877,6 +3197,9 @@ def run_module(resolved_path, raw_path, pos) {
             check_toplevel(exec_block(ast["statements"], module_env))
             exports = current_exports()
         } catch inner {
+            if is_fatal(inner) {
+                throw(inner)
+            }
             # Whatever went wrong while the module ran reaches the importer
             # as an ImportError that names the module and carries the report.
             import_error("while loading module \"" + raw_path + "\":\n  " + replace_all(inner, "\n", "\n  "), pos)

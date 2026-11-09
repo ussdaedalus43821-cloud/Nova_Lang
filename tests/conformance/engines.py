@@ -149,6 +149,9 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
                 status = 1
             except novalang.ProgramExit as stop:
                 status = stop.code
+            except novalang.FatalLimit as problem:
+                error = "LimitError: {}".format(problem.message)
+                status = 1
             except SystemExit as stop:
                 status = stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
             except RecursionError:

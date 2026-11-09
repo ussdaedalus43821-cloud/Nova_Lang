@@ -25,7 +25,7 @@ agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
 host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message), D-040 to D-045 (the sandbox profile of `16-sandbox.md`: D-040, D-041 and D-044 are resolved, D-042, D-043 and D-045 are open) and D-025 and D-033 (case conversion beyond ASCII,
+difference in one error message), D-040 to D-046 (the sandbox profile of `16-sandbox.md`: D-040 to D-044 are resolved, D-045 and D-046 are open and untested) and D-025 and D-033 (case conversion beyond ASCII,
 an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
 policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
 `13-policy-values.md`.
@@ -648,7 +648,7 @@ touching the file system.
 Resolved 2026-11-08 (M11 slice 2): every path argument and every `import` is resolved with `realpath` and compared with the granted folders (`..`, absolute paths, symbolic links, a sibling folder that shares a prefix, a path that does not exist yet) before the file system is touched. The self-hosted interpreter uses the new host function `realpath` (`[host.files]`).
 ### D-042 — Size, depth and nesting limits are missing, or end in the host's failure
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: bytecode VM, tree-walker, self-hosted
 Spec: `[sbx.limits]`, `[sbx.errors]`
@@ -665,9 +665,10 @@ the self-hosted interpreter reports `InternalError: RecursionError`. Closed by s
 Fix: check each size from the operands before the memory is used, with the error of the
 row; turn `RecursionError` and `MemoryError` into the error of the nearest row.
 
+Resolved 2026-11-08 (M11 slice 3): every size is checked from the operands (or, for a built-in that cannot produce more than a small multiple of them, from the result) with the error of its row; the limits can be lowered (`limits={"list": ...}`); a program nested too deeply is `NovaError: the interpreter ran out of stack - recursion too deep` on all three engines (the self-hosted parser has its own limit of 100 levels, the specification's minimum). A Python `MemoryError` can no longer reach a restricted program.
 ### D-043 — No step budget, time limit or output limit
 
-Status: open
+Status: resolved
 Class: implementation bug
 Engines: bytecode VM, tree-walker, self-hosted
 Spec: `[sbx.limits]`
@@ -680,6 +681,7 @@ policy dialect already have a step budget. The three limits do not exist as
 Fix: count steps and check the clock in the same place; the three errors are of kind
 `fatal` and `try` does not see them.
 
+Resolved 2026-11-08 (M11 slice 3): the step budget, the time limit and the output limit exist on all three engines, end the run with `LimitError`, and cannot be caught: `try`, `catch` and `finally` never see one (`FatalLimit` is not even an `Exception` in the Python engines; the self-hosted `try` rethrows a message that begins `LimitError: `).
 ### D-044 — Sandbox settings are not read; a Python grant does not replace the default list
 
 Status: resolved
@@ -709,6 +711,21 @@ there, while the bytecode VM and the tree-walker refuse it when the module is lo
 difference in what is refused.
 
 Fix: type-check each module as it is imported, after the path check, as the host does.
+
+### D-046 — The self-hosted interpreter counts output in characters, and times a run by the wall clock
+
+Status: open
+Untested: it needs non-ASCII output, or a change of the system clock during a run, which a corpus case cannot arrange portably
+Class: implementation bug
+Engines: self-hosted
+Spec: `[sbx.limits]` (output, time)
+
+The output limit is in **bytes**. The Python engines count the UTF-8 bytes of what `print` and `log` write; the self-hosted
+interpreter, which has no way to ask for a byte length, counts characters, so for non-ASCII text it lets through up to
+four times as much. Its time limit reads the host's `time()` (the wall clock) where the Python engines read a monotonic
+clock, so a clock set back during a run lengthens the run. Neither is a way past a limit by more than a small factor.
+
+Fix: a host function for the byte length of a text, and a monotonic clock for the self-hosted engine's own use.
 
 ## Not divergences, but worth knowing
 

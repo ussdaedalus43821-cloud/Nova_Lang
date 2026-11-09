@@ -1,10 +1,11 @@
 # 16. The sandbox profile: capabilities and limits
 
-Status: **draft, owner review pending, not independently audited.** This chapter is the
+Status: **Owner-reviewed and Architect-reviewed, pending independent third-party audit.** This chapter is the
 specification of milestone M11. **Implemented** on the bytecode VM, the tree-walker and the
-self-hosted interpreter: the profiles, every capability and the path rules (`[sbx.capabilities]`,
-`[sbx.paths]`). **Not yet implemented:** the limits of `[sbx.limits]` that do not already exist
-(D-042, D-043, closed by slice 3 of M11). The threat model is
+self-hosted interpreter: the profiles, every capability, the path rules and every limit
+(`[sbx.capabilities]`, `[sbx.paths]`, `[sbx.limits]`); every cell of the coverage matrix is covered
+(`tests/security/matrix.py --strict`). **Not yet written:** the deterministic switch and the subprocess
+runner (slices 4 and 5 of M11). The threat model is
 [`../design/m11-threat-model.md`](../design/m11-threat-model.md) and the decision behind it is
 [ADR 0003](../decisions/0003-security-stance.md).
 
@@ -191,12 +192,18 @@ output written before it stays. The engine itself is usable again for the next r
 counters start from zero (`[emb.model]`). A catchable limit is an ordinary error
 (`[err.try-catch]`) and a program can recover from it.
 
-**Steps.** What a step is, is the engine's own: one engine counts syntax nodes, another
-counts instructions, so the number of steps a program takes is **not** portable and a program
-close to the budget may pass on one engine and fail on another. What every engine
-guarantees is a bound on work: with the default budget, a loop of 20,000 simple passes
-completes and an endless loop always trips the limit. The budget is per run and also per
-call a host makes into the program.
+**Steps.** A step is **one pass of a loop** (`while`, `for`) **or one call** (of a function or of a
+built-in). Straight-line code costs nothing, because it is bounded by the size of the program;
+everything that can run for long is a loop or a recursion. The bytecode VM, the tree-walker and
+the self-hosted interpreter count exactly this. Another host may count something else (the game
+port's bytecode VM counts instructions, `[pol.limits]`), so the number of steps a program takes is
+**not** portable across hosts, and what a host guarantees is a bound on work: with the default
+step budget, a loop of 20,000 simple passes is within it and an endless loop always trips it. Whether
+a run also finishes inside the default time limit depends on the machine and on the engine (the
+self-hosted interpreter is the slowest, a few thousand passes a second on a small CI machine), so
+an embedder who runs real work in the self-hosted engine sets `time` to suit. The
+budget is per run, and per call a host makes into the program; a host function that calls back
+into the script is part of the same run and cannot reset it.
 
 **Time.** The clock is monotonic. The engine checks the limit at least once every 1,000 steps
 and in every host function that can wait (`sleep`, `input`). The error may therefore come a
@@ -210,7 +217,11 @@ output never exceeds it. Output counts the bytes as written (UTF-8, with the lin
 
 **Sizes.** A size limit is checked **before** the memory is used, from the operands, so a
 program cannot build the object first and be refused afterwards. This covers every operation
-that can make a value longer than its operands, listed in the cells above. The text of a
+that can make a value longer than its operands, listed in the cells above. Where an operation
+cannot produce more than a small multiple of its operands (`upper`, `lower`, `split`, `keys`,
+`values`, `listdir`, `read`, `input`) the check is made on the result: the memory used before it is
+refused is at most that multiple of what the operands already held, and every value is within
+its limit by induction. The text of a
 list or dictionary is cut off the moment it passes the limit, so a structure that shares
 parts with itself fails at once instead of running for ever. The total of all the values a
 program holds is not limited (`[sbx.claims]`).
@@ -229,7 +240,8 @@ is brought under this chapter in slice 7 of M11.
    the error of the nearest row. A program that ends with a host traceback instead of one of
    these errors is a defect in the engine and its fix comes with a case.
 4. The error's line is the line of the construct that went over, as `[err.model]` says. The
-   fatal limits may be reported at the line the engine had reached.
+   fatal limits may be reported at the line the engine had reached, and the nesting error has no
+   line (it ends the lexing or the parsing of the whole text).
 5. Setting `profile` to `restricted` changes no error text of a program that stays within its
    grants and limits.
 

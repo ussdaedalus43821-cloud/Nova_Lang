@@ -31,8 +31,8 @@ apply to the `trusted` profile, whether the self-hosted interpreter takes part, 
   (`tests/security/`) has a cell for each engine, the self-hosted one included, and turns strict at the
   end of M11.
 - A 3.0 release that flips the default is a breaking change and needs its own decision when the time comes.
-- Practice proposed by the author of this record, **not** part of the owner's decision: a document carries
-  the label "owner-reviewed" once the owner has read that text. Until then the slice 1 documents say
-  "draft, owner review pending". The owner can change this by editing the status lines.
+- The label is **"Owner-reviewed and Architect-reviewed, pending independent third-party audit"** on the
+  threat model and `16-sandbox.md`, set on 2026-11-08 after the owner read both texts. A document that has
+  not been read yet says "draft, owner review pending"; the label changes when someone has read the text.
 - No document describes `restricted` as a sandbox guarantee, as safe, or as a security boundary until the
   matrix is fully covered and an independent reviewer has read the threat model.

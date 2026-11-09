@@ -91,6 +91,7 @@ import random
 import re
 import shutil
 import sys
+import contextlib
 import time
 from datetime import datetime, timezone
 from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
@@ -1738,8 +1739,8 @@ def bounded_integer(value, position):
     return value
 
 
-def builtin_print(args, position):
-    print(" ".join(format_value(arg) for arg in args))
+def builtin_print(args, position, interpreter):
+    interpreter.write_output(" ".join(format_value(arg) for arg in args), None, position)
     return NOTHING
 
 
@@ -1876,7 +1877,8 @@ def builtin_listdir(args, position):
         )
 
 
-def builtin_input(args, position):
+def builtin_input(args, position, interpreter):
+    interpreter.check_time(position)
     if len(args) > 1:
         raise NovaError("input() takes an optional prompt and nothing else", position)
     prompt = text_argument(args[0], "input()", position) if args else ""
@@ -1923,6 +1925,47 @@ def builtin_range(args, position):
             "range() would build a list of {} items, which is too large".format(count), position
         )
     return [start + index * step for index in range(count)]
+
+
+def range_count(args, position):
+    """How many items range(*args) would make, or None when range() itself is about to refuse its
+    arguments (it reports that error in its own words)."""
+    try:
+        numbers = [whole_number(arg, "range()", position) for arg in args]
+    except NovaError:
+        return None
+    start, end, step = (0, numbers[0], 1) if len(numbers) == 1 else (
+        (numbers[0], numbers[1], 1) if len(numbers) == 2 else tuple(numbers))
+    if step == 0:
+        return None
+    span = (end - start) if step > 0 else (start - end)
+    return 0 if span <= 0 else (span - 1) // abs(step) + 1
+
+
+def text_would_exceed(values, limit):
+    """Does the display text of `values` certainly have more than `limit` characters? A lower bound
+    that stops the moment it passes the limit, so a structure that shares its parts with itself
+    (`l = [l, l]` forty times, whose text would have 2**40 items) is refused after `limit` steps and
+    never turned into text ([sbx.limits], string.text)."""
+    remaining = limit
+    stack = [(value, frozenset()) for value in values]
+    while stack:
+        value, inside = stack.pop()
+        if isinstance(value, str):
+            remaining -= len(value)
+        elif isinstance(value, (list, dict)):
+            if id(value) in inside:
+                remaining -= 5                      # [...] or {...}
+            else:
+                items = value if isinstance(value, list) else [x for pair in value.items() for x in pair]
+                remaining -= 2 + max(len(value) - 1, 0) * 2
+                inside = inside | {id(value)}
+                stack.extend((item, inside) for item in items)
+        else:
+            remaining -= 1                          # a number, a boolean or nothing: one character at least
+        if remaining < 0:
+            return True
+    return False
 
 
 # The whitespace trim(), split() and num() skip: ASCII only ([lib.text]). What
@@ -2055,10 +2098,11 @@ def builtin_time(args, position):
     return time.time()
 
 
-def builtin_sleep(args, position):
+def builtin_sleep(args, position, interpreter):
     ms = finite_argument(numeric_argument(args[0], "sleep()", position), "sleep()", position)
     if ms < 0:
         raise NovaError("sleep() cannot pause for a negative time", position, label="TypeError")
+    interpreter.check_time(position, extra_ms=ms)       # a sleep that would pass the limit does not start
     time.sleep(ms / 1000.0)
     return NOTHING
 
@@ -2537,9 +2581,12 @@ def wrap_nova_callable(fn, interpreter):
     def call_from_python(*python_args):
         nova_args = [to_nova_value(arg, interpreter) for arg in python_args]
         try:
-            result = interpreter.call_value(fn, nova_args, 0)
+            with interpreter.running():
+                result = interpreter.call_value(fn, nova_args, 0)
         except NovaError as error:
             raise NovaLangError(error) from None
+        except FatalLimit as fatal:
+            raise fatal_error(fatal) from None
         return to_python_value(result, interpreter)
 
     return call_from_python
@@ -2815,10 +2862,10 @@ def builtin_assert(args, position):
     return NOTHING
 
 
-def builtin_log(args, position):
+def builtin_log(args, position, interpreter):
     text = " ".join(format_value(arg) for arg in args)
     stamp = datetime.now(timezone.utc).isoformat()
-    print("[{}] {}".format(stamp, text), file=sys.stderr)
+    interpreter.write_output("[{}] {}".format(stamp, text), sys.stderr, position)
     return NOTHING
 
 
@@ -2878,7 +2925,7 @@ def builtin_reduce(args, position, interpreter):
 
 
 BUILTINS = {
-    "print": BuiltinFunction("print", None, builtin_print),
+    "print": BuiltinFunction("print", None, builtin_print, needs_interpreter=True),
     "len": BuiltinFunction("len", 1, builtin_len),
     "append": BuiltinFunction("append", 2, builtin_append),
     "pop": BuiltinFunction("pop", None, builtin_pop),
@@ -2897,14 +2944,14 @@ BUILTINS = {
     "write": BuiltinFunction("write", 2, builtin_write, paths=((0, "write"),)),
     "exists": BuiltinFunction("exists", 1, builtin_exists, paths=((0, "read"),)),
     "listdir": BuiltinFunction("listdir", 1, builtin_listdir, paths=((0, "read"),)),
-    "input": BuiltinFunction("input", None, builtin_input),
+    "input": BuiltinFunction("input", None, builtin_input, needs_interpreter=True),
     "abspath": BuiltinFunction("abspath", 1, builtin_abspath),
     "realpath": BuiltinFunction("realpath", 1, builtin_realpath),
     "dirname": BuiltinFunction("dirname", 1, builtin_dirname),
 
     # Stage 11: standard library
     "time": BuiltinFunction("time", 0, builtin_time),
-    "sleep": BuiltinFunction("sleep", 1, builtin_sleep),
+    "sleep": BuiltinFunction("sleep", 1, builtin_sleep, needs_interpreter=True),
     "now": BuiltinFunction("now", 0, builtin_now),
     "format_time": BuiltinFunction("format_time", 2, builtin_format_time),
     "random": BuiltinFunction("random", 0, builtin_random),
@@ -2942,7 +2989,7 @@ BUILTINS = {
     "reverse": BuiltinFunction("reverse", 1, builtin_reverse),
     "sorted": BuiltinFunction("sorted", None, builtin_sorted),
     "assert": BuiltinFunction("assert", None, builtin_assert),
-    "log": BuiltinFunction("log", None, builtin_log),
+    "log": BuiltinFunction("log", None, builtin_log, needs_interpreter=True),
     "map": BuiltinFunction("map", 2, builtin_map, needs_interpreter=True),
     "filter": BuiltinFunction("filter", 2, builtin_filter, needs_interpreter=True),
     "reduce": BuiltinFunction("reduce", None, builtin_reduce, needs_interpreter=True),
@@ -3255,9 +3302,14 @@ class Environment:
 # operation does with them, so they cannot drift apart.
 # ---------------------------------------------------------------------------
 
-def binary_operation(op, left, right, position):
+def binary_operation(op, left, right, position, limits=None):
+    # `limits` is the engine's Limits when it counts them (the restricted profile), else None.
+    list_limit = limits.list if limits is not None else MAX_LIST_LENGTH
+    string_limit = limits.string if limits is not None else MAX_LIST_LENGTH
     # "abc" + "def" is the one non-numeric arithmetic we allow.
     if op == "+" and isinstance(left, str) and isinstance(right, str):
+        if limits is not None and len(left) + len(right) > string_limit:
+            raise NovaError("a string cannot grow beyond {} characters".format(string_limit), position)
         return left + right
 
     # "Ha" * 3 repeats a string; the number may be on either side.
@@ -3269,7 +3321,7 @@ def binary_operation(op, left, right, position):
                 raise NovaError(
                     "a string cannot be repeated a negative number of times", position
                 )
-            if len(text) * times > MAX_LIST_LENGTH:
+            if len(text) * times > string_limit:
                 raise NovaError(
                     "repeating that string {} times would be too long".format(times),
                     position,
@@ -3284,6 +3336,8 @@ def binary_operation(op, left, right, position):
 
     # Lists join with '+' and repeat with '*', always into a new list.
     if op == "+" and isinstance(left, list) and isinstance(right, list):
+        if limits is not None and len(left) + len(right) > list_limit:
+            raise NovaError("a list cannot grow beyond {} items".format(list_limit), position)
         return left + right
 
     if op == "*" and (isinstance(left, list) or isinstance(right, list)):
@@ -3299,10 +3353,10 @@ def binary_operation(op, left, right, position):
         if times < 0:
             raise NovaError("a list cannot be repeated a negative number of times",
                             position)
-        if len(items) * times > MAX_LIST_LENGTH:
+        if len(items) * times > list_limit:
             raise NovaError(
                 "repeating that list {} times would exceed {} items".format(
-                    times, MAX_LIST_LENGTH
+                    times, list_limit
                 ),
                 position,
             )
@@ -3471,8 +3525,10 @@ def index_assign_key(target, index, position):
     return index
 
 
-def index_assign(target, index, value, position):
+def index_assign(target, index, value, position, limits=None):
     if isinstance(target, dict):
+        if limits is not None and limits.dict is not None and index not in target and len(target) >= limits.dict:
+            raise NovaError("a dictionary cannot hold more than {} entries".format(limits.dict), position)
         target[index] = value                         # a new key is fine
         return value
     spot = normalize_index(target, index, position)
@@ -3654,6 +3710,56 @@ SANDBOX_SETTINGS = {
 SANDBOX_LIMITS = ("steps", "time", "output", "list", "string", "dict", "depth")
 
 
+class FatalLimit(BaseException):
+    """A limit that ends the run and cannot be caught: the step budget, the time limit and the output
+    limit ([sbx.limits], kind `fatal`). It is not a NovaError and not even an Exception, so no `try`
+    of a program, no `finally` block, no `except Exception` of the host's own conversions can see it.
+    The places that end a run (the command line, the embedding API, the test harness) turn it into
+    `LimitError: <message>`."""
+
+    label = "LimitError"
+
+    def __init__(self, message, position=None):
+        BaseException.__init__(self, message)
+        self.message = message
+        self.position = position
+
+    def render(self, source=None):
+        return "LimitError: {}".format(self.message)
+
+    def __str__(self):
+        return "LimitError: {}".format(self.message)
+
+
+# The reference values of the limits a `restricted` engine can lower but not raise, and the
+# defaults of the three it can set freely ([sbx.limits]).
+LIMIT_REFERENCE = {"list": 1000000, "string": 1000000, "dict": 1000000, "depth": MAX_CALL_DEPTH}
+LIMIT_DEFAULTS = {"steps": 5000000, "time": 5000, "output": 1000000}
+
+
+class Limits:
+    """The numbers one engine enforces. The `trusted` profile has only the fixed limits of
+    [port.limits]; `restricted` has all of them, lowered by the embedder if it wishes."""
+
+    def __init__(self, restricted=False, overrides=None):
+        overrides = overrides or {}
+        self.list = overrides.get("list", LIMIT_REFERENCE["list"])
+        self.string = overrides.get("string", LIMIT_REFERENCE["string"])
+        self.depth = overrides.get("depth", LIMIT_REFERENCE["depth"])
+        self.dict = overrides.get("dict", LIMIT_REFERENCE["dict"]) if restricted else None
+        self.steps = overrides.get("steps", LIMIT_DEFAULTS["steps"]) if restricted else None
+        self.time = overrides.get("time", LIMIT_DEFAULTS["time"]) if restricted else None
+        self.output = overrides.get("output", LIMIT_DEFAULTS["output"]) if restricted else None
+
+
+TRUSTED_LIMITS = Limits()
+
+
+def fatal_error(fatal):
+    """The error the embedding API raises for a fatal limit: `LimitError: step budget of ...`."""
+    return NovaLangError(NovaError(fatal.message, fatal.position, label="LimitError"))
+
+
 def sandbox_error(message):
     """A mistake in the sandbox configuration, as the embedding API reports it:
     `NovaLangError: unknown sandbox setting 'allow_reed'` ([sbx.profiles])."""
@@ -3706,7 +3812,12 @@ class Capabilities:
             if name not in SANDBOX_LIMITS or isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise sandbox_error("unknown sandbox limit {!r}, or a value that is not a positive "
                                     "whole number".format(name))
+        for name, value in limits.items():
+            if name in LIMIT_REFERENCE and value > LIMIT_REFERENCE[name]:
+                raise sandbox_error("limit {!r} can be lowered but not raised above {}".format(
+                    name, LIMIT_REFERENCE[name]))
         self.limits = dict(limits)
+        self.limit_values = Limits(self.restricted, limits) if self.restricted else TRUSTED_LIMITS
         here = os.getcwd()
         resolve = lambda folder: real_path(os.path.join(here, folder))     # noqa: E731
         self.roots = {
@@ -3783,6 +3894,10 @@ class Interpreter:
         # python.* is off unless asked for (docs/design/python-bridge-hardening.md,
         # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
         self.caps = capabilities if capabilities is not None else DEFAULT_CAPABILITIES
+        self.limits = self.caps.limit_values
+        self.counting = self.caps.restricted           # steps, time and output are counted
+        self.entries = 0                                # runs in progress (a host callback is not a new run)
+        self.begin_counters()
         self.allow_python = ALLOW_PYTHON if allow_python is None else allow_python
         if self.caps.restricted:
             self.allow_python = self.caps.has("python")      # the grant is the switch ([sbx.capabilities])
@@ -3812,6 +3927,69 @@ class Interpreter:
         self.current_exports = {}       # name -> value, for the module now loading
 
     python_override = None              # the self-hosted engine's grant (bootstrap.py)
+
+    # -- the limits of a run ([sbx.limits]) ---------------------------------
+
+    def begin_counters(self):
+        self.steps = 0
+        self.output_bytes = 0
+        self.deadline = None
+        limits = self.limits
+        self.start_time = time.monotonic()
+        if limits.time is not None:
+            self.deadline = self.start_time + limits.time / 1000.0
+        self.next_check = self.check_interval(0)
+
+    def check_interval(self, steps):
+        """The step count at which step_slow() must look again: the budget, or the next time check."""
+        if not self.counting:
+            return float("inf")
+        interval = steps + 1000 if self.deadline is not None else float("inf")
+        if self.limits.steps is not None:
+            interval = min(interval, self.limits.steps + 1)
+        return interval
+
+    @contextlib.contextmanager
+    def running(self):
+        """One run of a program, or one call a host makes into it: the counters start from zero
+        unless a run is already in progress (a host function called back into the script is part of
+        the same run, so it cannot reset the budget)."""
+        if self.entries == 0:
+            self.begin_counters()
+        self.entries += 1
+        try:
+            yield self
+        finally:
+            self.entries -= 1
+
+    def step(self, position=None):
+        """One pass of a loop or one call. Cheap: the clock is looked at every 1000 steps."""
+        self.steps += 1
+        if self.steps >= self.next_check:
+            self.step_slow(position)
+
+    def step_slow(self, position):
+        limits = self.limits
+        if limits.steps is not None and self.steps > limits.steps:
+            raise FatalLimit("step budget of {} steps exhausted - is there a loop that never ends?".format(
+                limits.steps), position)
+        self.check_time(position)
+        self.next_check = self.check_interval(self.steps)
+
+    def check_time(self, position, extra_ms=0.0):
+        """End the run if the time limit has passed, or would pass after `extra_ms` more waiting."""
+        if self.deadline is not None and time.monotonic() + extra_ms / 1000.0 > self.deadline:
+            raise FatalLimit("time limit of {} ms exceeded".format(self.limits.time), position)
+
+    def write_output(self, text, stream, position=None):
+        """Write one line of the program's output, counted in bytes: the write that would pass the limit is
+        not made at all ([sbx.limits], output)."""
+        if self.counting and self.limits.output is not None:
+            size = len(text.encode("utf-8", "replace")) + 1
+            if self.output_bytes + size > self.limits.output:
+                raise FatalLimit("output limit of {} bytes exceeded".format(self.limits.output), position)
+            self.output_bytes += size
+        print(text, file=stream)
 
     def python_allowlist(self):
         if self.python_override is not None:
@@ -3929,6 +4107,10 @@ class Interpreter:
         target = self.evaluate(node.target)
         member_assign_target(target, node.position)
         value = self.evaluate(node.value)
+        if self.counting and self.limits.dict is not None and node.name not in target \
+                and len(target) >= self.limits.dict:
+            raise NovaError("a dictionary cannot hold more than {} entries".format(self.limits.dict),
+                            node.position)
         target[node.name] = value                       # a new key is fine
         return value
 
@@ -3936,6 +4118,7 @@ class Interpreter:
         # The outer try/finally is Python's, so `finally` runs on the way out
         # no matter what left the block: normal completion, a caught error, an
         # error still on its way up, or a return / break / continue.
+        fatal = False
         try:
             try:
                 self.execute_scoped_block(node.body)
@@ -3943,8 +4126,11 @@ class Interpreter:
                 if node.catch_block is None:
                     raise
                 self.run_catch(node, error)
+        except FatalLimit:
+            fatal = True            # not a NovaError: no catch sees it, and no finally block runs ([sbx.limits])
+            raise
         finally:
-            if node.finally_block is not None:
+            if node.finally_block is not None and not fatal:
                 self.execute_scoped_block(node.finally_block)
         return NOTHING
 
@@ -4109,17 +4295,20 @@ class Interpreter:
         return target[start:end]
 
     def visit_InterpolationNode(self, node):
-        return "".join(format_value(self.evaluate(part)) for part in node.parts)
+        parts = [self.evaluate(part) for part in node.parts]
+        if self.counting and text_would_exceed(parts, self.limits.string):
+            raise self.string_too_long(node.position)
+        return "".join(format_value(part) for part in parts)
 
     def visit_IndexAssignNode(self, node):
         target = self.evaluate(node.target)
         if isinstance(target, dict):
             key = index_assign_key(target, self.evaluate(node.index), node.position)
-            return index_assign(target, key, self.evaluate(node.value), node.position)
+            return index_assign(target, key, self.evaluate(node.value), node.position, self.limits_if_counting())
         index_assign_target(target, node.position)
         index = self.evaluate(node.index)
         value = self.evaluate(node.value)
-        return index_assign(target, index, value, node.position)
+        return index_assign(target, index, value, node.position, self.limits_if_counting())
 
     # -- operators ----------------------------------------------------------
 
@@ -4142,7 +4331,7 @@ class Interpreter:
     def visit_BinOpNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
-        return binary_operation(node.op, left, right, node.position)
+        return binary_operation(node.op, left, right, node.position, self.limits_if_counting())
 
     def visit_CompareNode(self, node):
         left = self.evaluate(node.left)
@@ -4164,6 +4353,8 @@ class Interpreter:
     def visit_WhileNode(self, node):
         broke = False
         while self.condition_value(node, "while"):
+            if self.counting:
+                self.step(node.position)
             try:
                 self.execute_scoped_block(node.body)
             except ContinueSignal:
@@ -4192,6 +4383,8 @@ class Interpreter:
         try:
             index = 0
             while index < iterations:
+                if self.counting:
+                    self.step(node.position)
                 loop_env.define(node.name, range_value(start, step, index, node.descending))
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
@@ -4217,6 +4410,8 @@ class Interpreter:
         broke = False
         try:
             for item in items:
+                if self.counting:
+                    self.step(node.position)
                 if node.second_name:
                     loop_env.define(node.name, item[0])
                     loop_env.define(node.second_name, item[1])
@@ -4263,6 +4458,46 @@ class Interpreter:
         args = [self.evaluate(arg) for arg in node.args]
         return self.call_value(callee, args, node.position)
 
+    def limits_if_counting(self):
+        return self.limits if self.counting else None
+
+    def check_call_arguments(self, callee, args, position):
+        """The size checks a built-in's operands allow before it builds anything ([sbx.limits])."""
+        limits, name = self.limits, callee.name
+        if name == "append" and args and isinstance(args[0], list) and len(args[0]) >= limits.list:
+            raise NovaError("a list cannot grow beyond {} items".format(limits.list), position)
+        if name == "range" and 1 <= len(args) <= 3 and all(is_number(a) for a in args):
+            count = range_count(args, position)
+            if count is not None and count > limits.list:
+                raise NovaError("range() would build a list of {} items, which is too large".format(count),
+                                position)
+        if name == "join" and len(args) == 2 and isinstance(args[0], list) and isinstance(args[1], str):
+            # at least one character for each item, and the separators between them
+            if len(args[0]) + len(args[1]) * max(len(args[0]) - 1, 0) > limits.string:
+                raise self.string_too_long(position)
+        if name in ("pad", "pad_left") and len(args) == 2 and is_number(args[1]) and args[1] > limits.string:
+            raise self.string_too_long(position)
+        if name == "replace_all" and len(args) == 3 and all(isinstance(a, str) for a in args) and args[1]:
+            grown = len(args[0]) + args[0].count(args[1]) * max(len(args[2]) - len(args[1]), 0)
+            if grown > limits.string:
+                raise self.string_too_long(position)
+        if name in ("str", "print", "log", "join") and args:
+            if text_would_exceed(args if name in ("print", "log") else args[:1], limits.string):
+                raise self.string_too_long(position)
+
+    def string_too_long(self, position):
+        return NovaError("a string cannot grow beyond {} characters".format(self.limits.string), position)
+
+    def check_result_size(self, result, position):
+        """What a built-in returned may not be longer than the limits ([sbx.limits])."""
+        limits = self.limits
+        if isinstance(result, str):
+            if len(result) > limits.string:
+                raise self.string_too_long(position)
+        elif isinstance(result, list):
+            if len(result) > limits.list:
+                raise NovaError("a list cannot grow beyond {} items".format(limits.list), position)
+
     def check_file_append(self, path, position):
         """The file form of append() is a write: it needs `files.write` and a folder."""
         if not self.caps.has("files.write"):
@@ -4290,6 +4525,9 @@ class Interpreter:
                     position,
                 )
             try:
+                if self.counting:
+                    self.step(position)
+                    self.check_call_arguments(callee, args, position)
                 if self.caps.restricted:
                     for index, kind in callee.paths:
                         if index < len(args):
@@ -4300,6 +4538,8 @@ class Interpreter:
                     result = callee.implementation(args, position, self)
                 else:
                     result = callee.implementation(args, position)
+                if self.counting:
+                    self.check_result_size(result, position)
                 return bounded_integer(result, position)
             except OverflowError:
                 # math.sqrt(10 ** 400) and friends: an integer beyond a float.
@@ -4320,10 +4560,12 @@ class Interpreter:
                 position,
             )
 
-        if len(self.call_stack) >= MAX_CALL_DEPTH:
+        if self.counting:
+            self.step(position)
+        if len(self.call_stack) >= self.limits.depth:
             raise NovaError(
                 "call depth of {} exceeded - is the recursion missing a base case?".format(
-                    MAX_CALL_DEPTH
+                    self.limits.depth
                 ),
                 position,
             )
@@ -5943,6 +6185,10 @@ def execute(interpreter, entry):
     frames = []                         # the callers of the current frame
     frame = entry
     call_stack = interpreter.call_stack
+    counting = interpreter.counting                 # the restricted profile counts steps and sizes
+    vm_limits = interpreter.limits if counting else None
+    max_depth = interpreter.limits.depth
+    dict_limit = interpreter.limits.dict if counting else None
 
     # Each opcode number as a local variable (looked up by name, so the
     # order of OPCODES never matters here); locals are fastest in the loop.
@@ -6015,10 +6261,12 @@ def execute(interpreter, entry):
                             raise NovaError("{}() expects {} argument(s) but got {}".format(
                                 callee.name, len(callee.params), len(call_args)),
                                 positions[ip - 1])
-                        if len(call_stack) >= MAX_CALL_DEPTH:
+                        if len(call_stack) >= max_depth:
                             raise NovaError(
                                 "call depth of {} exceeded - is the recursion missing a base "
-                                "case?".format(MAX_CALL_DEPTH), positions[ip - 1])
+                                "case?".format(max_depth), positions[ip - 1])
+                        if counting:
+                            interpreter.step(positions[ip - 1])   # a call is a step
                         frame.ip = ip
                         frames.append(frame)
                         call_stack.append(callee.name)
@@ -6072,13 +6320,14 @@ def execute(interpreter, entry):
                     right = stack.pop()
                     left = stack[-1]
                     kind = type(left)
-                    if type(right) is kind and (kind is int or kind is float or kind is str):
+                    if type(right) is kind and (kind is int or kind is float
+                                                or (kind is str and not counting)):
                         result = left + right
                         if kind is int and not negative_limit < result < limit:
                             raise too_many_digits_error(positions[ip - 1])
                         stack[-1] = result
                     else:
-                        stack[-1] = binary_operation("+", left, right, positions[ip - 1])
+                        stack[-1] = binary_operation("+", left, right, positions[ip - 1], vm_limits)
                 elif op == SUB_:
                     right = stack.pop()
                     left = stack[-1]
@@ -6107,6 +6356,8 @@ def execute(interpreter, entry):
                             continue
                     stack[-1] = index_operation(target, index, positions[ip - 1])
                 elif op == JUMP_:
+                    if counting and arg < ip:
+                        interpreter.step(positions[ip - 1])       # a pass of a loop is a step
                     ip = arg
                 elif op == STORE_GLOBAL_:
                     glob[arg] = stack.pop()
@@ -6173,7 +6424,7 @@ def execute(interpreter, entry):
                             raise too_many_digits_error(positions[ip - 1])
                         stack[-1] = result
                     else:
-                        stack[-1] = binary_operation("*", left, right, positions[ip - 1])
+                        stack[-1] = binary_operation("*", left, right, positions[ip - 1], vm_limits)
                 elif op == INDEX_ASSIGN_TARGET_:
                     # The fast paths for assignment (M6) skip a helper only
                     # where it would do nothing, or exactly the same store,
@@ -6205,7 +6456,8 @@ def execute(interpreter, entry):
                     value = stack.pop()
                     index = stack.pop()
                     target = stack[-1]
-                    if type(target) is dict and type(index) is str:
+                    if type(target) is dict and type(index) is str and (
+                            dict_limit is None or index in target or len(target) < dict_limit):
                         target[index] = value
                         stack[-1] = value
                     elif (type(target) is list and type(index) is int
@@ -6213,7 +6465,7 @@ def execute(interpreter, entry):
                         target[index] = value
                         stack[-1] = value
                     else:   # negative, float, bool, out of range, empty, any error
-                        stack[-1] = index_assign(target, index, value, positions[ip - 1])
+                        stack[-1] = index_assign(target, index, value, positions[ip - 1], vm_limits)
                 elif op == BUILD_DICT_:
                     keys = consts[arg]
                     if keys:
@@ -6241,6 +6493,9 @@ def execute(interpreter, entry):
                         stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
                 elif op == SET_MEMBER_:
                     value = stack.pop()
+                    if dict_limit is not None and consts[arg] not in stack[-1] and len(stack[-1]) >= dict_limit:
+                        raise NovaError("a dictionary cannot hold more than {} entries".format(dict_limit),
+                                        positions[ip - 1])
                     stack[-1][consts[arg]] = value          # a new key is fine
                     stack[-1] = value
                 elif op == JUMP_IF_FALSE_KEEP_:
@@ -6348,6 +6603,8 @@ def execute(interpreter, entry):
                     parts = stack[-arg:] if arg else []
                     if arg:
                         del stack[-arg:]
+                    if counting and text_would_exceed(parts, vm_limits.string):
+                        raise interpreter.string_too_long(positions[ip - 1])
                     stack.append(interpolate(parts))
                 elif op == STORE_CHAIN_:
                     value = stack.pop()
@@ -6395,7 +6652,10 @@ def execute(interpreter, entry):
         except BaseException as problem:  # noqa: BLE001 - unwound exactly like Python's
             # Unwind: this frame's handler, else leave it and try its caller's.
             while True:
-                handler, payload = find_handler(code, ip - 1, problem)
+                if isinstance(problem, FatalLimit):
+                    handler, payload = None, None       # no catch and no finally sees a fatal limit
+                else:
+                    handler, payload = find_handler(code, ip - 1, problem)
                 if handler is not None:
                     del stack[:]
                     stack.append(payload)
@@ -6451,15 +6711,26 @@ def typecheck_tool():
 def run(source, interpreter, path=None):
     """Lex, parse, type-gate and run `source`; (ast, value). `path` is the
     module's absolute path when this is a module load."""
-    tokens = Lexer(source).tokenize()
-    ast = Parser(tokens).parse()
-    type_gate(ast, source, interpreter, path)
-    return ast, run_program(ast, interpreter)
+    try:
+        tokens = Lexer(source).tokenize()
+        ast = Parser(tokens).parse()
+        type_gate(ast, source, interpreter, path)
+        return ast, run_program(ast, interpreter)
+    except RecursionError:
+        # A program nested too deeply to lex, parse or run: a NovaLang error, never Python's
+        # ([sbx.limits], nesting).
+        raise NovaError("the interpreter ran out of stack - recursion too deep") from None
 
 
 def run_program(ast, interpreter):
-    """Run a parsed program on the interpreter's engine; its value. A stray
-    `return`, `break` or `continue` at the top level is an error here."""
+    """Run a parsed program on the interpreter's engine; its value. The counters of the limits start
+    from zero here, unless this is a module being loaded by a program that is already running."""
+    with interpreter.running():
+        return run_program_counted(ast, interpreter)
+
+
+def run_program_counted(ast, interpreter):
+    """A stray `return`, `break` or `continue` at the top level is an error here."""
     if interpreter.engine == "vm":
         code = getattr(ast, "_code", None)
         if code is None:
@@ -6809,6 +7080,8 @@ def repl():
                 _, value = run(source, interpreter)
                 if value is not NOTHING:
                     print(format_repr(value))
+        except FatalLimit as fatal:
+            print(fatal.render(source))
         except NovaError as error:
             print(error.render(source))
         except KeyboardInterrupt:       # Ctrl-C out of a runaway loop
@@ -6843,6 +7116,9 @@ def run_source(source, origin, script_args=None):
         run(source, interpreter)
     except ProgramExit as stop:
         return stop.code
+    except FatalLimit as fatal:
+        print("{}\n{}".format(origin, fatal.render(source)), file=sys.stderr)
+        return 1
     except NovaError as error:
         print("{}\n{}".format(origin, error.render(source)), file=sys.stderr)
         return 1
@@ -6879,6 +7155,10 @@ class CompiledScript:
             value = run_program(self.ast, interpreter)
         except NovaError as error:
             raise NovaLangError(error) from None
+        except FatalLimit as fatal:
+            raise fatal_error(fatal) from None
+        except RecursionError:
+            raise NovaLangError(NovaError("the interpreter ran out of stack - recursion too deep")) from None
         return to_python_value(value, interpreter)
 
 
@@ -7016,9 +7296,12 @@ class Nova:
             raise NovaLangError(NovaError("{!r} is not a function".format(name)))
         try:
             nova_args = [to_nova_value(arg, self.interpreter) for arg in args]
-            result = self.interpreter.call_value(fn, nova_args, 0)
+            with self.interpreter.running():
+                result = self.interpreter.call_value(fn, nova_args, 0)
         except NovaError as error:
             raise NovaLangError(error) from None
+        except FatalLimit as fatal:
+            raise fatal_error(fatal) from None
         return to_python_value(result, self.interpreter)
 
 
@@ -7173,6 +7456,9 @@ def main(argv):
         _, value = run(source, interpreter)
     except ProgramExit as stop:
         return stop.code
+    except FatalLimit as fatal:
+        print(fatal.render(source), file=sys.stderr)
+        return 1
     except NovaError as error:
         print(error.render(source), file=sys.stderr)
         return 1
