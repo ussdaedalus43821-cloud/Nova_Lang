@@ -699,6 +699,22 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "profile": "core",
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "name": "port-integer-division-whole-quotient-is-exact-however-large",
+   "spec": [
+    "port.integers",
+    "expr.division"
+   ],
+   "source": "let big = 1\nfor i = 1 to 400 { big = big * 10 }\nprint(big / 1 == big, (big * 7) / 7 == big, (big * 7) / big)",
+   "output": [
+    "true true 7"
+   ]
   }
  ]
 }

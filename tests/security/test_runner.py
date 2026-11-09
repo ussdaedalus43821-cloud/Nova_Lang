@@ -68,6 +68,17 @@ class Api(unittest.TestCase):
         granted = nl.run_isolated("print(input())", stdin=True, input_text="line\n")
         self.assertEqual((granted.stdout, granted.status), ("line\n", 0))
 
+    def test_input_the_child_never_reads_does_not_hold_up_the_deadline(self):
+        # the pipe to a child that never reads holds about 64 KiB; the rest of 3 MB used to block the parent's write
+        # until the child's own limit ended it, with the wall-clock deadline not yet started
+        for size in (1, 70000, 3000000):
+            started = time.monotonic()
+            result = nl.run_isolated("while true {\n}", stdin=True, input_text="x" * size, wall_ms=200,
+                                     limits={"time": 5000, "steps": 400000000})
+            self.assertEqual((result.killed, result.error), ("time", "LimitError: time limit of 5000 ms exceeded"),
+                             msg=size)
+            self.assertLess(time.monotonic() - started, 2.0, msg=size)
+
     def test_the_working_directory_is_the_callers_so_a_relative_grant_means_the_same_folder(self):
         with tempfile.TemporaryDirectory() as folder:
             os.makedirs(os.path.join(folder, "data"))

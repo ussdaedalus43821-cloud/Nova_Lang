@@ -1835,6 +1835,24 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "profile": "core",
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "name": "expr-division-of-integers-is-exact-beyond-two-to-the-53",
+   "spec": [
+    "expr.division",
+    "port.integers"
+   ],
+   "source": "let n = 9007199254740993\nprint(n / 1, (n * 3) / 3, -n / 1, n / -1)\nprint(n / 1 == n, (n * 7) / 7 == n, n / 1 == 9007199254740992)\nprint(7 / 2, 10 / 2, 0 / 5, -9 / 3)",
+   "output": [
+    "9007199254740993 9007199254740993 -9007199254740993 -9007199254740993",
+    "true true false",
+    "3.5 5 0 -3"
+   ]
   }
  ]
 }

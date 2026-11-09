@@ -61,17 +61,24 @@ The `full` matrix has two kinds of row, set by `probe` in the workflow.
   exception. Today that is Windows on Python 3.7 only: it passes with the
   generated-program skip described below, and Windows 3.12 is required.
 
-Evidence for the README's "Python 3.7+", as of 2026-11-07:
+Evidence for the README's "Python 3.7+", as of 2026-11-09 (the head of 2.2.0, `f8e1dc2`):
 
 | Evidence | Result |
 | --- | --- |
 | Every `.py` file parses under the 3.7, 3.8 and 3.9 grammars (`ast.parse(feature_version=...)`) | pass, 39 files |
 | `vermin` minimum-version analysis of the standard-library use | 3.7 |
-| Full suite, Linux (ubuntu-22.04), Python 3.7, 3.8, 3.9 and 3.10 | pass, on GitHub |
-| Full suite, Linux (ubuntu-24.04), Python 3.11, 3.12 and 3.13 | pass, on GitHub (and locally, 1,919 checks) |
-| Full suite, macOS, Python 3.12 | pass, on GitHub |
-| Full suite, Windows, Python 3.7 and 3.12 | fail, the same 8 checks on both: a platform problem, not a version one |
+| Full suite, Linux (ubuntu-22.04), Python 3.7, 3.8, 3.9 and 3.10 | pass, on GitHub ([run 190](https://github.com/ussdaedalus43821-cloud/Nova_Lang/actions/runs/42571690158)) |
+| Full suite, Linux (ubuntu-24.04), Python 3.11, 3.12 and 3.13 | pass, on GitHub (run 190), and locally on 3.13 (1,951 checks) |
+| Full suite, macOS, Python 3.12 | pass, on GitHub (run 190) |
+| Full suite, Windows, Python 3.12 | pass, on GitHub (run 190); required |
+| Full suite, Windows, Python 3.7 | pass, on GitHub (run 190), with the generated-program skip described below; a probe, not required |
 | Full suite, Python 3.9.6, macOS | reported passing by the author of the verification work; not reproduced here |
+
+The first Windows run (2026-11-07) failed the same 8 checks on both Windows rows, a platform problem and not a version one;
+its causes and fixes are recorded under [The first Windows run](#the-first-windows-run), and the rows have passed since.
+Run 190 is the push of the merge that became `v2.2.0`: the plan, both `fast` rows and all ten `full` rows passed. The run that
+the `v2.2.0` tag push itself started (run 191) shows *skipped*, because the workflow runs the matrix for pushes to the default
+branch and for pull requests, not for tags.
 
 What this supports: Python 3.7 and later on Linux, 3.12 on macOS and 3.12 on
 Windows. It does not support a claim that 3.7 works on Windows without

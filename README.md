@@ -61,7 +61,7 @@ python3 novalang.py
 # Run a script
 python3 novalang.py examples/fib.nova
 
-# Run a one-liner
+# Run a one-liner (an argument that is not a readable file is run as code)
 python3 novalang.py "1 + 2 * 3"
 
 # Run the same script through the self-hosted interpreter instead
@@ -332,11 +332,11 @@ python3 tests/run_all.py --station input-errors # formatter refusal and malforme
 python3 tests/run_all.py --report checks.jsonl # flush each result for long audit runs
 ```
 
-The complete suite records 1,926 parent checks. The REPL station contributes
+The complete suite records 1,951 parent checks. The REPL station contributes
 one check for 46 tests, the input-errors station one for six tests with
 parameterized cases, the portability station one for 14 tests that simulate
-Windows on any platform, and the conformance station four checks (the corpus
-is well-formed, then one per engine).
+Windows on any platform, and the conformance station five checks (the corpus
+is well-formed, then one per engine, the policy dialect's engine included).
 
 Statement and branch coverage, including Python subprocesses, can be measured
 with `python3 tests/run_coverage.py` after installing the optional coverage tool.
@@ -648,8 +648,8 @@ All in `examples/`, runnable directly or with `--bootstrap`:
 
 ## Performance
 
-The VM is the default because it is faster on every benchmark in
-`tests/bench/` (`python3 tests/bench/run_bench.py [--tree-walk]`). Whole
+The VM is the default because it was faster on every benchmark in
+`tests/bench/` when these numbers were taken (`python3 tests/bench/run_bench.py [--tree-walk]`). Whole
 process, best of 5, on the same machine:
 
 | Benchmark | VM | Tree-walker |
@@ -663,6 +663,14 @@ process, best of 5, on the same machine:
 | index_assign (550k stores and deletes)¹ | 2.483 s | 2.823 s |
 
 ¹ Measured for 2.0.1, after the assignment fast paths; the other rows are from 2.0.0.
+
+These rows were not re-measured for 2.2.0, and the machine is not recorded, so read them as a ratio between
+the two engines, not as absolute times. `tests/benchmarks/run.py` is the newer harness: it records the machine,
+the Python version, the commit and every raw sample, and it separates start-up, compiling, a steady-state loop
+and the embedding API. An independent same-machine comparison on Linux with Python 3.13 found 2.2.0 slower
+than 2.0.0 to start (an empty program about 28% slower) and on a 200,000-iteration loop (about 14% slower).
+The `restricted` profile adds a few percent to the loop. There is no hard real-time guarantee: single
+calls into NovaLang occasionally take several hundred microseconds.
 
 Compiling costs a little at load time; a program that loads many modules
 and runs briefly gains less than one that loops.
@@ -770,11 +778,21 @@ nova.exec('print(read("/etc/hosts"))')        # FileError: /etc/hosts is outside
 nova.exec('print(env("PATH"))')               # nothing: PATH was not granted
 ```
 
-What is guaranteed, on the bytecode VM, the tree-walker and the self-hosted interpreter: a `restricted` program defines no
+What is guaranteed, on the bytecode VM, the tree-walker and the self-hosted interpreter, apart from the known gaps
+listed next: a `restricted` program defines no
 name of a capability it was not granted (files, imports, environment, clock, random, stdin, process, regex, the Python
 bridge), and reaches files, imports and environment variables only inside the grants; it writes no more output, takes no
 more steps or time, and builds no longer string, list or dictionary than the limits allow, and a fatal limit (steps, time,
 output) cannot be caught by the program; each of these is a NovaLang error, never a failure of the host.
+
+Known gaps: a blocking read from stdin is not interrupted by the in-process time limit (the wall-clock limit of
+`--isolate` is the control for that), and the time limit can be passed by the time one operation takes: the clock is
+read every 1,000 steps and for every 50,000 items an operation walks, so the overrun is at most one search or sort of
+the largest collection the limits allow (about 0.4 seconds for a list of a million items on a small machine). A review
+of 2.2.0 also found, and this version fixes, a `copy(file, folder)` that wrote through a symbolic link of the file's
+name inside the folder, a time limit that a run of expensive operations could pass by minutes, and an `--isolate` run
+whose deadline a large input could delay. Do not rely on a `restricted` run alone to contain a program you do not
+trust.
 
 What is **not** guaranteed: isolation (the engine runs in your process, on a Python that is not a security boundary);
 the total memory a program uses; anything about a Python module or host function you grant; paths in folders that
@@ -788,8 +806,8 @@ The threat model, the test inventory and the known gaps are in
 ## Specification
 
 [`docs/spec/`](docs/spec/README.md) is the written, normative description of the
-language: lexical structure, values, expressions, scoping and the error catalogue
-so far. Its host-neutral test corpus, [`tests/conformance/`](tests/conformance/README.md),
+language, still a draft: lexical structure, values, expressions, scoping, the error
+catalogue, the security properties and the policy dialect, with more chapters being added. Its host-neutral test corpus, [`tests/conformance/`](tests/conformance/README.md),
 runs on every engine (`python3 tests/run_all.py --station conformance`), and
 [`docs/spec/DIVERGENCES.md`](docs/spec/DIVERGENCES.md) lists where an
 implementation does not yet follow it.

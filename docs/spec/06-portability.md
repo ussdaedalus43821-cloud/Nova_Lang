@@ -40,7 +40,8 @@ integer too large to be one (beyond about `1.8e308`) cannot be, so these are
 errors and not infinity:
 
 - `integer + float`, `-`, `*`, `//` and `%`, when the integer cannot be converted;
-- `/`, when the quotient of two integers is too large to be a float;
+- `/`, when the quotient of two integers is not whole and too large to be a float (a whole
+  quotient is an integer and exact: `[expr.division]`);
 - a built-in that takes a float, such as `sqrt`, given such an integer
   (`TypeError: sqrt(): a number is too large for this function`).
 

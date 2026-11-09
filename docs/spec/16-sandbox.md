@@ -139,6 +139,10 @@ of every module `import` opens.
    exists (a program learns nothing about files it may not use), and it is raised before the
    file system is touched.
 5. A path that is not a string is the error `10-host.md` gives, in the same order.
+6. A function that writes to a path it works out from its arguments is judged by that path. `copy(file, folder)`
+   writes `folder/<name of file>` when `folder` is a directory, and it is that path, not `folder`, that has to
+   be inside a write grant by rules 1 to 4: a symbolic link of that name inside `folder` may lead anywhere, and
+   copying through it must not overwrite, or create, a file outside the grant.
 
 Each rule is a cell of the coverage matrix, and needs a case on every engine:
 
@@ -211,12 +215,18 @@ an embedder who runs real work in the self-hosted engine sets `time` to suit. Th
 budget is per run, and per call a host makes into the program; a host function that calls back
 into the script is part of the same run and cannot reset it.
 
-**Time.** The clock is monotonic. The engine checks the limit at least once every 1,000 steps
-and in every host function that can wait (`sleep`, `input`). The error may therefore come a
-little after the limit, but never from a program that ends sooner. A host function that
-cannot be interrupted while it runs (`regex`, a function the embedder wrote) is not covered
-by the engine's own check, which is why `regex` is a capability and why the subprocess
-runner (slice 5 of M11) stops a run from outside.
+**Time.** The clock is monotonic. The engine checks the limit at least once every 1,000 steps,
+before and after a host function that can wait (`sleep`, `input`), and inside a step that does
+a lot of work: an operation that walks a list, a string or a dictionary (`x in big`, `a + b`
+on two long lists, `a == b`, a slice, `sorted`, `join`, `str` of a list, `range`) is charged the
+size of what it walks, and the clock is read for every 50,000 units charged. The error may
+therefore come a little after the limit, but never from a program that ends sooner, and the
+overrun is at most the time one such operation takes on the largest collection the limits allow
+(about 0.4 seconds for a search of a list of a million items on a small machine). A host function
+that cannot be interrupted while it runs (`regex`, a blocking read of standard input, a function
+the embedder wrote) is not covered by the engine's own check, which is why `regex` is a
+capability and why the subprocess runner (slice 5 of M11) stops a run from outside; the runner
+starts its wall-clock deadline before it feeds the child any input.
 
 **Output.** The write that would take the total over the limit is **not made at all**: the
 output never exceeds it. Output counts the bytes as written (UTF-8, with the line break), the number

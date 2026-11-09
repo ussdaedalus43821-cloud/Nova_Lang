@@ -29,30 +29,42 @@ use NovaLang as an embedded policy and scripting layer:
 
 ## Where we are
 
-Established, with evidence (the full suite is 1,925 checks, passing locally and in CI on Linux, macOS and Windows):
+Established, with evidence (the full suite is 1,951 checks; it passes locally, and CI has run it green on the head
+commit of 2.2.0 across the Linux, macOS and Windows jobs described in [`CI.md`](CI.md)):
 
 - One language implemented three ways that must agree: the Python bytecode VM
   (default), the Python tree-walker (reference), and `novalang.nova`
-  (self-hosted). A differential station requires byte-identical output.
+  (self-hosted). A differential station requires byte-identical output, and a
+  review of 2.2.0 found no disagreement over 12,640 generated expressions.
 - A formatter, linter, gradual type checker, package manager with a lockfile,
   and an LSP server with a VS Code extension.
 - Regression stations for the command line, the embedding API, the REPL and
   malformed input.
+- A written, normative specification with a conformance corpus that runs on every engine
+  ([`spec/`](spec/README.md); a few divergences are still logged open in
+  [`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)).
+- A `restricted` profile (capability gating and resource limits) with a threat model, an escape-attempt corpus, a
+  coverage matrix and a subprocess runner. It is **capability gating, not isolation**.
+- Integer `/` is exact when the quotient is whole, however large. It gave a wrong integer above 2^53 on all three
+  engines in 2.2.0, which the differential station could not see because they share one helper; the conformance
+  corpus now pins it.
+- One language for the games too: the policy dialect is a profile with its own spec chapters (M10).
 
 Not established:
 
-- **Continuous integration is written but has not run.** A workflow exists
-  (`.github/workflows/ci.yml`, see [`CI.md`](CI.md)); until it has run on
-  GitHub, every verification so far was done by hand on one or two machines.
-  The advertised Python 3.7+ range and non-Linux platforms remain unproven.
+- **The restricted profile still has known gaps, and has not been independently reviewed.** A review of 2.2.0
+  found that `copy(file, folder)` could write outside the granted folders through a symbolic link already in the
+  destination, that the time limit could be passed by minutes because it was read only every 1,000 steps, and that
+  the runner's deadline could be delayed by a large input; those are fixed after 2.2.0 (see the changelog). Left:
+  a blocking read from stdin is outside the in-process time limit, and the time limit can still be passed by the
+  time of one operation on the largest collection allowed. The profile is not described as a security boundary.
 - **The GDScript port is unverified.** The bytecode VM for Godot is written and
   pushed, but has not yet been run against its parity harness.
-- **There is no specification.** The Python implementation is the definition of
-  the language, and the games run a different dialect (`func`, a rule engine,
-  no `for` or `try`).
-- **No security boundary.** `python.*` is a curated bridge, not a sandbox, and
-  resource limits exist only in the game port.
-- No native backend, no remote package registry, no public API stability policy.
+- **Releases are not signed or reproducible.** `v2.2.0` is a lightweight, unsigned tag with no checksums, bill of
+  materials or provenance.
+- **Only Linux has been exercised by hand with the latest review.** Windows and macOS rest on CI runs.
+- No native backend, no remote package registry, no public API stability policy, no hard real-time guarantee,
+  and no simulation libraries (units, numerics, integrators).
 
 ## Milestone overview
 

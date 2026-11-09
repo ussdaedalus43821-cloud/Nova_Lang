@@ -1720,6 +1720,20 @@ class BuiltinFunction:
 # repetition cannot eat all the memory in the machine.
 MAX_LIST_LENGTH = 1000000
 
+# Work between two looks at the clock inside one step (Interpreter.charge); an operation smaller than
+# CHARGE_FLOOR is not charged at all, because 1000 of them still reach the ordinary check.
+WORK_CHECK_UNITS = 50000
+CHARGE_FLOOR = 64
+
+
+def operand_work(*values):
+    """How much walking an operation on these operands may do: the length of each list, string or dictionary."""
+    total = 0
+    for value in values:
+        if isinstance(value, (list, str, dict)):
+            total += len(value)
+    return total
+
 # The language's own bound on an integer ([port.integers]): at most 4000
 # decimal digits, whatever Python release is underneath. Python's own limit on
 # turning text into an integer (4300 digits, and absent from older releases)
@@ -3459,11 +3473,11 @@ def numeric_operation(op, left, right, position):
     if op == "/":
         if right == 0:
             raise NovaError("division by zero", position)
-        result = left / right
-        # Keep whole answers whole: 10 / 2 is 5, not 5.0
-        if isinstance(left, int) and isinstance(right, int) and result.is_integer():
-            return int(result)
-        return result
+        if isinstance(left, int) and isinstance(right, int) and left % right == 0:
+            # Keep whole answers whole, and exact: 10 / 2 is 5, and 9007199254740993 / 1 is 9007199254740993, which
+            # a float quotient (53 bits) cannot hold ([val.arithmetic]).
+            return left // right
+        return left / right
     if op == "//":
         if right == 0:
             raise NovaError("integer division by zero", position)
@@ -4121,6 +4135,7 @@ class Interpreter:
 
     def begin_counters(self):
         self.steps = 0
+        self.work = 0
         self.output_bytes = 0
         self.deadline = None
         limits = self.limits
@@ -4164,6 +4179,17 @@ class Interpreter:
                 limits.steps), position)
         self.check_time(position)
         self.next_check = self.check_interval(self.steps)
+
+    def charge(self, units, position=None):
+        """Account for `units` of work done inside one step. A step is one pass of a loop or one call, however
+        much that call does, and the clock is only read every 1000 steps; so an operation that walks a long list
+        (`x in big`, `sorted(big)`, `a + b` on two long lists) is charged here by the size of what it walks, and
+        the clock is read every WORK_CHECK_UNITS of it. The time limit can then be passed by at most one operation,
+        and one operation is bounded by the collection limits ([sbx.limits], time)."""
+        self.work += units
+        if self.work >= WORK_CHECK_UNITS:
+            self.work = 0
+            self.check_time(position)
 
     def check_time(self, position, extra_ms=0.0):
         """End the run if the time limit has passed, or would pass after `extra_ms` more waiting."""
@@ -4487,6 +4513,10 @@ class Interpreter:
         end = None if node.end is None else slice_bound(
             self.evaluate(node.end), node.position)
         # Slices clamp instead of failing: "Hello"[1:99] is "ello".
+        if self.counting:
+            work = operand_work(target)
+            if work >= CHARGE_FLOOR:
+                self.charge(work, node.position)
         return target[start:end]
 
     def visit_InterpolationNode(self, node):
@@ -4526,11 +4556,19 @@ class Interpreter:
     def visit_BinOpNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
+        if self.counting and (node.op == "+" or node.op == "*"):
+            work = operand_work(left, right)
+            if work >= CHARGE_FLOOR:
+                self.charge(work, node.position)
         return binary_operation(node.op, left, right, node.position, self.limits_if_counting())
 
     def visit_CompareNode(self, node):
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
+        if self.counting and node.op in ("in", "==", "!="):
+            work = operand_work(left, right)
+            if work >= CHARGE_FLOOR:
+                self.charge(work, node.position)
         return compare_operation(node.op, left, right, node.position)
 
     # -- control flow -------------------------------------------------------
@@ -4656,6 +4694,16 @@ class Interpreter:
     def limits_if_counting(self):
         return self.limits if self.counting else None
 
+    def check_copy_destination(self, source, destination, position):
+        """copy(file, folder) writes `folder/<name of file>`, and it is that path, not the folder, that has to lie
+        inside a write grant: a link of that name inside the folder may lead anywhere, and copying through it would
+        overwrite or create a file outside the grant ([sbx.paths]). The path is judged by its real location, as an
+        explicit destination is."""
+        if not (isinstance(source, str) and isinstance(destination, str)) or "\0" in source + destination:
+            return                      # not a path: the function's own error, in its own order
+        if os.path.isdir(destination):
+            self.caps.check_path(os.path.join(destination, os.path.basename(source)), "write", position)
+
     def check_call_arguments(self, callee, args, position):
         """The size checks a built-in's operands allow before it builds anything ([sbx.limits])."""
         limits, name = self.limits, callee.name
@@ -4723,18 +4771,28 @@ class Interpreter:
                 if self.counting:
                     self.step(position)
                     self.check_call_arguments(callee, args, position)
+                    work = operand_work(*args)
+                    if callee.name == "range" and 1 <= len(args) <= 3 and all(is_number(a) for a in args):
+                        work += range_count(args, position) or 0
+                    if work >= CHARGE_FLOOR:
+                        self.charge(work, position)
                 if self.caps.restricted:
                     for index, kind in callee.paths:
                         if index < len(args):
                             self.caps.check_path(args[index], kind, position)
                     if callee.name == "append" and args and isinstance(args[0], str):
                         self.check_file_append(args[0], position)
+                    if callee.name == "copy" and len(args) == 2:
+                        self.check_copy_destination(args[0], args[1], position)
                 if callee.needs_interpreter:
                     result = callee.implementation(args, position, self)
                 else:
                     result = callee.implementation(args, position)
                 if self.counting:
                     self.check_result_size(result, position)
+                    work = operand_work(result)
+                    if work >= CHARGE_FLOOR:
+                        self.charge(work, position)
                 return bounded_integer(result, position)
             except OverflowError:
                 # math.sqrt(10 ** 400) and friends: an integer beyond a float.
@@ -6510,6 +6568,10 @@ def execute(interpreter, entry):
                     if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
                         stack[-1] = left == right
                     else:
+                        if counting:
+                            work = operand_work(left, right)
+                            if work >= CHARGE_FLOOR:
+                                interpreter.charge(work, positions[ip - 1])
                         stack[-1] = compare_operation("==", left, right, positions[ip - 1])
                 elif op == ADD_:
                     right = stack.pop()
@@ -6522,6 +6584,10 @@ def execute(interpreter, entry):
                             raise too_many_digits_error(positions[ip - 1])
                         stack[-1] = result
                     else:
+                        if counting:
+                            work = operand_work(left, right)
+                            if work >= CHARGE_FLOOR:
+                                interpreter.charge(work, positions[ip - 1])
                         stack[-1] = binary_operation("+", left, right, positions[ip - 1], vm_limits)
                 elif op == SUB_:
                     right = stack.pop()
@@ -6605,6 +6671,10 @@ def execute(interpreter, entry):
                     stack.pop()
                 elif op == IN_:
                     right = stack.pop()
+                    if counting:
+                        work = operand_work(right)
+                        if work >= CHARGE_FLOOR:
+                            interpreter.charge(work, positions[ip - 1])
                     stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
                 elif op == CHECK_BOOL_:
                     side, name = consts[arg]
@@ -6619,6 +6689,10 @@ def execute(interpreter, entry):
                             raise too_many_digits_error(positions[ip - 1])
                         stack[-1] = result
                     else:
+                        if counting:
+                            work = operand_work(left, right)
+                            if work >= CHARGE_FLOOR:
+                                interpreter.charge(work, positions[ip - 1])
                         stack[-1] = binary_operation("*", left, right, positions[ip - 1], vm_limits)
                 elif op == INDEX_ASSIGN_TARGET_:
                     # The fast paths for assignment (M6) skip a helper only
@@ -6685,6 +6759,10 @@ def execute(interpreter, entry):
                     if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
                         stack[-1] = left != right
                     else:
+                        if counting:
+                            work = operand_work(left, right)
+                            if work >= CHARGE_FLOOR:
+                                interpreter.charge(work, positions[ip - 1])
                         stack[-1] = compare_operation("!=", left, right, positions[ip - 1])
                 elif op == SET_MEMBER_:
                     value = stack.pop()
@@ -6775,6 +6853,10 @@ def execute(interpreter, entry):
                 elif op == SLICE_:
                     end = stack.pop() if arg[1] else None
                     start = stack.pop() if arg[0] else None
+                    if counting:
+                        work = operand_work(stack[-1])
+                        if work >= CHARGE_FLOOR:
+                            interpreter.charge(work, positions[ip - 1])
                     stack[-1] = stack[-1][start:end]
                 elif op == NEG_ or op == POS_:
                     stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
@@ -7670,12 +7752,20 @@ def supervise(command, env, stdin_data, wall_ms, output_cap, on_out, on_err):
                threading.Thread(target=pump, args=(process.stderr, on_err), daemon=True)]
     for thread in threads:
         thread.start()
+    feeder = None
     if stdin_mode == subprocess.PIPE:
-        try:
-            process.stdin.write(stdin_data)
-            process.stdin.close()
-        except OSError:
-            pass
+        # The input is fed from a thread: a child that never reads its stdin fills the pipe and a write made here
+        # would block, with the wall-clock deadline below not yet started ([sbx.runner]). A write that fails
+        # because the child has gone (or been killed) is not an error of the run.
+        def feed():
+            try:
+                process.stdin.write(stdin_data)
+                process.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+        feeder = threading.Thread(target=feed, daemon=True)
+        feeder.start()
     try:
         process.wait(timeout=None if wall_ms is None else wall_ms / 1000.0)
     except subprocess.TimeoutExpired:
@@ -7686,6 +7776,8 @@ def supervise(command, env, stdin_data, wall_ms, output_cap, on_out, on_err):
         process.wait()
     for thread in threads:
         thread.join(timeout=5)
+    if feeder is not None:
+        feeder.join(timeout=5)         # the child is gone, so a write still waiting has failed by now
     for stream in (process.stdout, process.stderr, process.stdin):
         if stream is not None:
             try:
@@ -7926,16 +8018,38 @@ def main(argv):
         return load_tool("nova-fmt.py").main(["novalang.py --format", "--write"] + args[1:])
 
     # `python3 novalang.py program.nova`  or  `python3 novalang.py "1 + 2"`
+    text = None
     try:
         with open(args[0], "r", encoding="utf-8") as handle:
-            return run_source(handle.read(), args[0], script_args=args[1:])
+            text = handle.read()
     except UnicodeDecodeError as problem:
         print("FileError: {}: {}".format(args[0], problem), file=sys.stderr)
         return 1
     except (IOError, OSError):
-        pass
+        pass                            # not a readable file: the arguments are the code
+    if text is not None:
+        # Only reading the file is guarded above. What running it raises is the program's own business: it used to be
+        # swallowed with the read error and the file's name then run as code.
+        return unless_the_reader_left(run_source, text, args[0], script_args=args[1:])
+    return unless_the_reader_left(run_inline, " ".join(args))
 
-    source = " ".join(args)
+
+def unless_the_reader_left(call, *arguments, **keywords):
+    """Run `call`; if the reader of our output has gone away (`novalang.py prog.nova | head -1`) stop quietly with the
+    status a shell reports for a process ended by SIGPIPE, instead of a stray error. Standard output is pointed at
+    nowhere first, so that flushing it at exit does not complain a second time."""
+    try:
+        return call(*arguments, **keywords)
+    except BrokenPipeError:
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (OSError, ValueError, AttributeError):
+            pass
+        return 141
+
+
+def run_inline(source):
+    """Code given on the command line: run it and print the value of its last expression."""
     interpreter = Interpreter()
     try:
         _, value = run(source, interpreter)

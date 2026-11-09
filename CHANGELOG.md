@@ -26,6 +26,34 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Fixed (from a review of 2.2.0)
+
+- **`copy(file, folder)` in the restricted profile** is judged by the path it writes, `folder/<name of file>`. A
+  symbolic link of that name inside the granted folder, pointing outside, let the copy overwrite or create a file
+  outside the grant. The check is in the Python engines and in `novalang.nova`; three cases in the escape corpus
+  (a link to a file, a dangling link, and the controls) fail without it. Spec `[sbx.paths]` rule 6.
+- **The time limit no longer waits for 1,000 steps when one step is expensive.** An operation that walks a
+  collection (`in`, `+`, `*`, `==`, `!=`, a slice, and every built-in by the size of its arguments and result) is
+  charged by the size of what it walks, and the clock is read every 50,000 units. A run of 150 searches over a
+  list of a million items under `time=500` ended after 58 seconds before; it now ends in under a second. The
+  overrun is bounded by one operation. Mirrored in `novalang.nova`. Spec `[sbx.limits]` (time).
+- **`run_isolated(stdin=True)`** feeds the child's input from a thread, so the wall-clock deadline starts before
+  the write. A child that never read a 128 KiB or 3 MB input used to delay the deadline until its own limit.
+- **A closed pipe on the command line** (`novalang.py prog.nova | head -1`) ends the run quietly with status 141. It
+  was swallowed with the file-read error, and the file's name was then run as code (`undefined name 'prog'`).
+- **Integer `/`** is exact when the quotient is whole: `9007199254740993 / 1` was `9007199254740992` on all three
+  engines, because the quotient was computed as a float first. A quotient that is not whole is the nearest float, as
+  before, and an error when too large for one. Spec `[expr.division]` and `[port.integers]`; the self-hosted `for`
+  loop divides as a float, as the host's `range_iterations` does, so a bound beyond a float is still the error.
+  A decision for the owner: a whole quotient beyond the largest float (`pow(10, 400) / 1`) is now an exact
+  integer rather than an error; the spec said both.
+
+### Changed
+
+- `README.md` and `docs/ROADMAP.md` ("Where we are") describe 2.2.0 as it is: CI has run, the specification
+  exists, the restricted profile exists and has the gaps listed there; the benchmark table says it was not
+  re-measured; the suite count is 1,951.
+
 ## [2.2.0] - 2026-11-09 — The specification, the policy dialect and the restricted profile (M9 to M11)
 
 This release adds three things and changes none of the existing behaviour: a program that ran on 2.1.0 prints the same

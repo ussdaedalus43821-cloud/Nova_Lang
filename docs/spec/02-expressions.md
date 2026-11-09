@@ -37,7 +37,9 @@ values are equal: `1 == 1.0`. Integer arithmetic is exact: `99999999999999999999
 error, not a rounded or wrapped value (`[port.integers]`).
 
 An operation on two integers gives an integer, except `/`, which gives an
-integer when the quotient is whole (`10 / 2` is `5`) and a float otherwise. If
+integer when the quotient is whole (`10 / 2` is `5`) and a float otherwise. A whole
+quotient is exact however large (`9007199254740993 / 1` is `9007199254740993`, not
+`9007199254740992`); a quotient that is not whole is the nearest float. If
 either operand is a float the result is a float.
 
 ## [val.display] How values print
