@@ -716,6 +716,30 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "host-files-a-null-character-in-a-path",
+   "spec": [
+    "host.files"
+   ],
+   "profile": "host",
+   "source": "print(exists(\"a\\0b\"))\ntry { print(read(\"a\\0b\")) } catch e { print(e) }\ntry { write(\"a\\0b\", \"x\") } catch e { print(e) }\ntry { print(listdir(\"a\\0b\")) } catch e { print(e) }\ntry { mkdir(\"a\\0b\") } catch e { print(e) }\ntry { remove(\"a\\0b\") } catch e { print(e) }\ntry { rename(\"a\", \"b\\0\") } catch e { print(e) }\ntry { copy(\"a\\0b\", \"c\") } catch e { print(e) }\ntry { delete(\"a\\0b\") } catch e { print(e) }\ntry { append(\"a\\0b\", \"x\") } catch e { print(e) }",
+   "output": [
+    "false",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: b\\0: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character",
+    "FileError: a\\0b: the path contains a null character"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

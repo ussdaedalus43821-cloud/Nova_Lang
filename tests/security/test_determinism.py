@@ -49,6 +49,8 @@ class Replay(unittest.TestCase):
         self.assertEqual(nova.eval("monotonic()"), 3600.0)
 
     def test_the_virtual_sleep_does_not_count_against_the_time_limit(self):
+        if nl.SANDBOX_UNSUPPORTED:
+            self.skipTest("the restricted profile needs Python 3.8 or later on Windows")
         nova = nl.Nova(profile="restricted", clock=True, random=True, deterministic=True, limits={"time": 100})
         nova.exec("sleep(86400000)")
         self.assertEqual(nova.eval("monotonic()"), 86400.0)
@@ -73,6 +75,8 @@ class Configuration(unittest.TestCase):
             nl.Nova(profile="trusted", deterministic=True, read=["data"])
 
     def test_the_mode_does_not_grant_the_functions(self):
+        if nl.SANDBOX_UNSUPPORTED:
+            self.skipTest("the restricted profile needs Python 3.8 or later on Windows")
         nova = nl.Nova(profile="restricted", deterministic=True)
         for name in ("random()", "time()", "now()", "sleep(1)"):
             with self.assertRaises(nl.NovaLangError, msg=name) as caught:

@@ -59,6 +59,8 @@ which differs between platforms. A path argument that is not a string is `read()
 needs a string, but got a number` (`the file name for write()`, `the old name for
 rename()`, `the source for copy()`, `delete() needs a file name, but got a number`).
 
+A path with a null character in it is not a path any file function can use: `exists` is `false` and every other file function, and the `delete` statement, fails with `FileError: <path>: the path contains a null character` (the character shown as `\0`), never with the host's own report.
+
 ## [host.time] The clock
 
 - `time()` is the seconds since 1970-01-01 00:00:00 UTC as a float. Two calls never
