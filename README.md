@@ -20,7 +20,7 @@ No `eval()`. No `exec()`. No parser generators. Every stage is built by
 hand. See [Architecture](#architecture) for how the pieces fit, and for
 the tree-walking interpreter that is kept as the fallback and reference.
 
-**Current release: v2.1.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
+**Current release: v2.2.0.** See [`CHANGELOG.md`](CHANGELOG.md) for the
 full history, from the 14 build stages of 1.x to the bytecode VM.
 
 ## Contents

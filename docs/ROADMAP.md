@@ -10,7 +10,7 @@ and carry no calendar commitments. Anything that needs a decision from the
 project owner is marked **Decision** and has a record in
 [`decisions/`](decisions/README.md).
 
-Last reviewed against NovaLang v2.1.0.
+Last reviewed against NovaLang v2.2.0.
 
 ## Vision
 

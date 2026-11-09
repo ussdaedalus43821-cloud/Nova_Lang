@@ -26,6 +26,35 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-09 — The specification, the policy dialect and the restricted profile (M9 to M11)
+
+This release adds three things and changes none of the existing behaviour: a program that ran on 2.1.0 prints the same
+on 2.2.0. The default profile is still `trusted`.
+
+- **M9, the specification.** `docs/spec/` is now normative ([ADR 0001](docs/decisions/0001-specification-is-normative.md)): sixteen
+  chapters with stable section ids, a divergence log (`DIVERGENCES.md`), and a conformance corpus (`tests/conformance/`, 1,570 cases)
+  that runs on the bytecode VM, the tree-walker and the self-hosted interpreter. Every spec section is cited by a case, and every
+  known disagreement between an engine and the text is recorded and numbered.
+- **M10, the policy dialect.** A rule-engine dialect for simulations (`docs/spec/12-` to `15-policy-*.md`, `dialects/policy/`, ADR 0004):
+  `reactor` programs with parameters, effects, signals, rules and faults, a host contract, and 778 cases of its own that the reactor
+  game's GDScript port is checked against. `tick(dt, inputs, faults, overrides)` takes the host's overrides.
+- **M11, the restricted profile.** Opt-in capability gating and resource limits on all three engines, specified in
+  `docs/spec/16-sandbox.md`: files, imports, environment, clock, random, stdin, process, regex and Python modules are denied
+  unless granted; limits on steps, time, output, strings, lists, dictionaries, depth, nesting and integer size, with the fatal ones
+  (steps, time, output) uncatchable; a deterministic mode (seeded randomness, an embedder-supplied clock); and a subprocess runner
+  (`--isolate`, `run_isolated()`). 201 coverage-matrix cells, all covered; an escape-attempt corpus and two seeded fuzzers. **This
+  is capability gating and resource limits, not isolation, and not a security boundary**; it is owner-reviewed and
+  architect-reviewed, pending independent third-party audit. The threat model, the test inventory and the known gaps are in
+  `docs/design/m11-review-package.md`.
+- **Fixed on the way** (found by the fuzzers and the CI matrix; each has a regression case and some also affected `trusted`): a `for`
+  bound beyond the range of a float, `""` or `[]` repeated by a huge count, dictionary `+` past the dictionary limit, `round(n, -k)` with
+  a huge `k`, a null byte in a path or an import (and `realpath()`), Windows device names. See the M11 entries below.
+
+Known gap carried into the next release: D-045, the self-hosted interpreter has no type gate for imports in `restricted`
+(`docs/spec/DIVERGENCES.md`; not a way out of a grant).
+
+
+
 ### M11 slice 7: `overrides` in the policy dialect, and a note on starting the suite from a background job
 - `tick(dt, inputs, faults, overrides)`: the fourth argument the reactor game added for its valve fix is now in the specification
   (`docs/spec/14-policy-engine.md`, new section `[pol.overrides]`, step 6 of `[pol.tick]`) and in the policy engine (`dialects/policy/nova_vm.py`).

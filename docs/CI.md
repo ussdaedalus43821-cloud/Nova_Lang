@@ -272,6 +272,14 @@ The workflow does not depend on the name (it compares against the repository's
 configured default), but a name like `main` would be less surprising, and
 renaming it in Settings is safe for the workflow.
 
+## Releases
+
+A release is made by hand. It is a tag `vX.Y.Z` on a commit of the default branch whose CI run (the push run of its merge) is
+green on every job. Before tagging, `__version__` in `novalang.py`, the README's "Current release" line and a dated
+`## [X.Y.Z]` section in `CHANGELOG.md` must already be on that commit, and the GitHub Release takes the summary of that
+section (the text above its first `###` sub-heading) as its notes. No workflow publishes a release: nothing in this
+repository holds the permission to.
+
 ## Line endings
 
 A Windows checkout may convert line endings. This was tested rather than
