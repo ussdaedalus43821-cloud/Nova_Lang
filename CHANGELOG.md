@@ -26,6 +26,21 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 5: the subprocess runner
+- `novalang.py --isolate [flags] program.nova` and `run_isolated(source, ..., **settings)` run the interpreter in a **separate process**
+  and watch it from outside: the child is killed if it outlives its time limit plus two seconds (`LimitError: time limit of N ms
+  exceeded`) or writes more than twice its output limit (`LimitError: output limit of N bytes exceeded`). This is what finally stops a
+  `regex` that backtracks for ever, which no in-process check can interrupt (the pattern that ran for more than ten seconds in the
+  plan's measurements is killed after about 2.6 s). The child has an empty environment (`--pass-env NAME` hands one over), the caller's
+  working directory (so a relative grant means the same folder), a closed standard input unless the `stdin` capability is granted, runs
+  under `python -I`, and on Linux has an address-space limit (`--memory-mb`, default 1024; `LimitError: memory limit of N MB exceeded`) and a
+  CPU-time limit from the operating system. macOS does not enforce `RLIMIT_AS` and Windows has no equivalent: the spec says so.
+- It is **not a container**: same user, same file system (inside the grants), same network. `--wall-ms`, `--memory-mb`, `--output-cap` and
+  `--pass-env` are refused without `--isolate`.
+- 9 cases run through the runner on all three engines (a `regex` hang, an endless trusted loop, a flood, memory on Linux, the environment,
+  and a run that ends by itself giving the same output, error and status), 18 new matrix cells (201 of 201 covered), 16 tests in
+  `tests/security/test_runner.py`. New case fields: `sandbox.isolate`, `platforms`, `output_unchecked`.
+
 ### M11 slice 4: the deterministic mode
 - `deterministic`, `seed` and `clock_start` (`Nova(deterministic=True, seed=42, clock_start=1700000000.5)`; `--deterministic --seed N
   --clock-start T`) in **either** profile: `random`, `randint`, `choice` and `shuffle` draw from a generator the specification fixes

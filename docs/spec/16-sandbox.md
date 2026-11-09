@@ -4,7 +4,7 @@ Status: **Owner-reviewed and Architect-reviewed, pending independent third-party
 specification of milestone M11. **Implemented** on the bytecode VM, the tree-walker and the
 self-hosted interpreter: the profiles, every capability, the path rules and every limit
 (`[sbx.capabilities]`, `[sbx.paths]`, `[sbx.limits]`); every cell of the coverage matrix is covered
-(`tests/security/matrix.py --strict`). **Not yet written:** the subprocess runner (slice 5 of M11). The threat model is
+(`tests/security/matrix.py --strict`). **Also written:** the subprocess runner (`[sbx.runner]`, slice 5 of M11). The threat model is
 [`../design/m11-threat-model.md`](../design/m11-threat-model.md) and the decision behind it is
 [ADR 0003](../decisions/0003-security-stance.md).
 
@@ -286,6 +286,61 @@ Each row is a cell of the coverage matrix and needs a case on every engine:
 | `det.range` | a time outside the years 1 to 9999 is the specified error |
 | `det.profiles` | it works in the `trusted` profile, and does not define a name the profile does not grant |
 
+## [sbx.runner] The subprocess runner
+
+The limits of `[sbx.limits]` are checked by the engine, so they cannot stop a call that never returns to it:
+a pattern that backtracks for ever inside `regex`, or a host function the embedder wrote. The **runner** adds a
+check from outside. It starts the interpreter in a separate process, watches the clock and the output from the
+parent, and kills the child when a limit is passed.
+
+`novalang.py --isolate [flags] program.nova` runs the program with the same flags in a separate process; in a
+host program `run_isolated(source, path=None, engine="vm", bootstrap=False, args=(), input_text=None, wall_ms=None,
+memory_mb=1024, output_cap=None, pass_env=(), profile="restricted", **settings)` takes the settings of
+`Nova()` and gives an `IsolatedResult` (`stdout`, `stderr`, `status`, `killed` and the `error` line the runner
+added). The flags `--wall-ms`, `--memory-mb`, `--output-cap` and `--pass-env NAME` tune it and are refused
+without `--isolate`. A mistake in the settings is refused before anything starts.
+
+The child:
+
+- has an **empty environment**, except for what the platform needs to start (on Windows `SYSTEMROOT` and a
+  few others) and the variables named with `--pass-env` / `pass_env`; a program that was granted `env` reads
+  `nothing` for any other name;
+- runs in **the caller's working directory**, so a relative grant (`--allow-read data`) means the same folder;
+- has a **closed standard input**, unless the `stdin` capability is granted: then the caller's standard input
+  (on the command line) or `input_text` (in `run_isolated`, with `stdin=True`) is passed through;
+- is started with `python -I`, which ignores `PYTHON*` environment variables and the user's site folders;
+- on **Linux** has an address-space limit of `memory_mb` MB (`RLIMIT_AS`, default 1024) and a CPU-time limit
+  from the operating system; elsewhere those two are not applied (macOS does not enforce `RLIMIT_AS`, Windows
+  has no equivalent in the standard library) and `[sbx.claims]` says so.
+
+The parent kills the child when:
+
+- it outlives `wall_ms` (by default the run's `time` limit plus two seconds; none for the `trusted` profile):
+  `LimitError: time limit of <N> ms exceeded`;
+- it writes more than `output_cap` bytes in all (by default twice the run's `output` limit plus 64 KiB):
+  `LimitError: output limit of <N> bytes exceeded`;
+
+and the child itself reports a `MemoryError` that reaches the top as
+`LimitError: memory limit of <N> MB exceeded`. In every case the exit status is 1; what the child wrote before
+being killed is kept, and how much of it arrives is not specified. A run that ends by itself gives exactly the
+output, error and exit status it gives in-process: the runner changes where the program runs, not what it
+means.
+
+**What the runner is not.** It is not a container. The child runs as the same user, on the same file system
+(inside the folders granted to it), with the same network, and a bug in CPython or in the operating system's
+limits is outside the claims of `[sbx.claims]`. It narrows the damage of a bug in the in-process checks and
+ends what the in-process checks cannot see. Code you did not write should still also run in a container.
+
+Each row is a cell of the coverage matrix and needs a case on every engine:
+
+| Cell | Kinds | What it pins |
+| --- | --- | --- |
+| `runner.time` | trip | a `regex` that never returns, and an endless loop of the `trusted` profile, are killed from outside |
+| `runner.output` | trip | a flood is cut off at the cap |
+| `runner.memory` | trip | a program that allocates past `memory_mb` ends with the memory error (Linux only) |
+| `runner.env` | deny grant | the child's environment is empty, and `pass_env` hands a named variable over |
+| `runner.same` | replay | a run that ends by itself gives the same output, error and exit status as in-process |
+
 ## [sbx.errors] The shape of the errors
 
 1. A denied capability is `undefined name '<name>'` or one of the two fixed forms of
@@ -333,6 +388,6 @@ read the threat model, no NovaLang document may describe the `restricted` profil
 sandbox guarantee, as safe, or as a security boundary. The allowed description is "capability
 gating and resource limits". The state of the review is in the threat model.
 
-**Outline of what follows (not yet normative).** Slice 5 of M11 adds a *subprocess runner* that starts
-a separate interpreter with the limits of this chapter and stops it from outside. Its section is added to
-this chapter with its cases.
+**Added since:** the runner (`[sbx.runner]`) narrows two of the "not guaranteed" items below: a hang inside
+a call the engine cannot interrupt is ended by the parent, and on Linux the address space of the child is
+limited. It does not make the child a container.

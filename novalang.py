@@ -92,6 +92,9 @@ import re
 import shutil
 import sys
 import contextlib
+import subprocess
+import tempfile
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
@@ -7473,6 +7476,253 @@ def load_tool(filename):
     return module
 
 
+
+# ---------------------------------------------------------------------------
+# The subprocess runner (docs/spec/16-sandbox.md [sbx.runner])
+# ---------------------------------------------------------------------------
+#
+# The in-process limits cannot stop a call that never returns to the interpreter (a pattern that
+# backtracks for ever inside `regex`). The runner starts the interpreter in a separate process,
+# watches the clock and the output from outside, and kills it. On Linux the process also gets an
+# address-space limit and a CPU-time limit from the operating system.
+
+RUNNER_GRACE_MS = 2000          # how long past its own time limit a run may take before it is killed
+RUNNER_MEMORY_MB = 1024
+
+# What the child runs, as `python -I -X utf8 -c`: set the operating system's limits, then run novalang.py
+# exactly as the command line would. A MemoryError that reaches the top is the memory limit.
+RUNNER_LAUNCHER = """
+import os, runpy, sys
+script, memory, cpu = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+try:
+    import resource
+    if memory:
+        resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    if cpu:
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 1))
+except (ImportError, ValueError, OSError):
+    pass
+sys.path.insert(0, os.path.dirname(script))
+sys.argv = [script] + sys.argv[4:]
+try:
+    runpy.run_path(script, run_name="__main__")
+except MemoryError:
+    sys.stderr.write("LimitError: memory limit of %d MB exceeded\\n" % (memory // (1024 * 1024)))
+    sys.exit(1)
+"""
+
+
+class IsolatedResult:
+    """What a run in a separate process did: its output, its exit status, and `killed` (None, or
+    "time", "output" or "memory") with the `error` line the runner adds when it ended the run."""
+
+    def __init__(self, stdout, stderr, status, killed=None, error=""):
+        self.stdout, self.stderr, self.status = stdout, stderr, status
+        self.killed, self.error = killed, error
+
+    def __repr__(self):
+        return "<IsolatedResult status={} killed={}>".format(self.status, self.killed)
+
+
+def sandbox_flags(settings):
+    """The command-line flags that select `settings` (the dict a Capabilities holds), in the order
+    main() reads them."""
+    out = ["--profile", settings.get("profile", "trusted")]
+    for key, flag in (("read", "--allow-read"), ("write", "--allow-write"), ("import_from", "--allow-import"),
+                      ("env", "--allow-env"), ("python", "--allow-python-module")):
+        for value in settings.get(key, ()):
+            out += [flag, str(value)]
+    for key, flag in (("clock", "--allow-clock"), ("random", "--allow-random"), ("stdin", "--allow-stdin"),
+                      ("process", "--allow-process"), ("regex", "--allow-regex")):
+        if settings.get(key):
+            out.append(flag)
+    for name, value in settings.get("limits", {}).items():
+        out += ["--limit", "{}={}".format(name, value)]
+    if settings.get("deterministic"):
+        out += ["--deterministic", "--seed", str(settings.get("seed", 0)),
+                "--clock-start", repr(float(settings.get("clock_start", 0.0)))]
+    return out
+
+
+def runner_environment(pass_env):
+    """The child's environment: empty, but for what Python cannot start without on Windows and the
+    variables the embedder named."""
+    env = {}
+    if sys.platform == "win32":
+        for name in ("SYSTEMROOT", "SYSTEMDRIVE", "PATHEXT", "COMSPEC"):
+            if name in os.environ:
+                env[name] = os.environ[name]
+    for name in pass_env:
+        if name in os.environ:
+            env[name] = os.environ[name]
+    return env
+
+
+def supervise(command, env, stdin_data, wall_ms, output_cap, on_out, on_err):
+    """Run `command` and watch it. Returns (status, killed). `stdin_data` is bytes (or None for a closed
+    stdin, or the string "inherit"). The child is killed when it outlives `wall_ms` or when its
+    output passes `output_cap` bytes: both are checked from outside, so neither depends on the child."""
+    if stdin_data == "inherit":
+        stdin_mode = None
+    elif stdin_data is None:
+        stdin_mode = subprocess.DEVNULL
+    else:
+        stdin_mode = subprocess.PIPE
+    process = subprocess.Popen(command, stdin=stdin_mode, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env=env, cwd=os.getcwd())
+    state = {"bytes": 0, "killed": None}
+    lock = threading.Lock()
+
+    def pump(stream, sink):
+        while True:
+            chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+            if not chunk:
+                return
+            with lock:
+                state["bytes"] += len(chunk)
+                over = output_cap is not None and state["bytes"] > output_cap
+                if over and state["killed"] is None:
+                    state["killed"] = "output"
+            if over:
+                process.kill()
+                return
+            sink(chunk)
+
+    threads = [threading.Thread(target=pump, args=(process.stdout, on_out), daemon=True),
+               threading.Thread(target=pump, args=(process.stderr, on_err), daemon=True)]
+    for thread in threads:
+        thread.start()
+    if stdin_mode == subprocess.PIPE:
+        try:
+            process.stdin.write(stdin_data)
+            process.stdin.close()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=None if wall_ms is None else wall_ms / 1000.0)
+    except subprocess.TimeoutExpired:
+        with lock:
+            if state["killed"] is None:
+                state["killed"] = "time"
+        process.kill()
+        process.wait()
+    for thread in threads:
+        thread.join(timeout=5)
+    for stream in (process.stdout, process.stderr, process.stdin):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+    return process.returncode, state["killed"]
+
+
+def runner_error(killed, status, stderr_text, time_ms, output_cap, memory_mb):
+    """The `LimitError:` line for a run the runner ended or the operating system stopped, or ''."""
+    if killed == "time":
+        return "LimitError: time limit of {} ms exceeded".format(time_ms)
+    if killed == "output":
+        return "LimitError: output limit of {} bytes exceeded".format(output_cap)
+    if status and ("LimitError: memory limit of" in stderr_text or "MemoryError" in stderr_text):
+        return "LimitError: memory limit of {} MB exceeded".format(memory_mb)
+    if status is not None and status < 0:
+        import signal as signal_module
+        if hasattr(signal_module, "SIGXCPU") and -status == signal_module.SIGXCPU:
+            return "LimitError: time limit of {} ms exceeded".format(time_ms)
+        return "LimitError: the run was stopped by signal {}".format(-status)
+    return ""
+
+
+def runner_command(flags, program, memory_mb, wall_ms):
+    memory = memory_mb * 1024 * 1024 if memory_mb and sys.platform != "win32" else 0
+    cpu = int(math.ceil(wall_ms / 1000.0)) + 1 if wall_ms and sys.platform != "win32" else 0
+    return ([sys.executable, "-I", "-X", "utf8", "-c", RUNNER_LAUNCHER, os.path.abspath(__file__), str(memory), str(cpu)]
+            + list(flags) + list(program))
+
+
+def run_isolated(source=None, path=None, *, engine="vm", bootstrap=False, args=(), input_text=None, wall_ms=None,
+                 memory_mb=RUNNER_MEMORY_MB, output_cap=None, pass_env=(), profile="restricted", **settings):
+    """Run a program in a separate process under the `restricted` profile (or `trusted`) and give back an
+    IsolatedResult. `source` is program text (written to a file of its own) or `path` is a file; `settings`
+    are those of Nova(): read=[...], clock=True, limits={...}, deterministic=True. The child has an empty
+    environment but for `pass_env`, a stdin that is closed unless the `stdin` capability is granted (`stdin=True`;
+    then `input_text` is what it reads), the same working directory as the caller (so a relative grant means the same
+    folder), and the operating system's limits on memory and CPU time where the system has them. It is killed
+    from outside if it outlives `wall_ms` (by default its time limit plus two seconds; none for `trusted`) or
+    writes more than `output_cap` bytes (by default twice its output limit)."""
+    capabilities = Capabilities(profile, **settings)            # refuses a mistake before anything starts
+    limits = capabilities.limit_values
+    if wall_ms is None and limits.time is not None:
+        wall_ms = limits.time + RUNNER_GRACE_MS
+    if output_cap is None and limits.output is not None:
+        output_cap = 2 * limits.output + 65536
+    temp = None
+    try:
+        if source is not None:
+            temp = tempfile.mkdtemp(prefix="nova-isolated-")
+            path = os.path.join(temp, "main.nova")
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(source)
+        engine_flags = ["--tree-walk"] if engine == "tree" else []
+        program = (["--bootstrap"] if bootstrap else []) + [path] + list(args)
+        flags = engine_flags + sandbox_flags(capabilities.settings)
+        data = None
+        if capabilities.has("stdin") and capabilities.restricted:
+            data = (input_text or "").encode("utf-8")
+        out, err = [], []
+        status, killed = supervise(runner_command(flags, program, memory_mb, wall_ms), runner_environment(pass_env),
+                                   data, wall_ms, output_cap, out.append, err.append)
+    finally:
+        if temp is not None:
+            shutil.rmtree(temp, ignore_errors=True)
+    # Text with "\n" line ends on every platform: Windows writes "\r\n".
+    stdout = b"".join(out).decode("utf-8", "replace").replace("\r\n", "\n")
+    stderr = b"".join(err).decode("utf-8", "replace").replace("\r\n", "\n")
+    error = runner_error(killed, status, stderr, limits.time if limits.time is not None else wall_ms,
+                         output_cap, memory_mb)
+    if error and killed:
+        status = 1
+    return IsolatedResult(stdout, stderr, status, killed, error)
+
+
+def isolate_main(runner, forwarded, rest):
+    """`novalang.py --isolate [flags] program.nova`: the same flags, in a separate process."""
+    wall_ms, output_cap = runner.get("wall_ms"), runner.get("output_cap")
+    limits = DEFAULT_CAPABILITIES.limit_values
+    if wall_ms is None and limits.time is not None:
+        wall_ms = limits.time + RUNNER_GRACE_MS
+    if output_cap is None and limits.output is not None:
+        output_cap = 2 * limits.output + 65536
+    memory_mb = runner.get("memory_mb", RUNNER_MEMORY_MB)
+    inherit = "inherit" if DEFAULT_CAPABILITIES.restricted and DEFAULT_CAPABILITIES.has("stdin") else None
+    if not DEFAULT_CAPABILITIES.restricted:
+        inherit = "inherit"                                     # the trusted profile has no capabilities to hold back
+    err = []
+
+    def to_out(chunk):
+        sys.stdout.flush()
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+
+    def to_err(chunk):
+        err.append(chunk)
+        sys.stderr.flush()
+        sys.stderr.buffer.write(chunk)
+        sys.stderr.buffer.flush()
+
+    status, killed = supervise(runner_command(forwarded, rest, memory_mb, wall_ms), runner_environment(runner.get("pass_env", ())),
+                               inherit, wall_ms, output_cap, to_out, to_err)
+    seen = b"".join(err).decode("utf-8", "replace")
+    error = runner_error(killed, status, seen, limits.time if limits.time is not None else wall_ms,
+                         output_cap, memory_mb)
+    if killed:
+        print(error, file=sys.stderr)
+        return 1
+    if error and "LimitError: memory limit of" not in seen:      # the child says that one itself
+        print(error, file=sys.stderr)
+    return status if status is not None and status >= 0 else 1
+
+
 # command line flag -> (sandbox setting, does it take a value)
 SANDBOX_FLAGS = {
     "--profile": ("profile", True), "--allow-read": ("read", True), "--allow-write": ("write", True),
@@ -7483,6 +7733,10 @@ SANDBOX_FLAGS = {
     "--allow-regex": ("regex", False),
     "--deterministic": ("deterministic", False), "--seed": ("seed", True), "--clock-start": ("clock_start", True),
 }
+
+
+RUNNER_FLAGS = {"--isolate": None, "--wall-ms": "wall_ms", "--memory-mb": "memory_mb",
+                "--output-cap": "output_cap", "--pass-env": "pass_env"}
 
 
 def main(argv):
@@ -7497,8 +7751,28 @@ def main(argv):
     # off otherwise. Both come before the file or subcommand, in either order.
     global DEFAULT_ENGINE, ALLOW_PYTHON, DEFAULT_CAPABILITIES
     sandbox = {}                            # docs/spec/16-sandbox.md [sbx.profiles]
-    while args and (args[0] in ("--tree-walk", "--allow-python") or args[0] in SANDBOX_FLAGS):
+    runner = {}                             # [sbx.runner]: --isolate and the flags that tune it
+    forwarded = []                          # the flags the isolated child is given again
+    while args and (args[0] in ("--tree-walk", "--allow-python") or args[0] in SANDBOX_FLAGS
+                    or args[0] in RUNNER_FLAGS):
         flag = args[0]
+        if flag in RUNNER_FLAGS:
+            if flag == "--isolate":
+                runner["isolate"] = True
+            else:
+                if len(args) < 2:
+                    print("{} needs a value".format(flag), file=sys.stderr)
+                    return 2
+                value, args = args[1], args[1:]
+                if flag == "--pass-env":
+                    runner.setdefault("pass_env", []).append(value)
+                else:
+                    if not value.isdigit() or int(value) < 1:
+                        print("{} needs a positive whole number, not {!r}".format(flag, value), file=sys.stderr)
+                        return 2
+                    runner[RUNNER_FLAGS[flag]] = int(value)
+            args = args[1:]
+            continue
         if flag == "--tree-walk":
             DEFAULT_ENGINE = "tree"
         elif flag == "--allow-python":
@@ -7529,6 +7803,9 @@ def main(argv):
                     sandbox.setdefault(setting, []).append(value)
             else:
                 sandbox[setting] = True
+        forwarded.append(flag)
+        if flag in SANDBOX_FLAGS and SANDBOX_FLAGS[flag][1]:
+            forwarded.append(value)
         args = args[1:]
     if sandbox:
         profile = sandbox.pop("profile", "trusted")
@@ -7541,6 +7818,14 @@ def main(argv):
         except NovaLangError as problem:
             print(problem, file=sys.stderr)
             return 2
+    if runner.get("isolate"):
+        if not args:
+            print("--isolate needs a program to run", file=sys.stderr)
+            return 2
+        return isolate_main(runner, forwarded, args)
+    if runner and not runner.get("isolate"):
+        print("--wall-ms, --memory-mb, --output-cap and --pass-env belong to --isolate", file=sys.stderr)
+        return 2
     if not args:
         return repl()
 

@@ -72,6 +72,11 @@ def derive_cells(spec_text=None):
         name = row[0].strip("`")
         if re.fullmatch(r"det\.[a-z]+", name):
             cells["{}:replay".format(name)] = "determinism"
+    for row in table_rows(section(text, "sbx.runner")):
+        name = row[0].strip("`")
+        if re.fullmatch(r"runner\.[a-z]+", name) and len(row) >= 2:
+            for kind in row[1].split():
+                cells["{}:{}".format(name, kind)] = "runner"
     for row in table_rows(section(text, "sbx.paths")):
         name = row[0].strip("`")
         if name.startswith("paths."):
