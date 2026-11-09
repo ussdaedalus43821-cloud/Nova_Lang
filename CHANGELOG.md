@@ -26,6 +26,14 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 3b: byte_length and monotonic (closes D-046)
+- Two new host functions, on all three engines: `byte_length(text)` (`[lib.text]`, pure, defined in every profile) and
+  `monotonic()` (`[host.time]`, capability `clock`). The self-hosted interpreter now counts output in bytes with the first and
+  times a run with the second, so the output limit is no longer up to four times looser for non-ASCII text and a clock set back
+  during a run no longer lengthens it. **New reserved names:** a program that used `byte_length` or `monotonic` as a variable
+  name must rename it (checked: nothing in this repository did). Type table and editor grammar updated.
+- D-046 resolved. Three conformance cases (`lib-byte-length-*`, `host-monotonic-*`) and one sandbox case that counts non-ASCII output in bytes.
+
 ### M11 slice 3: resource limits on all three engines
 - The limits of `[sbx.limits]` exist on the bytecode VM, the tree-walker and the self-hosted interpreter, in the
   `restricted` profile only (ADR 0005); `trusted` is unchanged. **Fatal, uncatchable:** the step budget (a step is one pass

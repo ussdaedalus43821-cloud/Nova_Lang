@@ -699,6 +699,23 @@
    "symlinks": {
     "link.txt": "a.txt"
    }
+  },
+  {
+   "name": "host-monotonic-never-goes-backwards",
+   "spec": [
+    "host.time"
+   ],
+   "profile": "host",
+   "source": "let a = monotonic()\nlet b = monotonic()\nprint(type(a), a >= 0, b >= a)\nsleep(150)\nprint(monotonic() - b >= 0.05)",
+   "output": [
+    "number true true",
+    "true"
+   ],
+   "files": {},
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

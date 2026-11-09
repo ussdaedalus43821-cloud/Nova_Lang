@@ -547,6 +547,32 @@
    ]
   },
   {
+   "name": "sbx-limit-output-counts-bytes-not-characters",
+   "spec": [
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "print(\"ééé\")\nprint(\"ééé\")",
+   "output": [
+    "ééé"
+   ],
+   "error": "LimitError: output limit of 8 bytes exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: output limit of 8 bytes exceeded$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "output": 8
+    }
+   },
+   "matrix": [
+    "output:trip"
+   ]
+  },
+  {
    "name": "sbx-limit-output-cannot-be-caught",
    "spec": [
     "sbx.limits",

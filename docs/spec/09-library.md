@@ -94,6 +94,10 @@ bare message for the second (`[err.try-catch]`).
   and the separator a string (`the separator of join() needs a string, but got a
   number`).
 - `str(x)` is how `print` writes `x`, as a string.
+- `byte_length(s)` is the number of bytes of the UTF-8 form of `s`, a whole number: `byte_length("abc")`
+  is 3 and `byte_length("é")` is 2. A lone surrogate counts as one byte (it has no UTF-8 form; the host writes
+  a replacement). A limit in bytes (`16-sandbox.md` `[sbx.limits]`, output) counts with it. A first argument that
+  is not a string is `byte_length() needs a string, but got a number`.
 - `pad(s, n)` adds spaces on the right and `pad_left(s, n)` on the left until `s` is
   `n` code points long. A string already `n` long or longer, or a negative `n`, is
   returned unchanged. `n` MUST be a whole number.

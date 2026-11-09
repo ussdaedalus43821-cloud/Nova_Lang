@@ -25,7 +25,7 @@ agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
 host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message), D-040 to D-046 (the sandbox profile of `16-sandbox.md`: D-040 to D-044 are resolved, D-045 and D-046 are open and untested) and D-025 and D-033 (case conversion beyond ASCII,
+difference in one error message), D-040 to D-046 (the sandbox profile of `16-sandbox.md`: D-040 to D-044 and D-046 are resolved, D-045 is open and untested (deferred to M12)) and D-025 and D-033 (case conversion beyond ASCII,
 an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
 policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
 `13-policy-values.md`.
@@ -714,8 +714,7 @@ Fix: type-check each module as it is imported, after the path check, as the host
 
 ### D-046 — The self-hosted interpreter counts output in characters, and times a run by the wall clock
 
-Status: open
-Untested: it needs non-ASCII output, or a change of the system clock during a run, which a corpus case cannot arrange portably
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[sbx.limits]` (output, time)
@@ -727,6 +726,7 @@ clock, so a clock set back during a run lengthens the run. Neither is a way past
 
 Fix: a host function for the byte length of a text, and a monotonic clock for the self-hosted engine's own use.
 
+Resolved 2026-11-09 (M11 slice 3b): two new host functions, `byte_length(text)` (`[lib.text]`) and `monotonic()` (`[host.time]`, capability `clock`), added to all three engines; the self-hosted interpreter counts output with the first and times a run with the second. A case counts non-ASCII output in bytes.
 ## Not divergences, but worth knowing
 
 The bytecode VM and the tree-walker agree on every corpus case, which is the

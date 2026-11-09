@@ -306,9 +306,10 @@
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "try { print(type(time())) } catch e { print(e) }\ntry { print(type(now())) } catch e { print(e) }\ntry { sleep(1) } catch e { print(e) }\ntry { print(len(format_time(0, \"%Y\"))) } catch e { print(e) }",
+   "source": "try { print(type(time())) } catch e { print(e) }\ntry { print(type(monotonic())) } catch e { print(e) }\ntry { print(type(now())) } catch e { print(e) }\ntry { sleep(1) } catch e { print(e) }\ntry { print(len(format_time(0, \"%Y\"))) } catch e { print(e) }",
    "output": [
     "undefined name 'time'",
+    "undefined name 'monotonic'",
     "undefined name 'now'",
     "undefined name 'sleep'",
     "undefined name 'format_time'"
@@ -331,8 +332,9 @@
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "print(time() > 0)\nprint(type(now()))\nprint(sleep(1))\nprint(len(format_time(0, \"%Y\")))",
+   "source": "print(time() > 0)\nprint(monotonic() >= 0)\nprint(type(now()))\nprint(sleep(1))\nprint(len(format_time(0, \"%Y\")))",
    "output": [
+    "true",
     "true",
     "string",
     "nothing",

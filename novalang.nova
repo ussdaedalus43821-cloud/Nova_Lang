@@ -1404,7 +1404,7 @@ let CAPABILITY_OF = {
     "write": "files.write", "mkdir": "files.write", "remove": "files.write",
     "rename": "files.write", "copy": "files.write",
     "env": "env",
-    "time": "clock", "now": "clock", "sleep": "clock", "format_time": "clock",
+    "time": "clock", "monotonic": "clock", "now": "clock", "sleep": "clock", "format_time": "clock",
     "random": "random", "randint": "random", "choice": "random", "shuffle": "random",
     "input": "stdin",
     "exit": "process", "args": "process", "platform": "process", "cwd": "process",
@@ -1586,12 +1586,12 @@ def is_fatal(e) {
 def begin_counters() {
     RUN["steps"] = 0
     RUN["output"] = 0
-    RUN["started"] = time()
+    RUN["started"] = monotonic()
     RUN["next_check"] = min(1000, LIMITS["steps"] + 1)
 }
 
 def check_time(extra_ms) {
-    if (time() - RUN["started"]) * 1000 + extra_ms > LIMITS["time"] {
+    if (monotonic() - RUN["started"]) * 1000 + extra_ms > LIMITS["time"] {
         limit_error("time limit of " + str(LIMITS["time"]) + " ms exceeded")
     }
 }
@@ -1615,7 +1615,7 @@ def count_step() {
 }
 
 def count_output(text) {
-    let size = len(text) + 1
+    let size = byte_length(text) + 1          # bytes, as the Python engines count them
     if RUN["output"] + size > LIMITS["output"] {
         limit_error("output limit of " + str(LIMITS["output"]) + " bytes exceeded")
     }
@@ -1831,7 +1831,7 @@ let BUILTIN_NAMES = {
     env: true, exit: true, args: true, platform: true,
     cwd: true, mkdir: true, remove: true, rename: true, copy: true,
     regex: true, replace_all: true, split_lines: true,
-    abspath: true, realpath: true, dirname: true,
+    abspath: true, realpath: true, dirname: true, byte_length: true, monotonic: true,
     pad: true, pad_left: true, reverse: true, sorted: true,
     "assert": true, log: true,
     map: true, filter: true, reduce: true
@@ -1842,7 +1842,7 @@ let BUILTIN_NAMES = {
 let BUILTIN_ARITY = {
     len: 1, append: 2, upper: 1, lower: 1, trim: 1, join: 2, str: 1, num: 1,
     type: 1, keys: 1, values: 1, read: 1, write: 2, exists: 1, listdir: 1,
-    abspath: 1, realpath: 1, dirname: 1, "time": 0, sleep: 1, now: 0, format_time: 2,
+    abspath: 1, realpath: 1, dirname: 1, byte_length: 1, monotonic: 0, "time": 0, sleep: 1, now: 0, format_time: 2,
     "random": 0, randint: 2, choice: 1, shuffle: 1, "abs": 1, floor: 1,
     ceil: 1, sqrt: 1, "pow": 2, sin: 1, cos: 1, tan: 1, ln: 1, log10: 1,
     env: 1, args: 0, platform: 0, cwd: 0, mkdir: 1, remove: 1, rename: 2,
@@ -2028,6 +2028,12 @@ def call_builtin_raw(name, call_args, pos) {
     }
     if name == "realpath" {
         return realpath(call_args[0])
+    }
+    if name == "byte_length" {
+        return byte_length(call_args[0])
+    }
+    if name == "monotonic" {
+        return monotonic()
     }
     if name == "dirname" {
         return dirname(call_args[0])
