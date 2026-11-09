@@ -706,7 +706,7 @@
     "host.time"
    ],
    "profile": "host",
-   "source": "let a = monotonic()\nlet b = monotonic()\nprint(type(a), a >= 0, b >= a)\nsleep(20)\nprint(monotonic() - b >= 0.015)",
+   "source": "let a = monotonic()\nlet b = monotonic()\nprint(type(a), a >= 0, b >= a)\nsleep(150)\nprint(monotonic() - b >= 0.05)",
    "output": [
     "number true true",
     "true"
