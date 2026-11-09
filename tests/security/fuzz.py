@@ -457,7 +457,9 @@ def build_tree(folder, links):
                              "data/up": "../..", "data/loop": "loop", "data/hop": "linkout",
                              "lib/evil.nova": "../other/o.nova"}.items():
             path = os.path.join(folder, *name.split("/"))
-            # Windows must be told that a link leads to a folder; elsewhere the flag is ignored.
+            # Windows takes a link's target literally: with `/` in it the link leads nowhere. It must also be told
+            # that a link leads to a folder; elsewhere the flag is ignored.
+            target = target.replace("/", os.sep)
             os.symlink(target, path, target_is_directory=os.path.isdir(os.path.join(os.path.dirname(path), target)))
 
 
