@@ -30,7 +30,7 @@ checks and one missing label are the skip, below).
 
 | Job | When | What | Blocks a merge |
 | --- | --- | --- | --- |
-| `fast` | every pull request; pushes to the default branch; on demand | `run_all.py --quick` on Linux, Python 3.12 (80-102 s across three runs on GitHub) | Yes, once branch protection is set (below) |
+| `fast` | every pull request; pushes to the default branch; on demand | `run_all.py --quick` on Linux **and** Windows, Python 3.12, as two rows `fast (ubuntu-24.04)` and `fast (windows-latest)` that one job named `fast` gathers (Linux took 80-102 s across three runs on GitHub) | Yes, once branch protection is set (below); the job `fast` is what is required |
 | `full` | pushes to the default branch; weekly (Mondays 05:17 UTC); on demand | the whole suite across the matrix | The required rows, after merge |
 
 `--quick` skips only the two slow bootstrap-parity stations (4 and 5). Everything
@@ -258,10 +258,14 @@ for a new repository:
 Do not select `full` rows: they run after merge, and probes are not meant to
 block.
 
-Keep `fast` a single job. If it ever becomes a matrix, GitHub names each
-check `fast (3.12)` and the required name `fast` silently stops matching,
-leaving pull requests ungated with no error. After saving the rule, reload a
-pull request: the merge box should list `fast` as required.
+Keep the required check a single job named `fast`. The quick tier is a matrix
+(Linux and Windows), and a matrix job is named after its row, `fast (ubuntu-24.04)`,
+so a bare `fast` would silently stop matching and leave pull requests ungated with
+no error. The workflow therefore has the matrix in `fast-os` and a job `fast` that
+`needs` it and fails unless every row passed. Require `fast` only: rows added or
+renamed later change nothing about the rule. After saving the rule, reload a
+pull request: the merge box should list `fast` as required, and the Windows row
+should run beside the Linux one.
 
 The repository's default branch is currently `claude/novalang-repl-math-5ihjqq`.
 The workflow does not depend on the name (it compares against the repository's

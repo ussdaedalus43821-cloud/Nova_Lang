@@ -1,7 +1,8 @@
 # NovaLang CI. See docs/CI.md for what each job means and how to change it.
 #
-#   fast  the --quick tier of tests/run_all.py. Runs on every pull request and
-#         on pushes to the default branch. This is the required check.
+#   fast  the --quick tier of tests/run_all.py on Linux and on Windows (the jobs
+#         `fast (<os>)`), gathered into one job named `fast`. Runs on every pull
+#         request and on pushes to the default branch. `fast` is the required check.
 #   full  the whole suite across a Python/OS matrix. Runs on pushes to the
 #         default branch, weekly, and on demand (a dispatch may pick rows and a
 #         station). Rows marked `probe` report but cannot fail the run, until
@@ -40,14 +41,21 @@ env:
   PYTHONFAULTHANDLER: "1"  # a native crash (stack overflow, access violation) prints a traceback
 
 jobs:
-  fast:
-    name: fast
+  # The quick tier runs on Linux and on Windows. It is a matrix, so each row is named `fast (<os>)`; the required check
+  # is the single job `fast` below, which needs every row. Do not require the rows by name and do not rename `fast`
+  # (docs/CI.md, "Branch protection").
+  fast-os:
+    name: fast (${{ matrix.os }})
     if: >-
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,10 +78,29 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: checks-fast
+          name: checks-fast-${{ matrix.os }}
           path: checks.jsonl
           if-no-files-found: ignore
           retention-days: 14
+
+  # The required check. One job with a fixed name, so renaming or adding a row of `fast-os` cannot unprotect the branch.
+  fast:
+    name: fast
+    needs: fast-os
+    if: >-
+      always() && (
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every row of the quick tier passed
+        env:
+          RESULT: ${{ needs.fast-os.result }}
+        run: |
+          echo "quick tier on Linux and Windows: $RESULT"
+          test "$RESULT" = "success"
 
   # The matrix lives here, not in the full job, so a dispatch can pick rows
   # (`rows`) and a station (`station`): a single row's traceback should not
