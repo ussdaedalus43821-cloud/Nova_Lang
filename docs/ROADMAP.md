@@ -64,7 +64,7 @@ Not established:
 | M9 | Language specification and conformance corpus | In progress (first slice) | M7 | L |
 | M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
 | M11 | Security model and sandbox | **Implemented; awaiting independent review** (slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
-| M12 | Runtime: bytecode format and performance | Planned | M9 | L |
+| M12 | Runtime: bytecode format and performance | **Plan drafted** ([plan](design/m12-runtime-plan.md)), awaiting decisions | M9 | L |
 | M13 | Platform libraries, registry and API stability | Planned | M9, M11 | L |
 | M14 | Product pilots | Horizon | M10, M11, M13 | per product |
 
