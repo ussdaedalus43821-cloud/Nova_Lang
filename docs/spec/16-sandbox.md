@@ -42,6 +42,13 @@ A profile applies to the whole engine: to the program, to every module it import
 function the host calls into it. The profile cannot be changed from inside a program, and no
 program can name a capability it was not given (`[sec.principles]`, `[sec.no-reflection]`).
 
+**The type gate applies in both profiles.** A program, or a module it imports, whose annotations are wrong is
+refused before the wrong code runs (a `TypeCheckError`, as it is under `trusted`). Checking never reads a file the
+program could not itself import: a module outside the folders granted for `import` is not opened to be checked,
+and the import is refused with the error of `[sbx.paths]`. On the bytecode VM and the tree-walker the refusal is
+reported as `ImportError: while loading module "..."` with the `TypeCheckError` below it; the self-hosted
+interpreter checks the import graph before it starts and reports the `TypeCheckError` with its file and position.
+
 **Configuration.** The command line takes `--allow-read DIR`, `--allow-write DIR`,
 `--allow-import DIR`, `--allow-env NAME` (each repeatable), `--allow-clock`, `--allow-random`,
 `--allow-stdin`, `--allow-process`, `--allow-regex`, `--allow-python-module MODULE` (repeatable) and

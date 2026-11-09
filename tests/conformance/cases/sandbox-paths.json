@@ -348,6 +348,55 @@
     "lib/m.nova": "export let x = 1",
     "other/o.nova": "export let y = 2"
    }
+  },
+  {
+   "name": "sbx-import-a-module-with-a-wrong-type-is-refused",
+   "spec": [
+    "sbx.profiles",
+    "sbx.paths"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib/bad.nova\" as b\nprint(b.x)",
+   "output": [],
+   "error": "ImportError: while loading module \"lib/bad.nova\":",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^(ImportError: while loading module \"lib/bad\\.nova\":|TypeCheckError: lib/bad\\.nova:1:\\d+: T006 .*)$",
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "lib"
+    ]
+   },
+   "files": {
+    "lib/bad.nova": "export let x: float = \"not a number\""
+   }
+  },
+  {
+   "name": "sbx-import-type-check-does-not-read-outside-the-grant",
+   "spec": [
+    "sbx.profiles",
+    "sbx.paths"
+   ],
+   "profile": "sandbox",
+   "source": "import \"other/bad.nova\" as b\nprint(b.x)",
+   "output": [],
+   "error": "ImportError: other/bad.nova is outside the folders this program may use",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^ImportError: other/bad\\.nova is outside the folders this program may use$",
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "lib"
+    ]
+   },
+   "files": {
+    "lib/ok.nova": "export let y = 1",
+    "other/bad.nova": "export let x: float = \"not a number\""
+   }
   }
  ]
 }

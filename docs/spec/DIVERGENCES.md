@@ -24,8 +24,8 @@ The engines are the bytecode VM and the tree-walker (both `novalang.py`, which
 agree on every case in the corpus) and the self-hosted interpreter
 (`novalang.nova`, run with `--bootstrap`). The self-hosted interpreter
 accounted for D-001, D-003 to D-011, D-015, D-016, D-017 and D-024; the rest are the
-host's own. Everything is resolved except D-001 (normalized), D-015 (a cosmetic
-difference in one error message), D-040 to D-046 (the sandbox profile of `16-sandbox.md`: D-040 to D-044 and D-046 are resolved, D-045 is open and untested (deferred to M12)) and D-025 and D-033 (case conversion beyond ASCII,
+host's own. Everything is resolved (D-040 to D-046, the sandbox profile of `16-sandbox.md`, included) except D-001 (normalized), D-015 (a cosmetic
+difference in one error message) and D-025 and D-033 (case conversion beyond ASCII,
 an open decision for NovaLang and for the policy dialect). D-030 to D-033 are the
 policy dialect engine's (`dialects/policy/`, ADR 0004), found while writing
 `13-policy-values.md`.
@@ -698,8 +698,7 @@ Fix: `python=[...]` names the only modules `python.import` accepts.
 Resolved 2026-11-08 (M11 slice 2): the `python` grant names the only modules `python.import` accepts, on all three engines; the plain `--allow-python` is refused with `--profile restricted`.
 ### D-045 — The self-hosted interpreter has no type gate in the restricted profile
 
-Status: open
-Untested: it needs an annotated module with a wrong type, imported by a restricted program; the case is deferred to M12 with the fix (ADR 0005)
+Status: resolved
 Class: implementation bug
 Engines: self-hosted
 Spec: `[sbx.profiles]`
@@ -711,6 +710,8 @@ there, while the bytecode VM and the tree-walker refuse it when the module is lo
 difference in what is refused.
 
 Fix: type-check each module as it is imported, after the path check, as the host does.
+
+Resolved 2026-11-09: the launcher still checks the whole graph before the program starts, but in the restricted profile the walk is given the import grants and judges every candidate module by its real path before opening it (`Program(allow=...)` in `tools/nova-typecheck.py`, used by `bootstrap.py`). The program and the modules inside the grants are type-checked as under `trusted`; a module outside them is not read and the engine refuses its import as before. Cases: `sbx-import-a-module-with-a-wrong-type-is-refused` and `sbx-import-type-check-does-not-read-outside-the-grant`; tests: `tests/security/test_type_gate.py`.
 
 ### D-046 — The self-hosted interpreter counts output in characters, and times a run by the wall clock
 

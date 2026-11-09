@@ -677,8 +677,12 @@ class Program:
     interpreter reports those problems itself when it runs. A package name
     is resolved by novalang.resolve_package, exactly as at run time."""
 
-    def __init__(self):
+    def __init__(self, allow=None):
         self.modules = {}           # absolute path -> Module (None while loading)
+        # `allow(path)` says whether a module may be read at all. The restricted profile passes the import
+        # grants, so the walk never opens a file the program itself could not import (docs/spec/16-sandbox.md,
+        # [sbx.paths]); a module it may not read is left unchecked, and the engine refuses the import itself.
+        self.allow = allow
 
     def resolve(self, raw_path, base_dir):
         if "\0" in raw_path:
@@ -686,14 +690,17 @@ class Program:
         if nl.is_package_import(raw_path):
             # The interpreter's own resolver, so the two cannot disagree.
             try:
-                return nl.resolve_package(raw_path, base_dir, None)
+                found = nl.resolve_package(raw_path, base_dir, None)
             except NovaError:
                 return None
+            return found if self.allow is None or self.allow(found) else None
         candidates = []
         if base_dir is not None:
             candidates.append(os.path.normpath(os.path.join(base_dir, raw_path)))
         candidates.append(os.path.normpath(os.path.join(os.getcwd(), raw_path)))
         for candidate in candidates:
+            if self.allow is not None and not self.allow(candidate):
+                continue            # judged before it is touched, as the engine judges an import
             if os.path.isfile(candidate):
                 return os.path.abspath(candidate)
         return None
@@ -731,11 +738,12 @@ class Program:
         return module
 
 
-def check_source(source, path=None, base_dir=None):
+def check_source(source, path=None, base_dir=None, allow=None):
     """Type-check `source` and the modules it imports. Returns the
     Program (whose .modules hold the imports) and the source's own Module.
-    Raises NovaError if `source` does not parse."""
-    program = Program()
+    Raises NovaError if `source` does not parse. `allow` limits which
+    modules may be read (see Program)."""
+    program = Program(allow)
     module = program.check(source, os.path.abspath(path) if path else None, base_dir)
     return program, module
 
@@ -818,13 +826,14 @@ def gate_refusal(source, base_dir=None, cache=None, path=None):
     return message, first.position
 
 
-def check_file_graph(path):
+def check_file_graph(path, allow=None):
     """For --bootstrap and the CLI: every finding in `path` and in every
     module it imports, as printable lines (the self-hosted interpreter
-    loads imports itself, so they must all be checked up front)."""
+    loads imports itself, so they must all be checked up front). `allow`
+    limits which modules may be read: the restricted profile's import grants."""
     with open(path, "r", encoding="utf-8") as handle:
         source = handle.read()
-    program, module = check_source(source, path)
+    program, module = check_source(source, path, allow=allow)
     lines = []
     for each in all_modules(program, module):
         shown = path if each is module else display_path(each.path)
