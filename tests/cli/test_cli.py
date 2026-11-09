@@ -215,6 +215,25 @@ class CliTests(unittest.TestCase):
                     self.assertIn("W001", result.stdout)
                     self.assertIn("cannot read", result.stderr)
 
+    @unittest.skipIf(os.name == "nt", "a closed pipe is a POSIX shell's business")
+    def test_a_reader_that_leaves_early_ends_the_run_quietly(self):
+        # `novalang.py prog.nova | head -1`: the write fails with a broken pipe once the pipe's buffer is full. It
+        # used to be swallowed with the file-read error, and the file's name was then run as code
+        # ("undefined name 'prog'", status 1).
+        path = self.file("flood.nova", 'for i = 1 to 200000 {\n  print("line " + str(i))\n}\n')
+        for extra in ("", "--profile restricted"):
+            with self.subTest(extra=extra):
+                done = subprocess.run(
+                    "{} {} {} {} | head -n 1".format(sys.executable, ROOT / "novalang.py", extra, path),
+                    shell=True, cwd=self.folder, capture_output=True, text=True, timeout=60,
+                    executable="/bin/bash", env=dict(os.environ, PYTHONUTF8="1"))
+                self.assertEqual(done.stdout, "line 1\n")
+                self.assertEqual(done.stderr, "")
+        done = subprocess.run("set -o pipefail; {} {} {} | head -n 1".format(sys.executable, ROOT / "novalang.py", path),
+                              shell=True, cwd=self.folder, capture_output=True, text=True, timeout=60,
+                              executable="/bin/bash")
+        self.assertEqual(done.returncode, 141)
+
     def test_disassembly_does_not_run_source(self):
         path = self.file("input with spaces.nova", 'def add(a, b) { return a + b }\n'
                          'write("marker.txt", "unexpected")\n')

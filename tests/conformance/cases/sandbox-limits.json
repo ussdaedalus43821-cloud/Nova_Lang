@@ -648,6 +648,30 @@
    "matrix": [
     "list.plus:trip"
    ]
+  },
+  {
+   "name": "sbx-limit-time-one-expensive-step-is-charged",
+   "spec": [
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "source": "let big = range(1000000)\nlet found = 0\nfor i = 1 to 400 {\n  if 999999 in big {\n    found = found + 1\n  }\n}\nprint(found)",
+   "output": [],
+   "error": "LimitError: time limit of 300 ms exceeded",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "error_like": "^LimitError: time limit of 300 ms exceeded$",
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "time": 300
+    }
+   },
+   "matrix": [
+    "time:trip"
+   ]
   }
  ]
 }

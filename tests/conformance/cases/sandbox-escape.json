@@ -2814,6 +2814,87 @@
    "sandbox": {
     "profile": "restricted"
    }
+  },
+  {
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "name": "esc-symlinks-copy-into-a-folder-is-judged-by-the-name-it-writes",
+   "source": "try { copy(\"src/a.txt\", \"dst\") } catch e { print(e) }\ntry { copy(\"src/a.txt\", \"dst/a.txt\") } catch e { print(e) }\ntry { copy(\"src/b.txt\", \"dst\") } catch e { print(e) }\nprint(read(\"dst/b.txt\"))",
+   "output": [
+    "FileError: dst/a.txt is outside the folders this program may use",
+    "FileError: dst/a.txt is outside the folders this program may use",
+    "b-content"
+   ],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "src",
+     "dst"
+    ],
+    "write": [
+     "dst"
+    ]
+   },
+   "files": {
+    "src/a.txt": "a-source",
+    "src/b.txt": "b-content",
+    "outside/target.txt": "OUTSIDE-ORIGINAL"
+   },
+   "symlinks": {
+    "dst/a.txt": "../outside/target.txt"
+   }
+  },
+  {
+   "spec": [
+    "sbx.capabilities",
+    "sbx.paths",
+    "sbx.limits",
+    "sbx.errors"
+   ],
+   "profile": "sandbox",
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "name": "esc-symlinks-copy-into-a-folder-creates-nothing-through-a-dangling-link",
+   "source": "try { copy(\"src/ghost.txt\", \"dst\") } catch e { print(e) }\ntry { print(exists(\"dst/ghost.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: dst/ghost.txt is outside the folders this program may use",
+    "FileError: dst/ghost.txt is outside the folders this program may use"
+   ],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "src",
+     "dst"
+    ],
+    "write": [
+     "dst"
+    ]
+   },
+   "files": {
+    "src/ghost.txt": "ghost-source"
+   },
+   "symlinks": {
+    "dst/ghost.txt": "../outside/created.txt"
+   }
   }
  ]
 }

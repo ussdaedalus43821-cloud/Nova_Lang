@@ -1542,6 +1542,24 @@ def check_file_write(path) {
     }
 }
 
+# copy(file, folder) writes folder/<name of file>, and it is that path, not the folder, that has to lie inside a
+# write grant: a link of that name inside the folder may lead anywhere ([sbx.paths]).
+def check_copy_destination(source, destination) {
+    if type(source) != "string" or type(destination) != "string" {
+        return
+    }
+    let is_folder = false
+    try {
+        listdir(destination)
+        is_folder = true
+    } catch problem {
+        is_folder = false
+    }
+    if is_folder {
+        check_path(destination + "/" + basename(source), "write", "FileError")
+    }
+}
+
 # The paths a built-in takes, checked before it is called.
 def check_builtin_paths(name, call_args) {
     if not SANDBOX["restricted"] {
@@ -1560,6 +1578,7 @@ def check_builtin_paths(name, call_args) {
     if name == "copy" {
         check_path(call_args[0], "read", "FileError")
         check_path(call_args[1], "write", "FileError")
+        check_copy_destination(call_args[0], call_args[1])
     }
     if name == "append" and type(call_args[0]) == "string" {
         check_file_write(call_args[0])
@@ -1751,7 +1770,7 @@ let LIMITS = {
 }
 
 # What this run has used.
-let RUN = {steps: 0, output: 0, started: 0, next_check: 1000}
+let RUN = {steps: 0, output: 0, started: 0, next_check: 1000, work: 0}
 
 # The three fatal limits end the run with a message that begins "LimitError: ". A `try` of the
 # program never sees one, and no `finally` block runs ([sbx.limits]).
@@ -1765,6 +1784,7 @@ def is_fatal(e) {
 
 def begin_counters() {
     RUN["steps"] = 0
+    RUN["work"] = 0
     RUN["output"] = 0
     RUN["started"] = monotonic()
     RUN["next_check"] = min(1000, LIMITS["steps"] + 1)
@@ -1773,6 +1793,28 @@ def begin_counters() {
 def check_time(extra_ms) {
     if (monotonic() - RUN["started"]) * 1000 + extra_ms > LIMITS["time"] {
         limit_error("time limit of " + str(LIMITS["time"]) + " ms exceeded")
+    }
+}
+
+# Work done inside one step. A step is one pass of a loop or one call, however much that call does, and the
+# clock is read every 1000 steps; so an operation that walks a long list (`x in big`, `sorted(big)`, `a + b`
+# on two long lists) is charged by the size of what it walks, and the clock is read every 50,000 units of it.
+# An operation smaller than 64 is not charged: a thousand of them still reach the ordinary check.
+def operand_work(value) {
+    let kind = type(value)
+    if kind == "list" or kind == "string" or kind == "dict" {
+        return len(value)
+    }
+    return 0
+}
+
+def charge(units) {
+    if units >= 64 {
+        RUN["work"] = RUN["work"] + units
+        if RUN["work"] >= 50000 {
+            RUN["work"] = 0
+            check_time(0)
+        }
     }
 }
 
@@ -2128,8 +2170,17 @@ def call_builtin(name, call_args, pos) {
     }
     count_step()
     check_builtin_limits(name, call_args)
+    let work = 0
+    for call_arg in call_args {
+        work = work + operand_work(call_arg)
+    }
+    if name == "range" and len(call_args) >= 1 and len(call_args) <= 3 {
+        work = work + limits_range_count(call_args)
+    }
+    charge(work)
     let result = call_builtin_raw(name, call_args, pos)
     check_result_size(result)
+    charge(operand_work(result))
     return result
 }
 
@@ -2604,6 +2655,9 @@ def eval_binop(node, scope) {
     let op = node["op"]
     if SANDBOX["restricted"] {
         check_binop_limits(op, left, right)
+        if op == "+" or op == "*" {
+            charge(operand_work(left) + operand_work(right))
+        }
     }
     if op == "+" {
         return left + right
@@ -2644,6 +2698,9 @@ def eval_compare(node, scope) {
     let left = eval_expr(node["left"], scope)
     let right = eval_expr(node["right"], scope)
     let op = node["op"]
+    if SANDBOX["restricted"] and (op == "in" or op == "==" or op == "!=") {
+        charge(operand_work(left) + operand_work(right))
+    }
     if op == "==" {
         return target_equal(left, right)
     }
@@ -2676,6 +2733,9 @@ def eval_index(node, scope) {
 
 def eval_slice(node, scope) {
     let target = eval_expr(node["target"], scope)
+    if SANDBOX["restricted"] {
+        charge(operand_work(target))
+    }
     if node["has_start"] and node["has_end"] {
         return target[eval_expr(node["start"], scope):eval_expr(node["end"], scope)]
     }
@@ -2868,7 +2928,9 @@ def exec_for(node, scope) {
     }
     let iterations = 0
     if span >= 0 {
-        let quotient = span / step_value
+        # As a float, the way the host's range_iterations divides: a whole integer quotient is exact in `/`, but the
+        # count of a loop is not, and an integer beyond the largest float is the error below, not a loop to the end of time.
+        let quotient = (span / step_value) * 1.0
         if quotient != 0 and quotient + quotient == quotient {
             # An infinite count (a float span over a step so small that the count passes the largest float):
             # the same error as any other arithmetic on a number too large for this operation.
