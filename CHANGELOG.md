@@ -26,6 +26,18 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### M11 slice 4: the deterministic mode
+- `deterministic`, `seed` and `clock_start` (`Nova(deterministic=True, seed=42, clock_start=1700000000.5)`; `--deterministic --seed N
+  --clock-start T`) in **either** profile: `random`, `randint`, `choice` and `shuffle` draw from a generator the specification fixes
+  (Knuth's 64-bit linear congruential generator, one draw per call, exact whole-number arithmetic), and the program sees a virtual
+  clock that starts at `clock_start` and advances only when it sleeps: `sleep` adds the time **without waiting**, `time()`, `monotonic()` and
+  `now()` follow it, `format_time` writes UTC with the nine directives every host supports and refuses the others. The same program,
+  seed and start give the same output on the bytecode VM, the tree-walker and the self-hosted interpreter (which has its own civil-date
+  arithmetic). The capabilities still decide which names exist. Not a guarantee: the real time limit, and anything that describes the machine.
+- 15 cases (expected values from an independent reference implementation in the case generator, not from an engine), 10 new matrix cells
+  (`det.*`, kind `replay`; 183 of 183 covered), `tests/security/test_determinism.py` (12 tests). A parity bug found on the way: the
+  self-hosted limit check counted a virtual `sleep` as real time.
+
 ### M11 slice 3b: byte_length and monotonic (closes D-046)
 - Two new host functions, on all three engines: `byte_length(text)` (`[lib.text]`, pure, defined in every profile) and
   `monotonic()` (`[host.time]`, capability `clock`). The self-hosted interpreter now counts output in bytes with the first and

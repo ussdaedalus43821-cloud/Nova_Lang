@@ -1435,6 +1435,11 @@ def sandbox_norm(path) {
 }
 
 def configure_sandbox(config) {
+    if config["deterministic"] {
+        DET["on"] = true
+        DET["state"] = config["seed"] % DET_MODULUS
+        DET["start"] = num(config["clock_start"])
+    }
     if config["profile"] != "restricted" {
         return
     }
@@ -1559,6 +1564,181 @@ def check_builtin_paths(name, call_args) {
     if name == "append" and type(call_args[0]) == "string" {
         check_file_write(call_args[0])
     }
+}
+
+# ---- the deterministic mode (docs/spec/16-sandbox.md [sbx.determinism]) ---
+
+# A random generator the specification fixes (Knuth's MMIX linear congruential generator, 64 bits)
+# and a clock the program cannot read from the machine: `time()` is the start plus the virtual
+# seconds slept, `sleep` advances it without waiting. The same program, seed and start give the
+# same output on every engine.
+let DET = {on: false, state: 0, start: 0.0, elapsed: 0.0}
+let DET_MODULUS = 18446744073709551616
+let DET_NAMES = {
+    "time": true, monotonic: true, now: true, sleep: true, format_time: true,
+    "random": true, randint: true, choice: true, shuffle: true
+}
+
+def det_next53() {
+    DET["state"] = (6364136223846793005 * DET["state"] + 1442695040888963407) % DET_MODULUS
+    return DET["state"] // 2048
+}
+
+# A whole number from 0 up to but not including n.
+def det_below(n) {
+    return (det_next53() * n) // 9007199254740992
+}
+
+def det_zero(n, width) {
+    let text = str(n)
+    while len(text) < width {
+        text = "0" + text
+    }
+    return text
+}
+
+# Seconds as the parts of a UTC date, or the error of a time outside the years 1 to 9999.
+def det_parts(seconds, who) {
+    if seconds != seconds or seconds - seconds != 0 or seconds < -62135596800 or seconds >= 253402300800 {
+        throw("TypeError: " + who + ": that time is out of range")
+    }
+    let whole = floor(seconds)
+    let micro = round((seconds - whole) * 1000000)
+    if micro >= 1000000 {
+        whole = whole + 1
+        micro = micro - 1000000
+    }
+    let days = whole // 86400
+    let rest = whole - days * 86400
+    # civil date from the day count (Howard Hinnant's algorithm)
+    let z = days + 719468
+    let era = z // 146097
+    let doe = z - era * 146097
+    let yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    let year = yoe + era * 400
+    let doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    let mp = (5 * doy + 2) // 153
+    let day = doy - (153 * mp + 2) // 5 + 1
+    let month = mp + 3
+    if mp >= 10 {
+        month = mp - 9
+    }
+    if month <= 2 {
+        year = year + 1
+    }
+    # the day of the year: the 1st of January of this year, counted the same way
+    let y1 = year - 1
+    let era1 = y1 // 400
+    let yoe1 = y1 - era1 * 400
+    let jan1 = era1 * 146097 + yoe1 * 365 + yoe1 // 4 - yoe1 // 100 + 306 - 719468
+    return {
+        year: year, month: month, day: day, hour: rest // 3600, minute: (rest % 3600) // 60,
+        second: rest % 60, micro: micro, yday: days - jan1 + 1
+    }
+}
+
+def det_iso(seconds) {
+    let p = det_parts(seconds, "now()")
+    let text = det_zero(p["year"], 4) + "-" + det_zero(p["month"], 2) + "-" + det_zero(p["day"], 2) + "T" + det_zero(p["hour"], 2) + ":" + det_zero(p["minute"], 2) + ":" + det_zero(p["second"], 2)
+    if p["micro"] != 0 {
+        text = text + "." + det_zero(p["micro"], 6)
+    }
+    return text + "+00:00"
+}
+
+def det_format(seconds, fmt) {
+    let p = det_parts(seconds, "format_time()")
+    let out = ""
+    let i = 0
+    while i < len(fmt) {
+        let ch = fmt[i:i + 1]
+        if ch != "%" {
+            out = out + ch
+            i = i + 1
+            continue
+        }
+        if i + 1 >= len(fmt) {
+            throw("TypeError: format_time(): a format cannot end with '%'")
+        }
+        let d = fmt[i + 1:i + 2]
+        if d == "Y" {
+            out = out + det_zero(p["year"], 4)
+        } else if d == "m" {
+            out = out + det_zero(p["month"], 2)
+        } else if d == "d" {
+            out = out + det_zero(p["day"], 2)
+        } else if d == "H" {
+            out = out + det_zero(p["hour"], 2)
+        } else if d == "M" {
+            out = out + det_zero(p["minute"], 2)
+        } else if d == "S" {
+            out = out + det_zero(p["second"], 2)
+        } else if d == "j" {
+            out = out + det_zero(p["yday"], 3)
+        } else if d == "y" {
+            out = out + det_zero(p["year"] % 100, 2)
+        } else if d == "%" {
+            out = out + "%"
+        } else {
+            throw("TypeError: format_time(): '%" + d + "' is not supported in the deterministic mode")
+        }
+        i = i + 2
+    }
+    return out
+}
+
+# The built-ins that read the clock or draw at random, in the deterministic mode. Where an argument is
+# wrong the host's own function is called, only to raise its own error.
+def det_builtin(name, call_args) {
+    if name == "time" {
+        return DET["start"] + DET["elapsed"]
+    }
+    if name == "monotonic" {
+        return DET["elapsed"]
+    }
+    if name == "now" {
+        return det_iso(DET["start"] + DET["elapsed"])
+    }
+    if name == "sleep" {
+        let ms = call_args[0]
+        if type(ms) != "number" or ms != ms or ms - ms != 0 or ms < 0 {
+            sleep(ms)
+        }
+        DET["elapsed"] = DET["elapsed"] + ms / 1000.0
+        return make_nothing()
+    }
+    if name == "format_time" {
+        if type(call_args[0]) != "number" or type(call_args[1]) != "string" {
+            return format_time(call_args[0], call_args[1])
+        }
+        return det_format(call_args[0], call_args[1])
+    }
+    if name == "random" {
+        return det_next53() / 9007199254740992
+    }
+    if name == "randint" {
+        randint(call_args[0], call_args[1])
+        let low = floor(call_args[0])
+        let high = floor(call_args[1])
+        return low + det_below(high - low + 1)
+    }
+    if name == "choice" {
+        choice(call_args[0])
+        return call_args[0][det_below(len(call_args[0]))]
+    }
+    if type(call_args[0]) != "list" {
+        shuffle(call_args[0])
+    }
+    let items = call_args[0]
+    let i = len(items) - 1
+    while i > 0 {
+        let j = det_below(i + 1)
+        let held = items[i]
+        items[i] = items[j]
+        items[j] = held
+        i = i - 1
+    }
+    return items
 }
 
 # ---- the limits of a run (docs/spec/16-sandbox.md [sbx.limits]) ---------
@@ -1734,8 +1914,8 @@ def check_builtin_limits(name, call_args) {
             string_too_long()
         }
     }
-    if name == "sleep" and len(call_args) == 1 and type(call_args[0]) == "number" {
-        check_time(call_args[0])
+    if name == "sleep" and len(call_args) == 1 and type(call_args[0]) == "number" and not DET["on"] {
+        check_time(call_args[0])          # a virtual sleep (the deterministic mode) takes no time
     }
     if name == "input" {
         check_time(0)
@@ -1944,6 +2124,9 @@ def call_builtin(name, call_args, pos) {
 
 def call_builtin_raw(name, call_args, pos) {
     check_builtin_paths(name, call_args)
+    if DET["on"] and name in DET_NAMES {
+        return det_builtin(name, call_args)
+    }
     if name == "print" {
         let text = ""
         let i = 0

@@ -4,8 +4,7 @@ Status: **Owner-reviewed and Architect-reviewed, pending independent third-party
 specification of milestone M11. **Implemented** on the bytecode VM, the tree-walker and the
 self-hosted interpreter: the profiles, every capability, the path rules and every limit
 (`[sbx.capabilities]`, `[sbx.paths]`, `[sbx.limits]`); every cell of the coverage matrix is covered
-(`tests/security/matrix.py --strict`). **Not yet written:** the deterministic switch and the subprocess
-runner (slices 4 and 5 of M11). The threat model is
+(`tests/security/matrix.py --strict`). **Not yet written:** the subprocess runner (slice 5 of M11). The threat model is
 [`../design/m11-threat-model.md`](../design/m11-threat-model.md) and the decision behind it is
 [ADR 0003](../decisions/0003-security-stance.md).
 
@@ -230,6 +229,63 @@ program holds is not limited (`[sbx.claims]`).
 **The policy dialect** (`12-policy-syntax.md`) has its own limits table, `[pol.limits]`, and
 is brought under this chapter in slice 7 of M11.
 
+## [sbx.determinism] The deterministic mode
+
+For simulation, tests and replay. Three settings, **in either profile** (a `trusted` engine may be
+deterministic too): `deterministic` (on or off), `seed` (a whole number, default 0) and `clock_start` (seconds
+since 1970, between the years 1 and 9999, default 0, at most nine decimals). On the command line
+`--deterministic`, `--seed N` and `--clock-start T`; in a host program
+`Nova(deterministic=True, seed=42, clock_start=1700000000.5)`. `seed` and `clock_start` without
+`deterministic` are refused. The capabilities still decide which names exist: in the `restricted` profile
+`random` and `clock` must be granted for the functions below to be defined.
+
+**The generator.** Knuth's 64-bit linear congruential generator, so that every host, and a host written in
+another language, draws the same numbers. The state starts as `seed` modulo 2**64. A *draw* sets
+`state = (6364136223846793005 * state + 1442695040888963407) mod 2**64` and gives `k = state >> 11`, a whole
+number below 2**53. Then, with exact whole-number arithmetic:
+
+- `random()` is `k / 2**53` (a float, exact);
+- `randint(a, b)` is `a + (k * (b - a + 1)) >> 53`, one draw;
+- `choice(list)` is the item at index `(k * length) >> 53`, one draw;
+- `shuffle(list)` goes from the last index `i` down to 1 and swaps the item at `i` with the one at
+  `(k * (i + 1)) >> 53`, one draw each, and gives the list itself.
+
+Arguments are checked first, with the errors of `[host.random]`, and a call that fails draws nothing.
+
+**The clock.** There is no clock to read. The program sees a virtual time that starts at `clock_start` and
+advances only when it sleeps: `sleep(ms)` adds `ms / 1000` seconds **without waiting** and gives `nothing`.
+`time()` is `clock_start` plus the seconds slept, `monotonic()` is the seconds slept (0 at the start), and
+`now()` is `time()` as an ISO 8601 string in UTC, with the fraction (six digits, rounded to the nearest
+microsecond, ties to even) only when it is not zero: `2023-11-14T22:13:20.500000+00:00`,
+`2023-11-14T22:13:22+00:00`. `format_time(t, format)` writes in **UTC** (not the local time zone) and supports
+exactly the directives every host must (`[host.time]`): `%Y %m %d %H %M %S %j %y %%`; any other directive is
+`TypeError: format_time(): '%A' is not supported in the deterministic mode`, a format that ends in `%` is
+`TypeError: format_time(): a format cannot end with '%'`, and a time outside the years 1 to 9999 is
+`TypeError: now(): that time is out of range` (`format_time()` for the other function).
+
+**The guarantee.** The same program, the same `seed` and `clock_start`, and the same inputs (files read,
+standard input, environment, arguments) give the same output, the same error and the same exit status on the
+bytecode VM, the tree-walker and the self-hosted interpreter. It is **not** a guarantee about: the real time
+limit of `[sbx.limits]` (it measures the machine's clock, so a run near the limit can pass once and fail
+another time), `platform()`, `cwd()` and `abspath()` (they describe the machine; do not grant `process` to a
+replay), a granted Python module (`[sbx.claims]`), and the order in which a host function the embedder wrote
+is called. Granting only `random` and `clock` makes a program deterministic.
+
+Each row is a cell of the coverage matrix and needs a case on every engine:
+
+| Cell | What it pins |
+| --- | --- |
+| `det.random` | `random()` draws the specified sequence |
+| `det.randint` | `randint` draws the specified numbers, including a range of one and a negative low end |
+| `det.choice` | `choice` picks the specified items |
+| `det.shuffle` | `shuffle` makes the specified permutation, in place |
+| `det.seed` | the same seed repeats, another seed differs, a negative or huge seed is taken modulo 2**64 |
+| `det.time` | `time`, `monotonic` and `now` start at `clock_start` |
+| `det.sleep` | `sleep` advances the virtual clock and does not wait |
+| `det.format` | `format_time` writes UTC with the specified directives and refuses the others |
+| `det.range` | a time outside the years 1 to 9999 is the specified error |
+| `det.profiles` | it works in the `trusted` profile, and does not define a name the profile does not grant |
+
 ## [sbx.errors] The shape of the errors
 
 1. A denied capability is `undefined name '<name>'` or one of the two fixed forms of
@@ -277,7 +333,6 @@ read the threat model, no NovaLang document may describe the `restricted` profil
 sandbox guarantee, as safe, or as a security boundary. The allowed description is "capability
 gating and resource limits". The state of the review is in the threat model.
 
-**Outline of what follows (not yet normative).** Slice 4 of M11 adds a *deterministic* switch
-(random numbers from a specified generator, a clock the embedder supplies) and slice 5 a
-*subprocess runner* that starts a separate interpreter with the limits of this chapter and
-stops it from outside. Their sections are added to this chapter with their cases.
+**Outline of what follows (not yet normative).** Slice 5 of M11 adds a *subprocess runner* that starts
+a separate interpreter with the limits of this chapter and stops it from outside. Its section is added to
+this chapter with its cases.
