@@ -50,8 +50,11 @@ on 2.2.0. The default profile is still `trusted`.
   bound beyond the range of a float, `""` or `[]` repeated by a huge count, dictionary `+` past the dictionary limit, `round(n, -k)` with
   a huge `k`, a null byte in a path or an import (and `realpath()`), Windows device names. See the M11 entries below.
 
-Known gap carried into the next release: D-045, the self-hosted interpreter has no type gate for imports in `restricted`
-(`docs/spec/DIVERGENCES.md`; not a way out of a grant).
+- **D-045 closed in this release.** Under `--bootstrap --profile restricted` the self-hosted interpreter used to skip the type check; it now
+  checks the program and the modules inside the import grants, judging every module by its real path before opening it, so a
+  module outside the grants is never read for checking. The type gate now applies in both profiles on all three engines
+  (`[sbx.profiles]`; two conformance cases; `tests/security/test_type_gate.py`). No divergence between the engines is open for the
+  restricted profile.
 
 
 
