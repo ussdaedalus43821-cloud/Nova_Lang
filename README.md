@@ -785,13 +785,14 @@ bridge), and reaches files, imports and environment variables only inside the gr
 more steps or time, and builds no longer string, list or dictionary than the limits allow, and a fatal limit (steps, time,
 output) cannot be caught by the program; each of these is a NovaLang error, never a failure of the host.
 
-Known gaps, found in a review of 2.2.0 and not yet fixed: `copy(file, folder)` does not re-check where the copy
-will land, so a symbolic link inside the granted folder that is named like the source file and points elsewhere
-lets the copy write outside the grant; the clock is read about once every 1,000 steps, so a single very expensive
-operation (searching a list of a million items, say) can run well past the time limit before it is noticed; and a
-blocking read from stdin is not interrupted by the in-process time limit (the wall-clock limit of `--isolate` is
-the control for that). Until these are fixed, do not rely on a `restricted` run alone to contain a program you do
-not trust.
+Known gaps: a blocking read from stdin is not interrupted by the in-process time limit (the wall-clock limit of
+`--isolate` is the control for that), and the time limit can be passed by the time one operation takes: the clock is
+read every 1,000 steps and for every 50,000 items an operation walks, so the overrun is at most one search or sort of
+the largest collection the limits allow (about 0.4 seconds for a list of a million items on a small machine). A review
+of 2.2.0 also found, and this version fixes, a `copy(file, folder)` that wrote through a symbolic link of the file's
+name inside the folder, a time limit that a run of expensive operations could pass by minutes, and an `--isolate` run
+whose deadline a large input could delay. Do not rely on a `restricted` run alone to contain a program you do not
+trust.
 
 What is **not** guaranteed: isolation (the engine runs in your process, on a Python that is not a security boundary);
 the total memory a program uses; anything about a Python module or host function you grant; paths in folders that

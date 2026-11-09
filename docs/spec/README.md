@@ -1,10 +1,12 @@
 # NovaLang language specification
 
-Status: **first slice, draft.** Written 2026-11-08 for milestone M9. It covers
-lexical rules, values, expressions, scoping, the error catalogue, the security
-properties of the language and the rules a portable host must follow. Statements
-beyond `let`, assignment, blocks, loops, functions and `try`/`catch`/`finally`,
-the standard library, modules and the type annotations are still to come.
+Status: **draft.** Written for milestone M9 from 2026-11-08 and extended since to sixteen chapters. It covers
+lexical rules, values, expressions, scoping, statements, the error catalogue, the security properties of the
+language, the rules a portable host must follow, modules, the core and host libraries, embedding and the Python
+bridge, the policy dialect (chapters 12 to 15) and the `restricted` profile (chapter 16). Still to come: type
+annotations and the type gate, packages (`import "name"`, found through `nova.json` and `nova.lock`), and the
+tools (formatter, linter, language server). Where an implementation does not follow the text, the disagreement is in
+[`DIVERGENCES.md`](DIVERGENCES.md).
 
 This specification is normative ([ADR 0001](../decisions/0001-specification-is-normative.md)):
 where an implementation and this text disagree, one of them has a bug, and the
@@ -58,7 +60,6 @@ the corpus carries one. The profiles so far:
 | `embedding` | A host program that runs the language inside itself: binds values and functions for the script, runs it, calls into it, and receives its errors (`11-embedding.md`). Needs a host program; the self-hosted interpreter has none. |
 | `python` | The `python.*` bridge to Python, reference host only, off unless asked for (`11-embedding.md`). |
 | `host` | What a program needs from the machine it runs on: process exit status, files, the environment, the clock, randomness and standard input (`10-host.md`). Present only if the host provides it (`[sec.principles]`). |
-
 | `policy` | The game's policy dialect, a separate language specified in `12-policy-syntax.md` onwards ([ADR 0004](../decisions/0004-policy-dialect-after-measurement.md)). Its cases run on the policy engine (`dialects/policy/`) and never on NovaLang's engines. |
 | `sandbox` | The `restricted` profile of `16-sandbox.md`: capabilities denied unless granted, and resource limits. Capabilities, path rules and limits are implemented on all three engines; **owner- and architect-reviewed, pending independent third-party audit**. |
 
@@ -78,9 +79,9 @@ the corpus carries one. The profiles so far:
 | [`10-host.md`](10-host.md) | `host.*`: files, the clock, randomness, the environment and the process (the `host` profile) |
 | [`11-embedding.md`](11-embedding.md) | `emb.*`: engines, values across the boundary, binding host values, calling in, errors; `py.*`: the Python bridge and what it can reach |
 | [`12-policy-syntax.md`](12-policy-syntax.md) | `pol.*`: the policy dialect's source text, syntax, statements, scopes, calls, modules, limits and error text (the `policy` profile) |
-| [`15-policy-reactor.md`](15-policy-reactor.md) | `pol.*`: the reactor game's host: the inputs a policy is given, the eight host functions and their effects, the scram latch between ticks, and the 900-step trace |
-| [`14-policy-engine.md`](14-policy-engine.md) | `pol.*`: the rule engine: `reactor`, `params`, `effects`, `signals`, `rule`, `fault`, `held`, reset, one tick, the fault scheduler and the host's operations |
 | [`13-policy-values.md`](13-policy-values.md) | `pol.*`: the policy dialect's values, number text, truthiness, equality, operators, indexing and its 33 built-in functions |
+| [`14-policy-engine.md`](14-policy-engine.md) | `pol.*`: the rule engine: `reactor`, `params`, `effects`, `signals`, `rule`, `fault`, `held`, reset, one tick, the fault scheduler and the host's operations |
+| [`15-policy-reactor.md`](15-policy-reactor.md) | `pol.*`: the reactor game's host: the inputs a policy is given, the eight host functions and their effects, the scram latch between ticks, and the 900-step trace |
 | [`16-sandbox.md`](16-sandbox.md) | `sbx.*`: the sandbox profile: capabilities, path rules, limits, error shapes and exactly what is claimed (owner- and architect-reviewed, pending independent third-party audit) |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 

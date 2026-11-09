@@ -45,17 +45,19 @@ commit of 2.2.0 across the Linux, macOS and Windows jobs described in [`CI.md`](
   [`spec/DIVERGENCES.md`](spec/DIVERGENCES.md)).
 - A `restricted` profile (capability gating and resource limits) with a threat model, an escape-attempt corpus, a
   coverage matrix and a subprocess runner. It is **capability gating, not isolation**.
+- Integer `/` is exact when the quotient is whole, however large. It gave a wrong integer above 2^53 on all three
+  engines in 2.2.0, which the differential station could not see because they share one helper; the conformance
+  corpus now pins it.
 - One language for the games too: the policy dialect is a profile with its own spec chapters (M10).
 
 Not established:
 
-- **The restricted profile has known gaps.** A review of 2.2.0 found that `copy(file, folder)` can write outside the
-  granted folders through a symbolic link already in the destination, that the time limit is read only about
-  every 1,000 steps so one expensive operation can overrun it, and that blocking reads from stdin are outside the
-  in-process time limit. These are unfixed at 2.2.0. The profile is not described as a security boundary, and
-  independent third-party review has not happened.
-- **Integer division is not exact for very large integers.** `/` on integers above 2^53 can return a wrong
-  integer, on all three engines, which the differential station cannot see because they share one helper.
+- **The restricted profile still has known gaps, and has not been independently reviewed.** A review of 2.2.0
+  found that `copy(file, folder)` could write outside the granted folders through a symbolic link already in the
+  destination, that the time limit could be passed by minutes because it was read only every 1,000 steps, and that
+  the runner's deadline could be delayed by a large input; those are fixed after 2.2.0 (see the changelog). Left:
+  a blocking read from stdin is outside the in-process time limit, and the time limit can still be passed by the
+  time of one operation on the largest collection allowed. The profile is not described as a security boundary.
 - **The GDScript port is unverified.** The bytecode VM for Godot is written and
   pushed, but has not yet been run against its parity harness.
 - **Releases are not signed or reproducible.** `v2.2.0` is a lightweight, unsigned tag with no checksums, bill of
