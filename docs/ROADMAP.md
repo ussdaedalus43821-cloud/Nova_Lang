@@ -12,6 +12,9 @@ project owner is marked **Decision** and has a record in
 
 Last reviewed against NovaLang v2.2.0.
 
+The ecosystem-wide view (the master plan, its architecture, the Phase 0 to 9
+roadmap and the NovaFinance design) is in [`vision/`](vision/MASTER_PLAN.md).
+
 ## Vision
 
 NovaLang is the shared language underneath a family of products: simulation,
