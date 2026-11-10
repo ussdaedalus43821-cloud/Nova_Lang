@@ -12,6 +12,9 @@ project owner is marked **Decision** and has a record in
 
 Last reviewed against NovaLang v2.2.0.
 
+The ecosystem-wide view (the master plan, its architecture, the Phase 0 to 9
+roadmap and the NovaFinance design) is in [`vision/`](vision/MASTER_PLAN.md).
+
 ## Vision
 
 NovaLang is the shared language underneath a family of products: simulation,
@@ -73,9 +76,9 @@ Not established:
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
 | M7 | Continuous verification | Done | | M |
 | M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
-| M9 | Language specification and conformance corpus | In progress (first slice) | M7 | L |
+| M9 | Language specification and conformance corpus | **Done** (v2.2.0; [`spec/`](spec/README.md), the `conformance` station on all three engines) | M7 | L |
 | M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
-| M11 | Security model and sandbox | **Implemented; awaiting independent review** (slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
+| M11 | Security model and sandbox | **Done (pending independent review)** (v2.2.0; slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
 | M12 | Runtime: bytecode format and performance | **Plan drafted** ([plan](design/m12-runtime-plan.md)), awaiting decisions | M9 | L |
 | M13 | Platform libraries, registry and API stability | Planned | M9, M11 | L |
 | M14 | Product pilots | Horizon | M10, M11, M13 | per product |
