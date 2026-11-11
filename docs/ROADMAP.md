@@ -64,9 +64,9 @@ Not established:
   the runner's deadline could be delayed by a large input; those are fixed after 2.2.0 (see the changelog). Left:
   a blocking read from stdin is outside the in-process time limit, and the time limit can still be passed by the
   time of one operation on the largest collection allowed. The profile is not described as a security boundary.
-- **The GDScript port has no benchmark and no shared copy.** The tree-walker against VM measurement was not
-  made, and `DaedalusGodot` holds its own copy of the runtime files with nothing checking that the two copies
-  stay the same (they were identical on 2026-11-11). Both were M8 deliverables and are carried forward.
+- **The GDScript port has no benchmark.** The tree-walker against VM measurement was an M8 deliverable and was not
+  made; it moves to M12. (`DaedalusGodot` holds its own copy of the runtime files; a CI job in `Reactor-Game`
+  fails if the two differ, nine files identical on 2026-11-11.)
 - **Releases are not signed or reproducible.** `v2.2.0` is a lightweight, unsigned tag with no checksums, bill of
   materials or provenance.
 - **Only Linux has been exercised by hand with the latest review.** Windows and macOS rest on CI runs.
@@ -79,7 +79,7 @@ Not established:
 | --- | --- | --- | --- | --- |
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
 | M7 | Continuous verification | Done | | M |
-| M8 | Verify and finish the GDScript VM | **Done** (2026-11-11; both checks green on both backends, on a Mac and in CI; the benchmark and the shared copy are carried forward) | M7 for CI | M |
+| M8 | Verify and finish the GDScript VM | **Done** (2026-11-11; both checks green on both backends, on a Mac and in CI; the benchmark moves to M12; a CI check keeps the two games' copies identical) | M7 for CI | M |
 | M9 | Language specification and conformance corpus | **Done** (v2.2.0; [`spec/`](spec/README.md), the `conformance` station on all three engines) | M7 | L |
 | M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
 | M11 | Security model and sandbox | **Done (pending independent review)** (v2.2.0; slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
@@ -190,12 +190,12 @@ What closing it did and did not include, against the lists below:
 | The policy corpus (`corpus_check.gd`, added by M10) green, both backends | Done |
 | `nova_compiler_test.gd` green | Not recorded: it is not one of the two checks that were run for the closing, and it is not in the CI job |
 | A headless-Godot CI job in `Reactor-Game` | Written and green ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)); it runs `parity_check.gd` and `corpus_check.gd` |
-| Benchmark of tree-walker against VM, committed with its command | **Not done; carried forward to M12** |
-| The port shared by both games, or a check that the copies match | **Not done; carried forward.** The copies were byte-identical on 2026-11-11, by hand |
+| Benchmark of tree-walker against VM, committed with its command | **Moved to M12**; not done |
+| The port shared by both games, or a check that the copies match | **Done as a check** ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)): the `port-copies` job in `Reactor-Game` compares the nine runtime files with `DaedalusGodot`'s by SHA-256 and fails on any difference. Two copies remain; a change goes into both, `DaedalusGodot` first |
 | Both games run the VM by default with the tree-walker as the flagged fallback | Not checked for the closing |
 | The two narrow divergences (signal-error attribution, shared call-depth budget) fixed or recorded as accepted | Not recorded |
 
-The milestone is closed by decision, with the verification done and the rows marked otherwise still open.
+The milestone is closed by decision, with the verification done. The benchmark is M12's work; the three rows marked not checked or not recorded are still open.
 
 **Deliverables**
 

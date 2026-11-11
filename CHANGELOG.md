@@ -54,8 +54,9 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `corpus_check.gd` pass on the bytecode VM and on the tree-walker: on the owner's Mac (238 parity checks; 768 corpus
   cases, the corpus before the ten `overrides` cases) and in CI under Godot 4.7.2 on the 778-case corpus
   ([run](https://github.com/ussdaedalus43821-cloud/Reactor-Game/actions/runs/43113071481)). `Reactor-Game` gains a headless-Godot CI job for both checks
-  ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)). Not done and carried forward, as the roadmaps now say: the tree-walker against VM
-  benchmark (to M12) and one shared copy of the port for the two games. `docs/ROADMAP.md`,
+  ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)). Phase 1 is Done with two caveats, as the roadmaps now say: the tree-walker against VM
+  benchmark moves to M12, and the two games' copies of the port are kept identical by a CI job in `Reactor-Game` that fails
+  when any runtime file differs from `DaedalusGodot`'s. `docs/ROADMAP.md`,
   `docs/vision/ROADMAP.md` and the documents that still called the port unverified are updated.
 - `README.md` and `docs/ROADMAP.md` ("Where we are") describe 2.2.0 as it is: CI has run, the specification
   exists, the restricted profile exists and has the gaps listed there; the benchmark table says it was not
