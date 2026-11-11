@@ -51,6 +51,9 @@ commit of 2.2.0 across the Linux, macOS and Windows jobs described in [`CI.md`](
 - Integer `/` is exact when the quotient is whole, however large. It gave a wrong integer above 2^53 on all three
   engines in 2.2.0, which the differential station could not see because they share one helper; the conformance
   corpus now pins it.
+- The GDScript port is verified against its references (M8): `parity_check.gd` and `corpus_check.gd` pass on the
+  bytecode VM and on the tree-walker, on the owner's Mac and in CI under Godot 4.7.2
+  ([run](https://github.com/ussdaedalus43821-cloud/Reactor-Game/actions/runs/43113071481), 778 corpus cases).
 - One language for the games too: the policy dialect is a profile with its own spec chapters (M10).
 
 Not established:
@@ -61,8 +64,9 @@ Not established:
   the runner's deadline could be delayed by a large input; those are fixed after 2.2.0 (see the changelog). Left:
   a blocking read from stdin is outside the in-process time limit, and the time limit can still be passed by the
   time of one operation on the largest collection allowed. The profile is not described as a security boundary.
-- **The GDScript port is unverified.** The bytecode VM for Godot is written and
-  pushed, but has not yet been run against its parity harness.
+- **The GDScript port has no benchmark and no shared copy.** The tree-walker against VM measurement was not
+  made, and `DaedalusGodot` holds its own copy of the runtime files with nothing checking that the two copies
+  stay the same (they were identical on 2026-11-11). Both were M8 deliverables and are carried forward.
 - **Releases are not signed or reproducible.** `v2.2.0` is a lightweight, unsigned tag with no checksums, bill of
   materials or provenance.
 - **Only Linux has been exercised by hand with the latest review.** Windows and macOS rest on CI runs.
@@ -75,7 +79,7 @@ Not established:
 | --- | --- | --- | --- | --- |
 | M0–M6 | Toolchain, typing, packages, editor, bytecode VM, fixes, fast paths | Done | | |
 | M7 | Continuous verification | Done | | M |
-| M8 | Verify and finish the GDScript VM | In progress | M7 for CI | M |
+| M8 | Verify and finish the GDScript VM | **Done** (2026-11-11; both checks green on both backends, on a Mac and in CI; the benchmark and the shared copy are carried forward) | M7 for CI | M |
 | M9 | Language specification and conformance corpus | **Done** (v2.2.0; [`spec/`](spec/README.md), the `conformance` station on all three engines) | M7 | L |
 | M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
 | M11 | Security model and sandbox | **Done (pending independent review)** (v2.2.0; slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
@@ -171,9 +175,27 @@ platform bugs, which is the point.
 **Goal.** The Godot port of the bytecode VM is proven equal to the tree-walker
 and to the Python reference, measured, and shared by both games.
 
-**State.** `NovaVM2`, the resolver and the compiler are written in
-`Reactor-Game` and pushed, with a dual-backend parity check. They have not been
-run in Godot.
+**State: closed by the project owner on 2026-11-11.** `NovaVM2`, the resolver and the compiler run in Godot
+4.7.2. `parity_check.gd` (the recorded Python oracle and the 900-step reactor trace) and `corpus_check.gd` (the
+specification's policy corpus) pass on the bytecode VM and on the tree-walker: on the owner's Mac (238 parity
+checks; 768 corpus cases, the corpus before the ten `overrides` cases) and in CI on Linux on the 778-case corpus
+([run](https://github.com/ussdaedalus43821-cloud/Reactor-Game/actions/runs/43113071481)). The first runs in Godot found real bugs, as the risk below expected (a compile error in NovaVM2, a
+parser crash, module globals, NaN handling, float comparison); they were fixed on 2026-11-08.
+
+What closing it did and did not include, against the lists below:
+
+| Item | Status at closing |
+| --- | --- |
+| `parity_check.gd` green in headless Godot, both backends | Done |
+| The policy corpus (`corpus_check.gd`, added by M10) green, both backends | Done |
+| `nova_compiler_test.gd` green | Not recorded: it is not one of the two checks that were run for the closing, and it is not in the CI job |
+| A headless-Godot CI job in `Reactor-Game` | Written and green ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)); it runs `parity_check.gd` and `corpus_check.gd` |
+| Benchmark of tree-walker against VM, committed with its command | **Not done; carried forward to M12** |
+| The port shared by both games, or a check that the copies match | **Not done; carried forward.** The copies were byte-identical on 2026-11-11, by hand |
+| Both games run the VM by default with the tree-walker as the flagged fallback | Not checked for the closing |
+| The two narrow divergences (signal-error attribution, shared call-depth budget) fixed or recorded as accepted | Not recorded |
+
+The milestone is closed by decision, with the verification done and the rows marked otherwise still open.
 
 **Deliverables**
 
