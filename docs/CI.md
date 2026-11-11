@@ -307,7 +307,8 @@ were read from their `action.yml` when this was written.
 ## Not covered here
 
 - Godot: the GDScript port of the VM lives in `Reactor-Game` and is checked by
-  a headless-Godot job there (milestone M8).
+  a headless-Godot job there (`.github/workflows/ci.yml` in that repository;
+  milestone M8).
 - Coverage thresholds as a gate: coverage is evidence for choosing tests, not a
   release threshold (see [`COVERAGE.md`](COVERAGE.md)).
 - A real operating-system Ctrl-C. The REPL tests deliver the same

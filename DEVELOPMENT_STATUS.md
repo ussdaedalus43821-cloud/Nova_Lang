@@ -36,8 +36,8 @@ branch coverage including Python subprocesses (see `docs/COVERAGE.md`).
 The milestones after M6 are in [`docs/ROADMAP.md`](docs/ROADMAP.md). The first,
 M7, added continuous verification: the suite runs on GitHub across Linux, macOS
 and Windows (see [`docs/CI.md`](docs/CI.md)), and a pull request needs the
-`fast` check to merge. The next milestones are M8 (the GDScript VM) and M9 (the
-language specification).
+`fast` check to merge. M8 (the GDScript VM) to M11 followed and are done; the
+next milestone is M12 (the runtime: bytecode format and performance).
 
 ## Known gaps
 
