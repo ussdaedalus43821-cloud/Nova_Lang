@@ -106,6 +106,25 @@ escape across that boundary.
    used throughout that file) so it's covered by the regression suite
    going forward.
 
+## Before you send a change
+
+- **Run the whole suite.** `python3 tests/run_all.py` runs every station
+  (conformance, differential VM-against-tree-walker, security matrix, formatter,
+  linter, type checker, embedding, and the rest). At v2.2.0 that is **1,951
+  checks**, and all of them must pass. `--quick` skips the slow self-hosted
+  runs and is the tier pull requests are gated on.
+- **CI.** Every pull request runs the `fast` job (the `--quick` tier on Linux
+  and Windows). `fast` is the required check, so a pull request cannot merge
+  while it is red. The `full` job runs the whole suite across the Python and
+  operating-system matrix on pushes to the default branch, weekly, and on
+  demand. [`docs/CI.md`](docs/CI.md) says what each job means.
+- **Stop the line.** A failing check stops the work. It is not skipped,
+  quarantined, loosened or "fixed later": `tests/run_all.py` is the Andon cord
+  and exits 1 on any failure, and a failing check blocks the
+  milestone. If a test is wrong, fix the test in the same change and say why;
+  if the code is wrong, fix the code. A bug fix starts with a check that fails
+  without it. Numbers in documents come with the command that reproduces them.
+
 ## Testing a change
 
 NovaLang tests itself with `.nova` scripts. `python3 tests/run_all.py`
