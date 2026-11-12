@@ -682,6 +682,64 @@
    "host_calls": []
   },
   {
+   "name": "lex-nul-escape-before-digit-error",
+   "spec": [
+    "lex.escapes",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"\\033[31m\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\03'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-nul-escape-before-digit-fstring-error",
+   "spec": [
+    "lex.escapes",
+    "lex.fstrings",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(f\"\\033[{1}m\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\03'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-nul-escape-before-non-octal-digit-error",
+   "spec": [
+    "lex.escapes",
+    "err.lexical"
+   ],
+   "profile": "core",
+   "source": "print(\"\\089\")",
+   "output": [],
+   "error": "NovaError: unknown escape '\\08'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "lex-nul-escape-before-non-digit-is-still-one-character",
+   "spec": [
+    "lex.escapes"
+   ],
+   "profile": "core",
+   "source": "print(len(\"\\0a\"), len(\"\\0\\0\"), len(\"\\0 1\"), len(\"\\0\" + \"1\"))",
+   "output": [
+    "2 2 3 2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
    "name": "lex-unclosed-string-error",
    "spec": [
     "lex.strings",

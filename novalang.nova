@@ -164,6 +164,10 @@ def lex_escape(state, start) {
         return "'"
     }
     if escape in ESCAPES {
+        # "\0" is the null character and nothing more: "\033" is an error, not NUL then "33".
+        if escape == "0" and is_digit(lex_peek(state, 0)) {
+            lex_error("unknown escape '\\0" + lex_peek(state, 0) + "'", state["index"] - 1)
+        }
         return ESCAPES[escape]
     }
     lex_error("unknown escape '\\" + escape + "'", state["index"] - 1)

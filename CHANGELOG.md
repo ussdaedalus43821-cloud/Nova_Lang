@@ -26,6 +26,15 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Changed
+
+- **`"\0"` followed by a digit is now an error**, `unknown escape '\03'`, on all three engines. `"\033"` used to be a
+  null character followed by the text `33`, silently, which is not the octal escape for ESC that a C programmer
+  means. The spec had always said `\0` is the null character (`[lex.escapes]`), so the lexers followed it; the
+  rule is a language change that closes the trap. A program that wrote a null character and then a digit in one
+  literal (`"\01"`) must now write `"\0" + "1"`. Four cases in the lexical corpus; the Python lexer (strings and
+  f-strings) and `novalang.nova` change. The policy dialect's own lexer (`dialects/policy/`) is not changed.
+
 ### Fixed (from a review of 2.2.0)
 
 - **`copy(file, folder)` in the restricted profile** is judged by the path it writes, `folder/<name of file>`. A
@@ -56,8 +65,8 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   ([run](https://github.com/ussdaedalus43821-cloud/Reactor-Game/actions/runs/43113071481)). `Reactor-Game` gains a headless-Godot CI job for both checks
   ([pull request 6](https://github.com/ussdaedalus43821-cloud/Reactor-Game/pull/6)). Phase 1 is Done with two caveats, as the roadmaps now say: the tree-walker against VM
   benchmark moves to M12, and the two games' copies of the port are kept identical by a CI job in `Reactor-Game` that fails
-  when any runtime file differs from `DaedalusGodot`'s. `docs/ROADMAP.md`,
-  `docs/vision/ROADMAP.md` and the documents that still called the port unverified are updated.
+  when any runtime file differs from `DaedalusGodot`'s. `docs/ROADMAP.md`
+  and the documents that still called the port unverified are updated.
 - `README.md` and `docs/ROADMAP.md` ("Where we are") describe 2.2.0 as it is: CI has run, the specification
   exists, the restricted profile exists and has the gaps listed there; the benchmark table says it was not
   re-measured; the suite count is 1,951.

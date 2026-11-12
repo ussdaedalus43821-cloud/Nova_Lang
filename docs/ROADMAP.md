@@ -12,9 +12,6 @@ project owner is marked **Decision** and has a record in
 
 Last reviewed against NovaLang v2.2.0.
 
-The ecosystem-wide view (the master plan, its architecture, the Phase 0 to 9
-roadmap and the NovaFinance design) is in [`vision/`](vision/MASTER_PLAN.md).
-
 ## Vision
 
 NovaLang is the shared language underneath a family of products: simulation,
@@ -382,6 +379,12 @@ evidence, whether a native runtime is warranted.
 - A written evaluation of native or alternative runtimes: what the ecosystem
   would gain, what it would cost, and a recommendation. This milestone ends in
   a decision document, not a new runtime.
+- Carried in from the Nova_Stats proof of concept (gap G-020): the self-hosted
+  interpreter ran the same 160-check suite 31x slower than the VM (19.7 s against
+  0.63 s) and one dashboard tick 58x slower (649 ms against 11 ms), and it cannot
+  run a program that needs host functions at all, because it has no way to be
+  given `sh` or other host values. Profile it, and decide whether the
+  self-hosted engine gets an embedding point for host bindings.
 
 **Exit criteria**
 
@@ -404,6 +407,24 @@ NovaLang.
 - Standard-library additions that need the outside world (HTTP, richer time
   zones, structured data validation), each gated by a capability.
 - A conformance and compatibility test for packages across NovaLang versions.
+- Carried in from the Nova_Stats proof of concept (full list in its
+  `docs/GAPS.md`; the five that cost the most):
+  1. **A way to write the escape character** (G-004, G-005). `"\x1b"`, `"\e"`
+     and `chr(27)` all fail, so a terminal program needs a host constant.
+     Add `chr()`/`ord()` or an escape, through the specification first.
+  2. **A diagnostic for a line that starts with `+`** (G-011). After `return`
+     it is silent dead code. Warn on an unreachable statement, or let a line
+     that begins with a binary operator continue the previous one.
+  3. **Text tools** (G-003, G-006, G-008). `regex()` returns only true or
+     false, with no capture groups; there is no `find`, `startswith` or
+     `endswith`; and there is no number formatting (`str(5.0)` is `5`, no
+     fixed decimals, no zero padding, no thousands separator).
+  4. **Missing values** (G-002, G-009). `num()` throws on text that is not a
+     number, and a missing dictionary key is an error with no `get(d, k,
+     default)`. Add `is_number()` or `num(text, default)`, and a `get`.
+  5. **Embedding** (G-015, G-017). A program cannot be given its `args()`
+     through the public embedding API, and a program with an `import` needs
+     four extra Python files that nothing documents.
 
 **Exit criteria**
 

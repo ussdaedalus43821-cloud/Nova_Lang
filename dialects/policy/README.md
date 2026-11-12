@@ -39,3 +39,4 @@ port**, which the corpus will then check (`docs/design/m10-gdscript-gaps.md`).
 | D-032 | `num("text")` reads the one grammar of `[pol.lib-convert]` (`read_number`). |
 | D-034 | An error in a signal stops the tick as the signal's own error (`nova_vm.py`, `_tick`). |
 | D-035 | The engine's own reads of a number (`t`, a fault duration, the `fault_*` timing parameters) go through `_number`/`_as_number` and fail with an ordinary error; a fault starts only once its duration is known; `inject_fault` reports the error. |
+| (decision) | A decimal digit straight after `\0` in a string is `line N: unknown escape '\0<d>'`, so `"\033"` is an error and not the text `033` (`nova_lexer.py`, `[pol.strings]`). Mirrors the NovaLang change to `[lex.escapes]`. |

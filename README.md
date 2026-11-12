@@ -824,9 +824,8 @@ owner are recorded in [`docs/decisions/`](docs/decisions/README.md).
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the pipeline architecture,
 the host/self-hosted parity rule, coding style, and what to test before
-sending a change. [`docs/AI_WORKFLOW.md`](docs/AI_WORKFLOW.md) describes the
-Nova AI Team: the models that help build NovaLang, how work is routed between
-them, and the rules every contribution follows.
+sending a change. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md), and
+report security problems privately as described in [`SECURITY.md`](SECURITY.md).
 
 ## License
 

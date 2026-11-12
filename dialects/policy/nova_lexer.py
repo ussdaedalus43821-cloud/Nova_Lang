@@ -165,6 +165,9 @@ def tokenize(src: str) -> list:
                 ch = src[i]
                 if ch == "\\" and i + 1 < n:
                     i += 1
+                    if src[i] == "0" and i + 1 < n and src[i + 1] in "0123456789":
+                        # "\033" would be the text 033, quietly not the octal ESC it looks like
+                        raise NovaError("line %d: unknown escape '\\0%s'" % (line, src[i + 1]))
                     buf.append(ESCAPES.get(src[i], src[i]))
                 else:
                     if ch == "\n":

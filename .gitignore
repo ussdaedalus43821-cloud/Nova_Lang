@@ -3,3 +3,8 @@ __pycache__/
 editors/vscode/node_modules/
 *.vsix
 coverage-output/
+
+# Private planning documents: kept on disk, never committed
+docs/vision/
+docs/governance/
+docs/AI_WORKFLOW.md
