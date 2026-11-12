@@ -129,8 +129,12 @@ A string literal is written in double quotes. There are no single-quoted
 strings (`'` is `unexpected character`). It may contain any character, **a raw
 line end included**. A backslash starts an escape: `\n` (line feed), `\t` (tab),
 `\r` (carriage return), `\"` and `\\`. **Any other character after a backslash
-stands for itself**: `"\q"` is `q`, `"\x41"` is `x41`, `"\0"` is `0`. There is no
-interpolation: `"x = {x}"` is those characters.
+stands for itself**: `"\q"` is `q`, `"\x41"` is `x41`, `"\0"` is `0`. The one
+exception is a decimal digit straight after `\0`, which is an error found before
+any statement runs, `line 1: unknown escape '\03'` (the `\0` and the digit): without
+the rule `"\033"` would quietly be the text `033`, not the octal escape for ESC that
+it looks like. There are no octal escapes; `"\0" + "3"` is `03`, and `"\0a"` and
+`"\0\0"` are as before. There is no interpolation: `"x = {x}"` is those characters.
 
 A string that is not closed before the end of the source is `unterminated string
 literal`, reported with the line the source ends on (a backslash as the last

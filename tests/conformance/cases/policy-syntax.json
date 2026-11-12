@@ -699,6 +699,47 @@
    "host_calls": []
   },
   {
+   "name": "policy_strings_nul_escape_before_digit_error",
+   "spec": [
+    "pol.strings"
+   ],
+   "profile": "policy",
+   "source": "print(\"\\033[31m\")",
+   "output": [],
+   "error": "line 1: unknown escape '\\03'",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_strings_nul_escape_before_digit_is_found_before_running",
+   "spec": [
+    "pol.strings"
+   ],
+   "profile": "policy",
+   "source": "print(\"first\")\nprint(\"a\\089\")",
+   "output": [],
+   "error": "line 2: unknown escape '\\08'",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "policy_strings_nul_escape_before_non_digit_is_unchanged",
+   "spec": [
+    "pol.strings"
+   ],
+   "profile": "policy",
+   "source": "print(len(\"\\0a\"), len(\"\\0\\0\"), len(\"\\0\" + \"3\"), \"\\0\" + \"3\")",
+   "output": [
+    "2 2 2 03"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
    "name": "policy_strings_raw_newline",
    "spec": [
     "pol.strings"
