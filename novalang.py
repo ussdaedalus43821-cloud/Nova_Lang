@@ -551,6 +551,7 @@ class Lexer:
                 self.advance()
                 if escape not in ESCAPES:
                     raise NovaError("unknown escape '\\{}'".format(escape), self.index - 1)
+                self.reject_digit_after_nul(escape)
                 text += ESCAPES[escape]
                 continue
 
@@ -617,6 +618,17 @@ class Lexer:
             raise NovaError("this f-string placeholder is empty", begin)
         return ("expr", source, begin)
 
+    def reject_digit_after_nul(self, escape):
+        """`\\0` is the null character and nothing more, so "\\033" is an error.
+
+        Read as `\\0` then the text `33`, it would silently be a null character
+        followed by two digits, not the octal escape a C programmer expects
+        ([lex.escapes]). Called with the escape character already consumed.
+        """
+        following = self.peek()
+        if escape == "0" and following is not None and following in "0123456789":
+            raise NovaError("unknown escape '\\0{}'".format(following), self.index - 1)
+
     def read_string(self):
         """Read "text" or 'text', honouring \\n, \\t and \\\" escapes."""
         start = self.index
@@ -637,6 +649,7 @@ class Lexer:
                 self.advance()
                 if escape not in ESCAPES:
                     raise NovaError("unknown escape '\\{}'".format(escape), self.index - 1)
+                self.reject_digit_after_nul(escape)
                 text += ESCAPES[escape]
                 continue
             text += char

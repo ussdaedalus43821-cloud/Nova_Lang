@@ -26,6 +26,15 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Changed
+
+- **`"\0"` followed by a digit is now an error**, `unknown escape '\03'`, on all three engines. `"\033"` used to be a
+  null character followed by the text `33`, silently, which is not the octal escape for ESC that a C programmer
+  means. The spec had always said `\0` is the null character (`[lex.escapes]`), so the lexers followed it; the
+  rule is a language change that closes the trap. A program that wrote a null character and then a digit in one
+  literal (`"\01"`) must now write `"\0" + "1"`. Four cases in the lexical corpus; the Python lexer (strings and
+  f-strings) and `novalang.nova` change. The policy dialect's own lexer (`dialects/policy/`) is not changed.
+
 ### Fixed (from a review of 2.2.0)
 
 - **`copy(file, folder)` in the restricted profile** is judged by the path it writes, `folder/<name of file>`. A

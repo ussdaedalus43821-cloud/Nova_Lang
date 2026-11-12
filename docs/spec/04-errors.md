@@ -94,6 +94,7 @@ Found while reading the source (`[lex.*]`), before anything runs:
 | `this string is never closed` | `[lex.strings]` |
 | `this f-string is never closed` | `[lex.fstrings]` |
 | `unknown escape '\<c>'` | `[lex.escapes]` |
+| `unknown escape '\0<d>'` (`<d>` a decimal digit) | `[lex.escapes]` |
 | `a number cannot have two decimal points` | `[lex.numbers]` |
 | `unexpected character '<c>'` | `[lex.identifiers]`, `[lex.operators]` |
 | `'!' on its own is not an operator - did you mean '!=' or 'not'?` | `[lex.operators]` |

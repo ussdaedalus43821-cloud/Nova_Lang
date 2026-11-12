@@ -131,6 +131,13 @@ Inside a string (and an f-string) a backslash starts an escape:
 Any other character after a backslash is an error, `unknown escape '\q'`. There
 are no `\x` or `\u` escapes.
 
+`\0` is the null character and nothing more, so a decimal digit straight after
+it is an error too, `unknown escape '\03'` (the `\0` and the digit that follows).
+Without the rule `"\033"` would read as a null character followed by the text
+`33`: quietly not the octal escape for ESC that a C programmer means. NovaLang
+has no octal escapes. To write a null character followed by a digit, join two
+literals: `"\0" + "3"`. `"\0a"`, `"\0\0"` and `"\0 1"` are unchanged.
+
 ## [lex.fstrings] Formatted strings
 
 `f"..."` or `f'...'` is a string with embedded expressions. `{` starts a
