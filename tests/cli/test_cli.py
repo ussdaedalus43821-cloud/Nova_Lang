@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -221,15 +222,17 @@ class CliTests(unittest.TestCase):
         # used to be swallowed with the file-read error, and the file's name was then run as code
         # ("undefined name 'prog'", status 1).
         path = self.file("flood.nova", 'for i = 1 to 200000 {\n  print("line " + str(i))\n}\n')
+        # Every path goes through shlex.quote: the checkout may live in a folder whose name has a space in it.
+        python, script, quoted_path = (shlex.quote(str(part)) for part in (sys.executable, ROOT / "novalang.py", path))
         for extra in ("", "--profile restricted"):
             with self.subTest(extra=extra):
                 done = subprocess.run(
-                    "{} {} {} {} | head -n 1".format(sys.executable, ROOT / "novalang.py", extra, path),
+                    "{} {} {} {} | head -n 1".format(python, script, extra, quoted_path),
                     shell=True, cwd=self.folder, capture_output=True, text=True, timeout=60,
                     executable="/bin/bash", env=dict(os.environ, PYTHONUTF8="1"))
                 self.assertEqual(done.stdout, "line 1\n")
                 self.assertEqual(done.stderr, "")
-        done = subprocess.run("set -o pipefail; {} {} {} | head -n 1".format(sys.executable, ROOT / "novalang.py", path),
+        done = subprocess.run("set -o pipefail; {} {} {} | head -n 1".format(python, script, quoted_path),
                               shell=True, cwd=self.folder, capture_output=True, text=True, timeout=60,
                               executable="/bin/bash")
         self.assertEqual(done.returncode, 141)
