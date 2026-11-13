@@ -1,20 +1,42 @@
 # Benchmarks
 
-Baselines that milestones are measured against. Each entry names its source so it can be re-run.
+Baselines that milestones are measured against. Per-app detail and reproduction steps live in each proof-of-concept repo (Nova_Stats, Nova_Sort, Nova_Log, Nova_Data).
 
 ## Real-World Baseline (Pre-M12)
 
-Source: [Nova_Log `docs/BENCHMARK.md`](https://github.com/ussdaedalus43821-cloud/Nova_Log/blob/main/docs/BENCHMARK.md), section "Real-World Baseline (Pre-M12)".
+These benchmarks establish the performance and security baseline for the M12 (Bytecode Cache & Performance) and M13 (Libraries) milestones. Run on a MacBook Pro M1 (8GB RAM). Unless noted, engine is the Bytecode VM.
 
-Run on a MacBook Pro M1 (8GB RAM) using the default `trusted` profile (to bypass the M11 1MB sandbox limit for large file reads). Engine: VM (no bytecode cache).
+### 1. Nova_Stats (System Telemetry)
+- **Throughput:** 11 ms per tick on the VM (649 ms on self-hosted).
+- **Memory Profile:** 212 MB peak while sampling six system modules.
+- **Findings:** Detected a 100% CPU load spike and memory pressure flip to "warning" caused by parallel Python processes. Established that macOS `pmset` uses a heavily smoothed historical average for battery, while NovaLang correctly calculates instantaneous physics.
+- **Gaps:** G-026 (Ctrl-C traceback in embedding API).
 
-| Dataset | Lines | Time | Throughput | Unparsed | Notes |
-|---|---|---|---|---|---|
-| NASA (1995) | 10,000 | 0.42s | 24,062 /s | 0 | Classic Apache log format |
-| Nginx (Modern) | 51,462 | 2.09s | 24,568 /s | 0 | 6.8MB file, tested universal parsing |
-| Synthetic (Tesla/Starlink) | 50,000 | 2.05s | 24,440 /s | 0 | 50/50 split of 200s and 404s |
+### 2. Nova_Sort (Sandbox & File I/O)
+- **Throughput:** Instantaneous for a 5-item folder. 
+- **Security Baseline:** Successfully enforced `files.read` and `files.write` without allowing deletions (G-027) or overwrites (G-028). Symlinks were safely refused.
+- **Findings:** Proved the M11 Sandbox can safely manage file system operations for untrusted scripts.
 
-**Observations:**
-- The engine scales linearly. Throughput holds steady at ~24,500 lines/sec regardless of file size.
-- Zero parsing errors across three completely different log formats.
-- The lack of native `regex` or `index` keeps the throughput limited by Python's tree-walking overhead. This is the primary target for M12 (Bytecode) and M13 (Standard Library).
+### 3. Nova_Log (Text Parsing at Scale)
+- **Throughput:** Consistent ~24,500 lines/sec across all datasets.
+- **Memory Profile:** 212 MB peak for a 50 MB file (proves G-036: no streaming read).
+- **Datasets & Results:**
+  | Dataset | Lines | Time | Unparsed | Notes |
+  |---|---|---|---|---|
+  | NASA (1995) | 10,000 | 0.42s | 0 | Classic Apache format |
+  | Synthetic (Tesla/Starlink) | 50,000 | 2.05s | 0 | 50/50 split of 200s/404s |
+  | Nginx (Modern) | 51,462 | 2.09s | 0 | 6.8MB file, universal parsing |
+- **Sandbox Limit:** Refused a 1.1MB file with `a string cannot grow beyond 1000000 characters`. Successfully parsed a 488KB chunk (2,154 lines) in the sandbox.
+
+### 4. Nova_Data (Financial Math)
+- **Throughput:** 5,916 records/s (1.69s for 10,000 rows).
+- **Dataset:** 10,000 synthetic financial transactions (CSV).
+- **Precision Baseline:** 
+  - Exact sum (integer cents): `$2,231,316.93`
+  - Naive float sum (via `str()`): `2231316.930000008`
+  - **Drift:** `$0.000000008` after 9,993 additions (Proves the requirement for exact decimal math, G-044).
+- **Resilience:** Successfully rejected 6 corrupted rows (leap year 2025-02-29, `N/A` text, `4.999` fraction, missing fields, month 13) without crashing.
+- **Sandbox:** Successfully processed a 700KB CSV in `restricted` mode with `--allow-read data`.
+
+### Summary for M12
+The core bottleneck across all PoCs is the VM interpreter's overhead when handling string manipulation, floating-point conversions, and massive memory allocations (e.g., reading whole files into memory). The lack of native `regex`, `index`, and streaming reads forces NovaLang to do heavy lifting in the interpreter rather than in optimized C-level standard library functions.
