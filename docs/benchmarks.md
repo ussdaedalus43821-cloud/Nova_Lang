@@ -14,8 +14,8 @@ These benchmarks establish the performance and security baseline for the M12 (By
 
 ### 2. Nova_Sort (Sandbox & File I/O)
 - **Throughput:** Instantaneous for a 5-item folder. 
-- **Security Baseline:** Successfully enforced `files.read` and `files.write` without allowing deletions (G-027) or overwrites (G-028). Symlinks were safely refused.
-- **Findings:** Proved the M11 Sandbox can safely manage file system operations for untrusted scripts.
+- **Security Baseline:** The sandbox successfully enforced `files.read` and `files.write`. However, it revealed two critical flaws: `files.write` implicitly grants `remove`/`delete` (G-027), and `rename` silently overwrites existing files (G-028). 
+- **Findings:** Because the sandbox could not prevent deletions or overwrites, the `Nova_Sort` program had to implement its own safety layer (forbidding delete keywords and checking `exists()` before renaming) to safely manage file system operations.
 
 ### 3. Nova_Log (Text Parsing at Scale)
 - **Throughput:** Consistent ~24,500 lines/sec across all datasets.
