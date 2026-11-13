@@ -432,6 +432,63 @@ NovaLang.
   end, in a test.
 - A breaking change to the declared stable surface fails a test.
 
+### Requirements from the Proof-of-Concept Apps
+
+Four proof-of-concept programs were written entirely in NovaLang, each with its
+own `docs/GAPS.md`, an independent Python oracle, and tests that pin every gap so
+the log cannot go stale: [Nova_Stats](https://github.com/ussdaedalus43821-cloud/Nova_Stats)
+(G-001 to G-026, the language), [Nova_Sort](https://github.com/ussdaedalus43821-cloud/Nova_Sort)
+(G-027 to G-035, the sandbox), [Nova_Log](https://github.com/ussdaedalus43821-cloud/Nova_Log)
+(G-036 to G-042, text at scale) and [Nova_Data](https://github.com/ussdaedalus43821-cloud/Nova_Data)
+(G-043 to G-050, money). These five cost the most across all four, and they
+decide which libraries M13 builds first. They overlap with the Nova_Stats list
+above (text tools, number formatting); where they do, the entry below is the
+fuller requirement.
+
+1. **Regular expressions that return something** (G-003, Nova_Stats).
+   `regex(pattern, text)` returns only true or false: no capture groups, no
+   match position, no replace, no split by pattern. Every extraction in the four
+   apps is `split` plus slicing. *Build:* a `regex` library with `match`,
+   `find_all`, captures and `sub`, behind the existing `regex` capability.
+   *Done when:* the status-code extraction in Nova_Log (two strategies and a
+   hand-written validity check) is one pattern, and its 29 tests still pass.
+2. **Number formatting** (G-008, with G-007 and G-048). `str(5.0)` is `5`;
+   there is no fixed decimals, zero padding or thousands separator, and a small
+   float prints as `1e-07`, which `num()` cannot read back. *Build:* a `format`
+   library (`fixed(x, digits)`, `grouped(n)`, `pad_zero`) and one documented rule
+   for `str()` of a float. *Done when:* `fixed`, `group_digits` and the hand-made
+   `seconds_text` helper are deleted from all four apps and their tests pass.
+3. **Streaming reads under the sandbox** (G-036, with G-041 and G-042,
+   Nova_Log). `read(path)` builds one string, a `restricted` string stops at
+   1,000,000 characters, and `read` is the only way in. A realistic 1.5 MB log
+   cannot be analysed in the sandbox at all, and a 26,000-row CSV (1.04 MB) is
+   refused the same way, although both read whole on `trusted`. The time limit
+   is wall-clock, so the self-hosted engine stops near 250 CSV rows. *Build:* a
+   lazy line reader under `files.read` (`for line in lines(path)`) whose memory is
+   one line, exempt from the string limit, and a step-counted time limit that
+   gives the same answer on every engine. *Done when:* Nova_Log's 50 MB log runs
+   under `restricted` with the default limits.
+4. **Decimal math** (G-044, with G-043 and G-045, Nova_Data). There is no
+   decimal or fixed-point type; floats drift (`0.1 + 0.2`); `round` is
+   half-to-even (`round(0.125, 2)` is `0.12`); `//` and `%` round toward minus
+   infinity, so a refund of $12,500.50 formats as `-12501.50`; there is no
+   `divmod`, `trunc` or `int`. The proof of concept stays exact only by parsing
+   money into integer cents by hand. *Build:* a `decimal` type with exact
+   `+ - *`, comparison, parsing, formatting and a rounding-mode argument, plus
+   `divmod` and `trunc`. *Done when:* Nova_Data's `parse_cents`, `money` and
+   `div_round` are replaced by the library and its oracle comparison (every
+   number in the report against Python `Decimal`) still passes.
+5. **`replace_all` in the sandbox** (G-050, Nova_Data). `replace_all` is a plain
+   substring replacement with no pattern in it, but it is grouped with the
+   `regex` capability, so a `restricted` program that has not been granted
+   regex has no replace at all (`undefined name 'replace_all'`). *Build:*
+   move it, and the other pattern-free text helpers, out of the `regex`
+   capability. *Done when:* a restricted program with no grants calls it.
+
+The other gaps (G-001 to G-050 in all) are in each app's `docs/GAPS.md`, with a
+probe test for each. Those marked **M13** there are candidates for this
+milestone after the five above.
+
 ## M14 — Product pilots
 
 Products are built in their own repositories on top of the foundation. This
