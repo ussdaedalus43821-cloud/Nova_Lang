@@ -493,7 +493,7 @@ parentheses (the text it matched in the last pass, or `nothing` for a group that
 `(?P<name>...)` group's name to the same value.
 
 - `re.test(pattern, text)` is `regex(pattern, text)`.
-- `re.match(pattern, text)` is the first match anywhere, or `nothing`. `re.match_from(pattern, text, start)` looks from
+- `re.match(pattern, text)` is the first match anywhere, or `nothing` (there is no `nothing` literal: test the result with `type(m) == "dict"`). `re.match_from(pattern, text, start)` looks from
   character `start` on (`0` to the length of the text; `^` still means the start of the whole text).
 - `re.find_all(pattern, text)` is every match, left to right and not overlapping, as a list. `re.find_n(pattern, text,
   limit)` is at most `limit` of them. After an empty match the next match must not be empty at the same place (so
