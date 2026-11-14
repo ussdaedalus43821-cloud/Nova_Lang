@@ -1,3 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 The Nova Project Contributors
+#
+# Licensed under either of
+#   * Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+#   * MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
+# at your option.
+
 # novalang.nova - NovaLang's own Lexer, Parser and Interpreter, written in
 # NovaLang itself. Part of the NovaLang v2.3.0 release.
 #

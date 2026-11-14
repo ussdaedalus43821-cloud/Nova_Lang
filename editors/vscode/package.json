@@ -4,7 +4,7 @@
   "description": "NovaLang support: highlighting, plus diagnostics, formatting, go-to-definition and hover from the NovaLang language server (tools/nova-lsp.py).",
   "version": "0.3.0",
   "publisher": "novalang",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
   "engines": {
     "vscode": "^1.82.0"
   },

@@ -26,6 +26,13 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Changed: the license
+
+- **NovaLang is now dual licensed, `MIT OR Apache-2.0`, at the user's option**, for the patent grant of the Apache License. `LICENSE` is now `LICENSE-MIT` (the copyright line reads
+  "The Nova Project Contributors"), `LICENSE-APACHE` is the official text of the Apache License 2.0, the README carries the standard dual-license notice and contribution clause,
+  the VS Code extension's `package.json` says `MIT OR Apache-2.0`, and `novalang.py` and `novalang.nova` begin with an SPDX header. Releases up to and including `v2.3.0` were published under the MIT license and remain
+  available under it; this applies to what is published from now on.
+
 ## [2.3.0] - 2026-11-14 — The standard library, a declared stable surface, safer packages and a registry (M12 and M13)
 
 This release has two parts. **M13** is new: the standard library as `std:` modules, a declared and tested stable surface, a regex engine of
