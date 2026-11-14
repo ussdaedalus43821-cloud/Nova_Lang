@@ -4,27 +4,27 @@
 | --- | --- |
 | Status | **Draft for the project owner, revised 2026-11-14. Nothing here is decided and nothing is built.** Written after M13 closed (v2.3.0) |
 | Scope | The charters of two products that are built to use what M11 (the security model) and M13 (the libraries) made possible: **NovaLedger**, a financial tool for prosumers and small businesses, and **NovaAudit**, an enterprise log analyzer built on `std:regex`; what NovaLang must still provide for them; how their cores are built; the slices that get each to a first pilot. **Not** the other M14 products, **not** a go-to-market plan |
-| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md), and, for the original (consumer) proposal that this plan revises, [`vision/NOVA_EXPERIENCE.md`](../vision/NOVA_EXPERIENCE.md) section 3 and [`vision/NOVA_FINANCE.md`](../vision/NOVA_FINANCE.md) (see section 13: those files are not in git) |
-| Names | **NovaLedger** is the financial product, **NovaAudit** the log analyzer. NovaLedger was first proposed as *NovaSteward*; it was renamed because *Steward* is the studio's municipal simulator. **NovaLedger is also the name of a module in `NOVA_FINANCE.md`** (balances and transactions): see decision D-P4 |
+| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md). The owner's product and go-to-market planning documents are private and are not in this repository; this plan does not link to them |
+| Names | **NovaLedger** is the financial product (renamed from an earlier working name), **NovaAudit** the log analyzer. A module in the owner's private finance design already uses the name NovaLedger: see decision D-P4 |
 
 ## 1. What changed from the first draft
 
-The first draft of this plan was a charter for a read-only **consumer budgeting app** (NovaSteward). The owner has changed two things, and this version follows both:
+The first draft of this plan was a charter for a read-only **consumer budgeting app**. The owner has changed two things, and this version follows both:
 
-1. **The name:** NovaSteward becomes NovaLedger everywhere.
+1. **The name:** the financial product is called **NovaLedger**.
 2. **The audience:** the mass-market consumer budgeting app is dropped. The judgment that the market is saturated and expensive to acquire users in is the **owner's**; this plan does not measure it and does not need to. In its place:
    - **NovaLedger for prosumers and small businesses**, and
    - **NovaAudit**, an enterprise log analyzer built with `std:regex`.
 
    The reasoning the owner gave is the organising idea of this version: **build tools that leverage the security model (M11) and the text-parsing power (M13), instead of competing with consumer apps on features.**
 
-What carried over unchanged: the decimal core (money is never a float), the forecast with its three scenarios and its honesty rules, the worked example (it was run), the rule that a product's packages declare their capabilities, and the stop-the-line rules. What was dropped: the consumer launch gates and figures (retention, conversion, 40 interviews), the bank-connection beta, and the personal-finance framing. What is new: a second product, a shared foundation, performance and release facts that matter much more to a business buyer than to a consumer, and a validation slice that comes before any building.
+What carried over unchanged: the decimal core (money is never a float), the forecast with its three scenarios and its honesty rules, the worked example (it was run), the rule that a product's packages declare their capabilities, and the stop-the-line rules. What was dropped: the consumer launch gates and figures, the bank-connection beta, and the personal-finance framing. What is new: a second product, a shared foundation, performance and release facts that matter much more to a business buyer than to a consumer, and a validation slice that comes before any building.
 
 ## 2. What M14 is for
 
 The roadmap says M14 "defines when each product may start, not what it contains": a product enters with a one-page charter (owner, the NovaLang capabilities it needs, the hosts it targets, its first measurable outcome). This plan is that charter for two products, plus the work **on the language and libraries** that they need, because that is the part this repository owns. Each product lives in its **own repository**, as Nova_Stats, Nova_Sort, Nova_Log and Nova_Data do.
 
-**The thesis, stated so that it can be tested.** A business that is asked to run a tool on its books or its logs wants to know what the tool can touch. NovaLang can now say so in a way that a reviewer can check: a program's packages **declare** the capabilities they use, the install and the import **refuse** one that uses more, and the program runs under the `restricted` profile with the grants on the command line and nothing else. A product built that way can print the grants it ran with, the version of NovaLang, a hash of its inputs and the version of its rules, and anyone can re-run it and get the same bytes (the deterministic mode exists). That is what is demonstrable today. What it is **not**, by the project's own wording rule (`[sbx.claims]`): isolation, or a security boundary, and the independent review of the sandbox is still pending (section 12). The products must not say more than that.
+**The thesis, stated so that it can be tested.** A business that is asked to run a tool on its books or its logs wants to know what the tool can touch. NovaLang can now say so in a way that a reviewer can check: a program's packages **declare** the capabilities they use, the install and the import **refuse** one that uses more, and the program runs under the `restricted` profile with the grants on the command line and nothing else. A product built that way can print the grants it ran with, the version of NovaLang, a hash of its inputs and the version of its rules, and anyone can re-run it and get the same bytes (the deterministic mode exists). That is what is demonstrable today. What it is **not**, by the project's own wording rule (`[sbx.claims]`): isolation, or a security boundary, and the independent review of the sandbox is still pending (section 7). The products must not say more than that.
 
 ## 3. Rules this plan inherits
 
@@ -78,7 +78,7 @@ Items marked **owner** are decisions only the owner can make; recommendations ar
 | NovaLang capabilities it needs | `files.read` and, if it writes a report, `files.write`, each **confined to one client folder**; `process`; `clock` for "today" (and the deterministic mode for tests). Its core packages need **none**; the static check can say so (section 6) |
 | Hosts | **Owner.** First pilot recommended: **a command-line host** (it is the only host that exists), run under `restricted` |
 | First measurable outcome (engineering) | From a seeded year of rows (at least 3,000) and an expected-payments file, print the reconciliation, the ageing and the three forecasts **under the restricted profile**, and **every figure equals an independent Python `Decimal` oracle to the cent** on at least 20 generated datasets, including month ends, leap years, refunds and partial payments |
-| First measurable outcome (product) | **Owner, from P0.** This plan does not adopt the consumer launch roadmap's figures (retention, conversion, interview counts): they were written for a mass-market app |
+| First measurable outcome (product) | **Owner, from P0.** This plan does not adopt the figures of the earlier consumer-app plan: they were written for a mass-market app |
 
 ### 5.2 NovaAudit (an enterprise log analyzer built on `std:regex`)
 
@@ -210,7 +210,7 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | D-P1 | **Product owners and repositories** | One repository per product (`NovaLedger`, `NovaAudit`), each with its own tests and CI on Windows 3.7 and 3.12 and Linux from the first commit | The roadmap requires a named owner; M13 showed that the rows nobody watches are where failures appear |
 | D-P2 | **Which first** | **NovaAudit**, then NovaLedger | Section 9: the closest precedent, the heaviest use of M13, no regulatory exposure, the smaller date need. The owner may well have a customer conversation that changes this |
 | D-P3 | **The audiences** (section 5) | Treat both as hypotheses, and run P0 before P2 and P3 | The plan does not know the customer. Building a product for an audience that was assumed is the mistake the consumer draft was in danger of making |
-| D-P4 | **The name collision inside `NOVA_FINANCE.md`**: that document already has a module called NovaLedger | Rename the module (for example to "NovaBooks"), keep the product name | Two things with one name is the confusion this rename was meant to remove; I have not renamed the module because only the owner chooses names |
+| D-P4 | **The name collision inside the owner's private finance design**: a module there is already called NovaLedger | Rename the module (for example to "NovaBooks"), keep the product name | Two things with one name is the confusion this rename was meant to remove; I have not renamed the module because only the owner chooses names |
 | D-P5 | **Order of work: libraries first or product first** | **Libraries first (P1)**, then the products | M13's own lesson: Nova_Data's hand-written helpers were the cost of building the product before the library |
 | D-P6 | **Missing values** (L4) | A `std:` function over dictionaries (additive, a minor change), not a new reserved global | A new global built-in is a **major** change by `STABLE.md` |
 | D-P7 | **How much speed NovaAudit promises, and whether to build a faster matcher** | State the measured ceiling (tens of megabytes a run, one file per process) in the first pilot, and **decide on a faster matcher after P0 says what volume customers have** | A faster matcher is a large security-sensitive piece of code (the current one is unreviewed); building it on a guess about volume would be the wrong order |
@@ -218,7 +218,6 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | D-P9 | **NovaLedger's three forecasts** (section 6.3) | Accept the definitions as a first version, with each margin a named parameter in a file the user can read | "Conservative" and "stress" are a judgment; the engine must show them, not decide them |
 | D-P10 | **Gates before a customer sees either product** | The independent review of the sandbox, the matcher and the registry client has an outcome, and the release is signed and reproducible (P4) | An enterprise buyer will ask both; a product that holds financial records or reads sensitive logs should not outrun its reviewer |
 | D-P11 | **Do the products publish packages?** | Not to a registry (none exists, D8); install from the repositories by path or git, with the lock | Operating a registry is a business and security commitment that belongs to a later decision |
-| D-P12 | **Whether the vision documents are tracked in git** | Track them, or move what the plan links to into tracked files | Section 13 |
 
 ## 12. Exit criteria for the NovaLang side of the first pilots (testable)
 
@@ -240,8 +239,7 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | **A financial product is read as accounting or advice** | The charter says it is neither; every report says so; a decision about what to call it is the owner's (and a lawyer's), not this plan's |
 | **The date library is bigger than it looks** | Civil dates and numeric offsets only, a differential test against Python's `datetime` over two centuries; named time zones are a later decision |
 | **A product pulls the language towards its needs and breaks the stable surface** | Every addition goes through `std:` and a minor release; L4 is the one place a major change is possible, and it is the owner's call |
-| **Scope: the vision documents describe a whole ecosystem** | This plan is two read-only products with a CLI host; P5 is gated and P6 is not planned |
+| **Scope: the owner's wider ecosystem plans cover much more than this** | This plan is two read-only products with a CLI host; P5 is gated and P6 is not planned |
 
 **What this plan does not decide.** Market, pricing, positioning against existing products, legal and regulatory review, partnerships, hiring and budget are the owner's and are not verified here. Whether either product helps its users is a question for the pilot's users: the tests of this repository can show that the arithmetic is exact, the parsing is linear, the labels are honest and the permissions are what the receipt says, and nothing more.
 
-**A note on the files this plan links to.** `docs/vision/` is listed in `.gitignore`, so `NOVA_EXPERIENCE.md`, `NOVA_FINANCE.md`, `LAUNCH_ROADMAP.md` and the rest of that folder are **not in git**: they exist on the owner's machine and are not in any pull request. Links to them from this plan work only there. The renames of this revision were made in those local files and cannot be pushed with the plan (D-P12).

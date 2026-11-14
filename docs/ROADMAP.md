@@ -561,8 +561,7 @@ Products with no precedent stay on the horizon until a charter exists. Nothing
 in this roadmap commits to building them.
 
 **First charters, drafted 2026-11-14 and revised the same day: NovaLedger and NovaAudit**, in
-[`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md), a draft for the owner. NovaLedger (first proposed as
-NovaSteward, renamed to avoid confusion with the game *Steward*) is for prosumers and small businesses, not a mass-market consumer
+[`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md), a draft for the owner. NovaLedger is for prosumers and small businesses, not a mass-market consumer
 app; NovaAudit is an enterprise log analyzer built on `std:regex`. Both are read-only command-line tools whose point is what M11 and M13 made
 possible: exact money, linear-time parsing, and a run whose permissions are on its command line and in its receipt. The plan names what
 NovaLang must still provide first (`std:date` with offsets, `std:csv`, ordering by a key, a decision on missing values, `std:hash`, and the

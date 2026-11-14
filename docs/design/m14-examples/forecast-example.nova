@@ -1,4 +1,4 @@
-# The worked example of docs/vision/NOVA_FINANCE.md section 7, computed with std:decimal (no float anywhere).
+# A worked weekly cash forecast, computed with std:decimal (no float anywhere).
 import "std:decimal" as dec
 import "std:format" as fmt
 
