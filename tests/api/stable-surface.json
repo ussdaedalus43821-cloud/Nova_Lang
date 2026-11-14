@@ -399,6 +399,46 @@
     "total",
     "try_parse"
    ],
+   "native": [
+    "absolute",
+    "add",
+    "cmp",
+    "div",
+    "from_float",
+    "from_int",
+    "is_decimal",
+    "mul",
+    "negate",
+    "parse",
+    "quantize",
+    "scale",
+    "sign",
+    "sub",
+    "to_float",
+    "to_int",
+    "to_string",
+    "total",
+    "try_parse"
+   ],
+   "tier": "provisional"
+  },
+  "files": {
+   "capabilities": [
+    "files.read"
+   ],
+   "exports": [
+    "each_line",
+    "is_dir",
+    "is_link",
+    "lines",
+    "size"
+   ],
+   "native": [
+    "is_dir",
+    "is_link",
+    "next_lines",
+    "size"
+   ],
    "tier": "provisional"
   },
   "format": {
@@ -408,6 +448,7 @@
     "grouped",
     "pad_zero"
    ],
+   "native": [],
    "tier": "provisional"
   },
   "math": {
@@ -418,19 +459,26 @@
     "round_half",
     "trunc"
    ],
+   "native": [],
    "tier": "provisional"
   },
   "text": {
    "capabilities": [],
    "exports": [
     "basename",
+    "chr",
     "ends_with",
     "find",
     "find_from",
     "is_number",
+    "ord",
     "parse_number",
     "splitext",
     "starts_with"
+   ],
+   "native": [
+    "chr",
+    "ord"
    ],
    "tier": "provisional"
   }

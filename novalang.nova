@@ -1569,6 +1569,9 @@ def check_builtin_paths(name, call_args) {
     if not SANDBOX["restricted"] {
         return
     }
+    if len(name) > 13 and name[0:13] == "native:files." {
+        check_path(call_args[0], "read", "FileError")
+    }
     if name == "read" or name == "exists" or name == "listdir" {
         check_path(call_args[0], "read", "FileError")
     }
@@ -2190,6 +2193,14 @@ def call_builtin(name, call_args, pos) {
 
 def call_builtin_raw(name, call_args, pos) {
     check_builtin_paths(name, call_args)
+    if len(name) > 7 and name[0:7] == "native:" {
+        # a native function of a standard module: one implementation, in the host (bootstrap.py defines native_call)
+        let string_limit = 0
+        if SANDBOX["restricted"] {
+            string_limit = LIMITS["string"]
+        }
+        return native_call(name[7:], call_args, string_limit)
+    }
     if DET["on"] and name in DET_NAMES {
         return det_builtin(name, call_args)
     }
@@ -3505,6 +3516,17 @@ def run_module(resolved_path, raw_path, pos) {
             let ast = parse_program(source)
             let module_env = make_env(false, true, true)
             define_stdlib_globals(module_env)
+            if is_std_import(raw_path) {
+                # a standard module's own natives, in its scope and no other ([mod.std] 6)
+                let std_name = raw_path[4:]
+                if "native" in STD["registry"][std_name] {
+                    let table = {}
+                    for fname in STD["registry"][std_name]["native"] {
+                        table[fname] = {kind: "builtin", name: "native:" + std_name + "." + fname}
+                    }
+                    module_env["vars"]["native"] = table
+                }
+            }
             check_toplevel(exec_block(ast["statements"], module_env))
             exports = current_exports()
         } catch inner {

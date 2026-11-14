@@ -55,7 +55,8 @@ def build():
         "embedding": {"class": "Nova", "constructor": str(inspect.signature(novalang.Nova.__init__)),
                       "methods": nova_methods},
         "manifest_keys": manifest_keys(),
-        "std_modules": {name: {"tier": d["tier"], "capabilities": d["capabilities"], "exports": d["exports"]}
+        "std_modules": {name: {"tier": d["tier"], "capabilities": d["capabilities"], "exports": d["exports"],
+                               "native": d.get("native", [])}
                         for name, d in sorted(std.items())},
     }
 

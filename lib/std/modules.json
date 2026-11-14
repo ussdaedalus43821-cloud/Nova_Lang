@@ -1,5 +1,5 @@
 {
- "_about": "The standard modules (docs/spec/08-modules.md [mod.std]). One entry per `import \"std:NAME\"`: the file lib/std/NAME.nova, the capabilities a run must have granted for the import to succeed, the tier (provisional or stable, docs/spec/STABLE.md), the release that added it, and the exports it promises. All three engines read this file, so there is one list.",
+ "_about": "The standard modules (docs/spec/08-modules.md [mod.std]). One entry per `import \"std:NAME\"`: the file lib/std/NAME.nova, the capabilities a run must have granted for the import to succeed, the tier (provisional or stable, docs/spec/STABLE.md), the release that added it, and the exports it promises. All three engines read this file, so there is one list. A module may also list `native`: the names of the Python-implemented functions (NATIVE_FUNCTIONS in novalang.py) its file reaches through the predefined global `native`, which exists only in that module's scope.",
  "modules": {
   "decimal": {
    "capabilities": [],
@@ -28,6 +28,47 @@
     "to_string",
     "total",
     "try_parse"
+   ],
+   "native": [
+    "absolute",
+    "add",
+    "cmp",
+    "div",
+    "from_float",
+    "from_int",
+    "is_decimal",
+    "mul",
+    "negate",
+    "parse",
+    "quantize",
+    "scale",
+    "sign",
+    "sub",
+    "to_float",
+    "to_int",
+    "to_string",
+    "total",
+    "try_parse"
+   ]
+  },
+  "files": {
+   "capabilities": [
+    "files.read"
+   ],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": [
+    "each_line",
+    "is_dir",
+    "is_link",
+    "lines",
+    "size"
+   ],
+   "native": [
+    "is_dir",
+    "is_link",
+    "next_lines",
+    "size"
    ]
   },
   "format": {
@@ -57,13 +98,19 @@
    "since": "2.3.0",
    "exports": [
     "basename",
+    "chr",
     "ends_with",
     "find",
     "find_from",
     "is_number",
+    "ord",
     "parse_number",
     "splitext",
     "starts_with"
+   ],
+   "native": [
+    "chr",
+    "ord"
    ]
   }
  }

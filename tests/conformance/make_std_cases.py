@@ -16,7 +16,7 @@ def case(name, spec, source, output, error="", error_line=None, exit=0, profile=
 IMP = 'import "std:text" as text\n'
 case("std-import-binds-the-name-after-the-prefix", ["mod.std", "mod.import"],
      'import "std:text"\nprint(type(text), sorted(keys(text)))',
-     ['dict ["basename", "ends_with", "find", "find_from", "is_number", "parse_number", "splitext", "starts_with"]'])
+     ['dict ["basename", "chr", "ends_with", "find", "find_from", "is_number", "ord", "parse_number", "splitext", "starts_with"]'])
 case("std-import-as-and-with-forms", ["mod.std", "mod.import"],
      'import "std:text" as t\nprint(t.find("hello", "ll"))\nimport "std:text" with find, ends_with\nprint(find("abc", "c"), ends_with("abc", "bc"))',
      ["2", "2 true"])
@@ -177,6 +177,59 @@ case("std-format-exports", ["lib.std-format", "mod.std"],
 case("std-format-leaves-str-of-a-float-alone", ["lib.std-format", "lib.std-decimal"],
      FMT + 'print(str(0.0000001), fmt.fixed(0.0000001, 8))\nprint(num(fmt.fixed(0.0000001, 8)) == 0.0000001)',
      ["1e-07 0.00000010", "true"])
+
+
+# ---- std:text chr and ord (the native tier) ------------------------------------------------------
+case("std-text-chr-and-ord", ["lib.std-text", "mod.std"],
+     IMP + 'print(text.chr(65), text.chr(233), text.chr(8364), text.ord("A"), text.ord("é"), text.ord("€"))\nprint(json.dumps(text.chr(27)), json.dumps(text.chr(0)), len(text.chr(128512)), text.ord(text.chr(128512)))\nprint(text.ord(text.chr(1114111)), text.chr(10) == "\\n", text.chr(48) + text.chr(49))',
+     ["A é € 65 233 8364", '"\\u001b" "\\u0000" 1 128512', "1114111 true 01"])
+case("std-text-chr-and-ord-refuse-what-is-not-a-character", ["lib.std-text"],
+     IMP + 'try { text.chr(-1) } catch e { print(e) }\ntry { text.chr(1114112) } catch e { print(e) }\ntry { text.chr(55296) } catch e { print(e) }\ntry { text.chr(1.5) } catch e { print(e) }\ntry { text.chr("a") } catch e { print(e) }\ntry { text.ord("") } catch e { print(e) }\ntry { text.ord("ab") } catch e { print(e) }\ntry { text.ord(5) } catch e { print(e) }',
+     ["the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)"] * 5 +
+     ["the text for text.ord() needs exactly one character, but got 0", "the text for text.ord() needs exactly one character, but got 2",
+      "the text for text.ord() needs a string, but got number"])
+case("std-native-is-visible-only-inside-a-standard-module", ["mod.std"],
+     IMP + 'try { print(native) } catch e { print(e) }\nprint("native" in keys(text))\nlet native = 5\nprint(native)',
+     ["undefined name 'native'", "false", "5"])
+
+# ---- std:files -----------------------------------------------------------------------------------
+FILES = 'import "std:files" as files\n'
+GRANT = {"profile": "restricted", "read": ["data"]}
+DATA = {"data/in.txt": "a\nb\r\nc\rd\n\ne", "data/empty.txt": "", "data/nl.txt": "\n", "data/last.txt": "one\ntwo\n", "secret.txt": "top secret",
+        "data/sub/deep.txt": "deep"}
+case("std-files-needs-the-files-read-capability", ["mod.std", "sbx.capabilities", "lib.std-files"],
+     'print("start")\nimport "std:files" as files\nprint(files.size("data/in.txt"))',
+     ["start"], error="ImportError: std:files needs the 'files.read' capability, which this run did not grant", error_line=2, exit=1,
+     profile="sandbox", sandbox={"profile": "restricted"}, extra={"files": DATA})
+case("std-files-lines-and-each-line", ["lib.std-files"],
+     FILES + 'print(json.dumps(files.lines("data/in.txt")))\nprint(json.dumps(files.lines("data/empty.txt")), json.dumps(files.lines("data/nl.txt")), json.dumps(files.lines("data/last.txt")))\nlet seen = []\ndef note(line) { append(seen, upper(line)) }\nfiles.each_line("data/last.txt", note)\nprint(seen)\nprint(type(files.each_line("data/empty.txt", note)))',
+     ['["a", "b", "c", "d", "", "e"]', '[] [""] ["one", "two"]', '["ONE", "TWO"]', "nothing"],
+     profile="sandbox", sandbox=GRANT, extra={"files": DATA})
+case("std-files-size-is-dir-and-is-link", ["lib.std-files"],
+     FILES + 'print(files.size("data/in.txt"), files.size("data/empty.txt"), files.is_dir("data"), files.is_dir("data/in.txt"), files.is_dir("data/nothing"))\nprint(files.is_link("data/in.txt"), files.is_link("data/nothing"))\ntry { files.size("data") } catch e { print(e) }\ntry { files.size("data/nothing") } catch e { print(e) }\ntry { files.lines("data/nothing") } catch e { print(e) }',
+     ["11 0 true false false", "false false", "FileError: data is a directory, not a file", "FileNotFoundError: data/nothing", "FileNotFoundError: data/nothing"],
+     profile="sandbox", sandbox=GRANT, extra={"files": DATA})
+case("std-files-obeys-the-folders-that-were-granted", ["lib.std-files", "sbx.paths"],
+     FILES + 'try { files.lines("secret.txt") } catch e { print(e) }\ntry { files.size("data/../secret.txt") } catch e { print(e) }\ntry { files.is_dir("../data") } catch e { print(e) }\ntry { files.is_link("secret.txt") } catch e { print(e) }\nlet seen = []\ndef note(line) { append(seen, line) }\ntry { files.each_line("secret.txt", note) } catch e { print(e) }\nprint(len(seen))',
+     ["FileError: secret.txt is outside the folders this program may use", "FileError: data/../secret.txt is outside the folders this program may use",
+      "FileError: ../data is outside the folders this program may use", "FileError: secret.txt is outside the folders this program may use",
+      "FileError: secret.txt is outside the folders this program may use", "0"],
+     profile="sandbox", sandbox=GRANT, extra={"files": DATA})
+case("std-files-reads-what-read-cannot-hold-in-one-string", ["lib.std-files", "sbx.limits"],
+     FILES + 'try { read("data/big.txt") } catch e { print(e) }\nlet n = 0\ndef count(line) { n = n + len(line) }\nlet all = files.lines("data/big.txt")\nprint(len(all), len(all[0]), len(all[29]))\nlet total = 0\nfor line in all { total = total + len(line) }\nprint(total)',
+     ["a string cannot grow beyond 1000 characters", "30 99 99", "2970"],
+     profile="sandbox", sandbox={"profile": "restricted", "read": ["data"], "limits": {"string": 1000}},
+     extra={"files": {"data/big.txt": "".join(("%02d" % i) + "x" * 97 + "\n" for i in range(30))}})
+case("std-files-a-line-longer-than-the-string-limit-is-that-limits-error", ["lib.std-files", "sbx.limits"],
+     FILES + 'try { files.lines("data/long.txt") } catch e { print(e) }',
+     ["a string cannot grow beyond 1000 characters"],
+     profile="sandbox", sandbox={"profile": "restricted", "read": ["data"], "limits": {"string": 1000}}, extra={"files": {"data/long.txt": "ok\n" + "y" * 1500 + "\nafter\n"}})
+case("std-files-in-the-trusted-profile", ["lib.std-files"],
+     FILES + 'print(json.dumps(files.lines("data/last.txt")), files.size("data/last.txt"))',
+     ['["one", "two"] 8'], profile="modules", extra={"files": {"data/last.txt": "one\ntwo\n"}})
+case("std-files-exports", ["lib.std-files", "mod.std"],
+     'import "std:files" as files\nprint(join(sorted(keys(files)), " "))', ["each_line is_dir is_link lines size"],
+     profile="sandbox", sandbox=GRANT)
 
 json.dump  # (kept for clarity)
 doc = {"area": "std", "version": 1, "cases": cases}

@@ -151,6 +151,16 @@ chapter holds for them (`[mod.import]` for the three forms and the name that is 
    name is still refused as a module name (`[mod.import]`, `[scope.reserved]`).
 5. **A standard module runs under the limits of the run that imports it**: its steps, its
    output and its sizes count like the importer's own.
+6. **A standard module may call native functions.** Some work cannot be done in NovaLang at
+   a usable speed or at all (exact arithmetic on big numbers, the code point of a character, reading
+   a file in pieces), so a standard module may be given functions written by the host, which it
+   reaches through a name, `native`, that exists in the scope of that one module and in no
+   other: a program, a module of its own or a package cannot name it, and it is not a built-in, so it
+   reserves nothing. What a native function computes, and the text of its errors, is part of
+   the module's specification, the same on every engine; the module's own file only wraps it, so a
+   call with the wrong number of arguments is the language's message for a function. A native function
+   that reads a file is held to the granted folders exactly as `read` is (`[sbx.paths]`), and
+   its result to the limits of the run (`[sbx.limits]`).
 
 The tier of each standard module (`provisional` or `stable`) and what it means is in
 [STABLE.md](STABLE.md).
