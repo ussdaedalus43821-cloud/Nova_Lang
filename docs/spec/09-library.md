@@ -115,21 +115,56 @@ A string argument of the wrong kind is `upper() needs a string, but got a number
 for the second and later arguments the message names the role (`the separator of
 split() needs a string`, `the text for replace_all() needs a string`).
 
-## [lib.regex] `regex`
+## [lib.regex] `regex` and the pattern dialect
 
-`regex(pattern, text)` is `true` if the pattern matches **anywhere** in the text.
-The language specifies this much of the pattern syntax, which every host MUST
-support with its usual meaning: literal characters; `.` (any one character except
-a line feed); `[abc]`, `[a-z]` and `[^0-9]`; `*`, `+` and `?`; `|`; `(` `)`
-grouping; `^` and `$` for the start and end of the text (`$` MAY also match just before a
-final line feed). `\d`, `\w`, `\s` and `\b`,
-which are **ASCII only**: `\d` is `0`-`9`, `\w` is `A`-`Z`, `a`-`z`, `0`-`9` and `_`, `\s` is
-the six ASCII whitespace characters of `[lib.text]`, and `\b` is the edge between a
-`\w` character and anything else (so `regex("^\\d+$", "١٢٣")` is `false`, D-021). More of
-the host's regular-expression dialect may work but is not portable. A bad pattern
-is `TypeError: regex(): bad pattern: <the host's reason>`, and only the part up to
-the reason is specified. A pattern can take exponential time on some texts; the
-language puts no limit on that (`[sec.limits]`).
+`regex(pattern, text)` is `true` if the pattern matches **anywhere** in the text. A bad pattern is `TypeError:
+regex(): bad pattern: <reason>`; the reasons below are the ones this version gives, and only the part up to the
+reason is specified.
+
+**The dialect (M13).** The pattern language is specified here, and every host MUST give each construct below its
+meaning. Nothing outside it is accepted: a construct of another engine that is not listed is refused with a reason that
+names it, never given another meaning.
+
+| Construct | Meaning |
+| --- | --- |
+| a character | itself. `{` is itself unless it starts `{m}`, `{m,}` or `{m,n}` |
+| `\` + a punctuation character | that character (`\.` `\\` `\-` ...); every character but an ASCII letter or digit may be escaped |
+| `\n` `\r` `\t` `\f` `\v` | line feed, carriage return, tab, form feed, vertical tab |
+| `\xHH` `\uHHHH` `\UHHHHHHHH` | the code point (exactly that many hexadecimal digits, at most 10FFFF) |
+| `.` | any one character except a line feed |
+| `[abc]` `[a-z]` `[^0-9]` | a class: members, ranges, and the escapes above and `\d \w \s \D \W \S` (and `\b` for a backspace); a `]` first is a member; a `-` first or last is a member; `[^...]` matches a line feed |
+| `\d` `\w` `\s` and `\D` `\W` `\S` | ASCII only (D-021): `\d` is `0`-`9`, `\w` is `A`-`Z`, `a`-`z`, `0`-`9` and `_`, `\s` is the six ASCII whitespace characters of `[lib.text]`; the capitals are the complements (over every code point) |
+| `\b` `\B` | the edge between a `\w` character and anything else (or the end of the text), and its negation. In an empty text `\b` fails and `\B` succeeds (Python's `re` fails both) |
+| `^` `$` | the start of the text; the end of the text or just before a final line feed. Neither is "the start of a line": there is no multi-line mode |
+| `( )` `(?: )` `(?P<name> )` | a capturing group (numbered by its opening parenthesis, from 1), a group that does not capture, a named capturing group (the name is ASCII letters, digits and `_`, not starting with a digit, and not used twice) |
+| `a|b` | alternation: the first alternative that lets the whole pattern match wins |
+| `* + ?` `{m}` `{m,}` `{m,n}` | repeat the item the given number of times, **greedy**: as many as possible, giving back as needed |
+| `*? +? ?? {m,n}?` | the same, **lazy**: as few as possible |
+| `(?i)` at the very start | ASCII case-insensitive matching for the whole pattern (`é` and `É` stay different) |
+
+**Which match.** The match is the leftmost one and, at that place, the one a backtracking engine that tries
+alternatives left to right and greedy repeats longest first would find (leftmost-first, as Perl, Python and RE2).
+A repeat that matches nothing in one pass ends the repeat there, and what follows is tried from the same place (so
+`(a|)*` cannot loop). For a pattern in which a repeated item can match the empty string, the **end** of the match and
+the captures of the final pass may differ from Python's `re`; whether there is a match, and where it starts, do not.
+Every other pattern gives exactly Python's span and groups (the differential fuzzer of `tests/std/test_regex.py` holds
+this).
+
+**Refused, with a reason that names them:** back-references and octal escapes (`\1`, `\0`), look-ahead (`(?=` `(?!`),
+look-behind (`(?<=` `(?<!`), atomic groups, possessive quantifiers (`a*+`), conditional groups, comment groups, flags
+other than a leading `(?i)`, `(?<name>` (write `(?P<name>`), `\A \Z` and every other letter escape, `{,n}` (write
+`{0,n}`), a repeat of `^ $ \b \B` or of another repeat (`a**`), an unbalanced `(` or `)`, an unterminated class, a range
+that ends before it starts, a class shortcut as the start of a range (`[\d-z]`), a pattern that ends with a backslash.
+
+**Limits.** A pattern is at most 4,000 characters, has at most 1,000 groups, nests groups at most 100 deep, has repeat
+counts of at most 1,000, and may expand (`a{1000}` is a thousand copies) to at most 20,000 instructions; past any of
+these the pattern is a bad pattern whose reason says so.
+
+**Time.** The matcher takes time proportional to the size of the pattern times the length of the text, **whatever the
+pattern**: `(a+)+$` on a long run of `a` and a letter after it answers at once. The work is charged to the run: a
+thread of the matcher at one character of the text costs one unit, and every 128 units cost one step of the budget
+(`[sbx.limits]`, `steps`) and are counted by the time limit like the other long operations, so the limits end a run that
+matches a large text with a large pattern. A host that cannot guarantee this MUST NOT claim the dialect.
 
 ## [lib.math] Numbers
 
@@ -438,4 +473,45 @@ gives whatever each piece found.)
 
 The module's exports are exactly `each_line`, `is_dir`, `is_link`, `lines`, `size`. A lazily read `for line in ...` is not
 part of this version.
+
+## [lib.std-regex] `std:regex`
+
+```
+import "std:regex" as re
+```
+
+Regular expressions with captures (G-003), in the dialect of `[lib.regex]`. The module declares the `regex` capability
+(`[mod.std]` 3): `import "std:regex"` in a `restricted` run that was not granted it is `ImportError: std:regex needs
+the 'regex' capability, which this run did not grant`. (The capability stays while the matcher is new; `[sbx.capabilities]`.)
+A pattern, replacement, text, count or limit of the wrong kind is a type error that names the function and the argument,
+a bad pattern is `TypeError: regex.<function>(): bad pattern: <reason>` and a bad replacement is `TypeError:
+regex.<function>(): bad replacement: <reason>`.
+
+A **match** is a dictionary `{start, end, text, groups, named}`: `start` and `end` are offsets in **characters** (not
+bytes), `text` is `text[start:end]`, `groups` has one entry for each capturing group in the order of their opening
+parentheses (the text it matched in the last pass, or `nothing` for a group that took no part), and `named` maps each
+`(?P<name>...)` group's name to the same value.
+
+- `re.test(pattern, text)` is `regex(pattern, text)`.
+- `re.match(pattern, text)` is the first match anywhere, or `nothing`. `re.match_from(pattern, text, start)` looks from
+  character `start` on (`0` to the length of the text; `^` still means the start of the whole text).
+- `re.find_all(pattern, text)` is every match, left to right and not overlapping, as a list. `re.find_n(pattern, text,
+  limit)` is at most `limit` of them. After an empty match the next match must not be empty at the same place (so
+  `find_all("a*", "baac")` has the texts `""`, `"aa"`, `""`, `""`), as in Python 3.7 and later. A list over the list limit is that limit's error.
+- `re.sub(pattern, replacement, text)` is the text with every match replaced, and `re.sub_n(pattern, replacement, text,
+  count)` with the first `count`. In the replacement `\1` to `\9`, `\g<number>` and `\g<name>` insert a group (the empty
+  string for a group that took no part) and `\\` is a backslash; any other backslash is `bad replacement`, as is a group
+  the pattern does not have. An empty match is replaced too (`sub("a*", "-", "baac")` is `-b--c-`). The result is held to the
+  string limit while it is built.
+- `re.pieces(pattern, text)` is the pieces of the text between the matches (the matches found as `find_all` finds them;
+  the first piece starts at the start of the text and the last ends at its end), and `re.pieces_n(pattern, text,
+  limit)` uses at most `limit` matches, so `limit + 1` pieces at most. (It cannot be called `split`: built-in names
+  are reserved, `[scope.reserved]`.)
+- `re.escape(text)` is the text with each of `\ . ^ $ * + ? { } [ ] ( ) | -` preceded by a backslash, so that as a
+  pattern it matches exactly the text.
+
+The module's exports are exactly `escape`, `find_all`, `find_n`, `match`, `match_from`, `pieces`, `pieces_n`, `sub`,
+`sub_n`, `test`. Every function is a native of the module (`[mod.std]` 6) and its work is charged to the run as
+`[lib.regex]` says. There are no optional arguments in NovaLang, so each of `find`, `sub` and `pieces` has a second form with
+the count or limit (`find_n`, `sub_n`, `pieces_n`).
 

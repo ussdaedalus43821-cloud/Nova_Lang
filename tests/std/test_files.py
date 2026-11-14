@@ -129,7 +129,9 @@ class Natives(unittest.TestCase):
         for name, descriptor in modules.items():
             with self.subTest(module=name):
                 self.assertEqual(sorted(novalang.NATIVE_FUNCTIONS.get(name, {})), sorted(descriptor.get("native", [])))
-        self.assertEqual(sorted(novalang.NATIVE_FUNCTIONS), sorted(n for n, d in modules.items() if d.get("native")))
+        # "builtin" is not a module: the global regex() for the self-hosted engine (docs/design/m13-libraries-and-registry-plan.md)
+        self.assertEqual(sorted(n for n in novalang.NATIVE_FUNCTIONS if n != "builtin"), sorted(n for n, d in modules.items() if d.get("native")))
+        self.assertEqual(sorted(novalang.NATIVE_FUNCTIONS["builtin"]), ["regex"])
 
     def test_the_file_natives_are_held_to_the_read_grant(self):
         for name, function in novalang.NATIVE_FUNCTIONS["files"].items():

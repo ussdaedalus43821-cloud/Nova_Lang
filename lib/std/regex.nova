@@ -1,0 +1,69 @@
+# std:regex - regular expressions with captures (docs/spec/09-library.md [lib.regex], [lib.std-regex]).
+# Closes G-003.
+#
+#   import "std:regex" as re
+#   let m = re.match("(\\d+)-(\\d+)", "call 555-1234 now")
+#   m.groups[0]                          # "555"
+#   re.sub("\\s+", " ", "a   b    c")    # "a b c"
+#   re.pieces(",\\s*", "a, b,c")         # ["a", "b", "c"]
+#
+# The matcher is written for NovaLang (novalang.py, "regular expressions"; novalang.nova reaches the
+# same one): a Pike virtual machine, so the time is the size of the pattern times the length of the
+# text whatever the pattern, and the work is charged to the run's step budget and time limit.
+# `(a+)+$` on a long run of "a" finishes at once. The dialect is the one `regex()` has; what Python's
+# `re` has beyond it (back-references, look-around and so on) is a named error, not another meaning.
+#
+# It declares the `regex` capability, as the regex() built-in needs it: importing it needs that grant.
+# A match is {start, end, text, groups, named}: offsets are in characters, `groups` has one entry per
+# capturing group (nothing for a group that took no part) and `named` has the (?P<name>...) groups.
+
+# true when the pattern matches anywhere in the text (what regex() answers).
+export def test(pattern, text) {
+    return native.test(pattern, text)
+}
+
+# The first match anywhere in the text, or nothing.
+export def match(pattern, text) {
+    return native.match(pattern, text)
+}
+
+# Like match(), looking from character `start` on. `^` still means the start of the whole text.
+export def match_from(pattern, text, start) {
+    return native.match_from(pattern, text, start)
+}
+
+# Every match, left to right and not overlapping, as a list.
+export def find_all(pattern, text) {
+    return native.find_all(pattern, text)
+}
+
+# At most `limit` matches.
+export def find_n(pattern, text, limit) {
+    return native.find_n(pattern, text, limit)
+}
+
+# The text with every match replaced. In the replacement, \1 to \9 and \g<number> or \g<name> insert a
+# group, and \\ is a backslash; any other backslash is an error. An empty match is replaced too.
+export def sub(pattern, replacement, text) {
+    return native.sub(pattern, replacement, text)
+}
+
+# The text with the first `count` matches replaced.
+export def sub_n(pattern, replacement, text, count) {
+    return native.sub_n(pattern, replacement, text, count)
+}
+
+# The pieces of the text between the matches (the built-in split() cannot be exported under its name).
+export def pieces(pattern, text) {
+    return native.pieces(pattern, text)
+}
+
+# The same, using at most `limit` matches.
+export def pieces_n(pattern, text, limit) {
+    return native.pieces_n(pattern, text, limit)
+}
+
+# The text with every character the dialect treats specially escaped, so it matches itself.
+export def escape(text) {
+    return native.escape(text)
+}

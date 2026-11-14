@@ -2861,13 +2861,725 @@ def builtin_copy(args, position):
 
 # ---- string utilities -----------------------------------------------------------------
 
-def builtin_regex(args, position):
+# ---- regular expressions (docs/spec/09-library.md [lib.regex]) ---------------------------------
+#
+# The matcher behind `regex()` and `std:regex`. It is written here, in Python, and does not call
+# the `re` module: a pattern is parsed, compiled to a small program and run by a Pike virtual
+# machine (a Thompson NFA run in lock step), so the time is O(instructions x text length) whatever
+# the pattern. `(a+)+$` on a long run of "a" finishes at once; in `re` it never does, and nothing
+# in-process can interrupt a C loop. The work is charged to the run (RegexMeter), so the step budget
+# and the time limit end a run that matches a large text with a large pattern.
+#
+# The dialect is fixed by the specification: literals and escapes; `.`; classes; `\d \w \s \b` and
+# their negations (ASCII only, D-021); `^ $`; groups (capturing, non-capturing, named); `|`; greedy
+# and lazy `* + ? {m} {m,} {m,n}`; the flag `(?i)` at the start. What `re` has beyond that
+# (back-references, look-around, atomic groups, possessive quantifiers, conditionals, comments,
+# other flags) is refused with a named error, not run differently.
+
+REGEX_MAX_PATTERN = 4000        # characters in a pattern
+REGEX_MAX_GROUPS = 1000         # capturing groups
+REGEX_MAX_REPEAT = 1000         # the largest m or n of {m,n}
+REGEX_MAX_PROGRAM = 20000       # instructions after repeats are expanded
+REGEX_MAX_NESTING = 100         # groups inside groups
+REGEX_MAX_COMPILE_WORK = 400000  # nodes visited while compiling: a repeat of an empty group adds no instruction
+REGEX_CACHE_SIZE = 128
+REGEX_HARD_STRING = 16 * 1024 * 1024   # the longest string sub() builds when the run has no string limit
+REGEX_UNIT = 128                # thread-steps that cost one step of the run's budget
+CODE_POINT_MAX = 0x10FFFF
+
+(R_CHAR, R_ANY, R_SET, R_SPLIT, R_JMP, R_SAVE, R_BOL, R_EOL, R_WORDB, R_NWORDB, R_MATCH, R_LOOP) = range(12)
+
+REGEX_WORD_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+REGEX_DIGIT = [(48, 57)]
+REGEX_WORD = [(48, 57), (65, 90), (95, 95), (97, 122)]
+REGEX_SPACE = [(9, 13), (32, 32)]
+REGEX_ESCAPED = frozenset("\\.^$*+?{}[]()|-")
+
+
+class RegexError(Exception):
+    """A pattern or a replacement the dialect does not accept; `str()` is the reason."""
+
+
+def regex_normalize(ranges):
+    out = []
+    for lo, hi in sorted(ranges):
+        if out and lo <= out[-1][1] + 1:
+            if hi > out[-1][1]:
+                out[-1] = (out[-1][0], hi)
+        else:
+            out.append((lo, hi))
+    return out
+
+
+def regex_negate(ranges):
+    out = []
+    previous = 0
+    for lo, hi in regex_normalize(ranges):
+        if lo > previous:
+            out.append((previous, lo - 1))
+        previous = hi + 1
+    if previous <= CODE_POINT_MAX:
+        out.append((previous, CODE_POINT_MAX))
+    return out
+
+
+def regex_fold(ranges):
+    """The ranges with the other case of every ASCII letter in them added ((?i) folds ASCII only)."""
+    extra = []
+    for lo, hi in ranges:
+        if max(lo, 65) <= min(hi, 90):
+            extra.append((max(lo, 65) + 32, min(hi, 90) + 32))
+        if max(lo, 97) <= min(hi, 122):
+            extra.append((max(lo, 97) - 32, min(hi, 122) - 32))
+    return regex_normalize(list(ranges) + extra)
+
+
+class RegexParser:
+    """Pattern text to a tree of tuples. Every refusal is a RegexError with the reason."""
+
+    def __init__(self, pattern):
+        self.p = pattern
+        self.i = 0
+        self.groups = 0
+        self.names = {}                 # name -> group number
+        self.fold = False
+
+    def fail(self, reason):
+        raise RegexError(reason)
+
+    def parse(self):
+        if len(self.p) > REGEX_MAX_PATTERN:
+            self.fail("the pattern is longer than {} characters".format(REGEX_MAX_PATTERN))
+        if self.p.startswith("(?i)"):
+            self.fold = True
+            self.i = 4
+        node = self.alternation(0)
+        if self.i < len(self.p):
+            self.fail("unbalanced parenthesis")
+        return node
+
+    def alternation(self, depth):
+        branches = [self.concatenation(depth)]
+        while self.i < len(self.p) and self.p[self.i] == "|":
+            self.i += 1
+            branches.append(self.concatenation(depth))
+        return branches[0] if len(branches) == 1 else ("alt", branches)
+
+    def concatenation(self, depth):
+        items = []
+        while self.i < len(self.p) and self.p[self.i] not in "|)":
+            items.append(self.quantified(self.atom(depth)))
+        if not items:
+            return ("empty",)
+        return items[0] if len(items) == 1 else ("cat", items)
+
+    # -- quantifiers ---------------------------------------------------------
+
+    def repeat_at(self, i):
+        """(low, high, index after) when a `{m}`, `{m,}` or `{m,n}` starts at `i`; None when it is a plain `{`."""
+        p = self.p
+        j = i + 1
+        k = j
+        while k < len(p) and "0" <= p[k] <= "9":
+            k += 1
+        low_text = p[j:k]
+        if k < len(p) and p[k] == "}" and low_text:
+            return int(low_text), int(low_text), k + 1
+        if k < len(p) and p[k] == ",":
+            m = k + 1
+            while m < len(p) and "0" <= p[m] <= "9":
+                m += 1
+            if m < len(p) and p[m] == "}":
+                high_text = p[k + 1:m]
+                if low_text:
+                    return int(low_text), (int(high_text) if high_text else None), m + 1
+                if high_text:
+                    self.fail("write {{0,{}}} for a repeat of up to {}".format(high_text, high_text))
+        return None
+
+    def quantified(self, atom):
+        if self.i >= len(self.p):
+            return atom
+        c = self.p[self.i]
+        if c == "*":
+            low, high, self.i = 0, None, self.i + 1
+        elif c == "+":
+            low, high, self.i = 1, None, self.i + 1
+        elif c == "?":
+            low, high, self.i = 0, 1, self.i + 1
+        elif c == "{":
+            found = self.repeat_at(self.i)
+            if found is None:
+                return atom
+            low, high, self.i = found
+        else:
+            return atom
+        if atom[0] in ("bol", "eol", "wordb", "nwordb"):
+            self.fail("nothing to repeat")
+        if low > REGEX_MAX_REPEAT or (high is not None and high > REGEX_MAX_REPEAT):
+            self.fail("a repeat count is limited to {}".format(REGEX_MAX_REPEAT))
+        if high is not None and low > high:
+            self.fail("the repeat count {{{},{}}} has its minimum above its maximum".format(low, high))
+        greedy = True
+        if self.i < len(self.p) and self.p[self.i] == "?":
+            greedy = False
+            self.i += 1
+        elif self.i < len(self.p) and self.p[self.i] == "+":
+            self.fail("possessive quantifiers are not supported")
+        if self.i < len(self.p) and (self.p[self.i] in "*+?" or (self.p[self.i] == "{" and self.repeat_at(self.i))):
+            self.fail("multiple repeat")
+        return ("rep", atom, low, high, greedy)
+
+    # -- atoms ---------------------------------------------------------------
+
+    def literal(self, code):
+        if self.fold and (65 <= code <= 90 or 97 <= code <= 122):
+            return ("set", regex_fold([(code, code)]))
+        return ("lit", code)
+
+    def atom(self, depth):
+        p = self.p
+        c = p[self.i]
+        if c == "(":
+            return self.group(depth)
+        if c == "[":
+            return self.char_class()
+        if c == ".":
+            self.i += 1
+            return ("any",)
+        if c == "^":
+            self.i += 1
+            return ("bol",)
+        if c == "$":
+            self.i += 1
+            return ("eol",)
+        if c == "\\":
+            return self.escape()
+        if c in "*+?":
+            self.fail("nothing to repeat")
+        if c == "{" and self.repeat_at(self.i) is not None:
+            self.fail("nothing to repeat")
+        self.i += 1
+        return self.literal(ord(c))
+
+    def group(self, depth):
+        p = self.p
+        if depth >= REGEX_MAX_NESTING:
+            self.fail("groups are nested more than {} deep".format(REGEX_MAX_NESTING))
+        self.i += 1
+        index = None
+        if p.startswith("?", self.i):
+            if p.startswith("?:", self.i):
+                self.i += 2
+            elif p.startswith("?P<", self.i):
+                end = p.find(">", self.i)
+                name = p[self.i + 3:end] if end >= 0 else ""
+                if not name or not (name[0].isalpha() or name[0] == "_") or not name.isascii() \
+                        or not all(ch.isalnum() or ch == "_" for ch in name):
+                    self.fail("a group name is letters, digits and _, and does not start with a digit")
+                if name in self.names:
+                    self.fail("the group name {} is used twice".format(name))
+                self.i = end + 1
+                index = self.new_group()
+                self.names[name] = index
+            elif p.startswith("?P=", self.i) or p.startswith("?P>", self.i):
+                self.fail("back-references are not supported")
+            elif p.startswith("?=", self.i) or p.startswith("?!", self.i):
+                self.fail("look-ahead is not supported")
+            elif p.startswith("?<=", self.i) or p.startswith("?<!", self.i):
+                self.fail("look-behind is not supported")
+            elif p.startswith("?<", self.i):
+                self.fail("a named group is written (?P<name>...)")
+            elif p.startswith("?>", self.i):
+                self.fail("atomic groups are not supported")
+            elif p.startswith("?(", self.i):
+                self.fail("conditional groups are not supported")
+            elif p.startswith("?#", self.i):
+                self.fail("comment groups are not supported")
+            elif p[self.i + 1:self.i + 2].isalpha() or p[self.i + 1:self.i + 2] == "-":
+                self.fail("the flag group (?i) is allowed only at the start of the pattern, and no other flag is supported")
+            else:
+                self.fail("this group syntax is not supported")
+        else:
+            index = self.new_group()
+        node = self.alternation(depth + 1)
+        if self.i >= len(p) or p[self.i] != ")":
+            self.fail("missing ), unterminated group")
+        self.i += 1
+        return ("cat", [node]) if index is None else ("group", index, node)
+
+    def new_group(self):
+        if self.groups >= REGEX_MAX_GROUPS:
+            self.fail("a pattern has at most {} groups".format(REGEX_MAX_GROUPS))
+        self.groups += 1
+        return self.groups
+
+    # -- escapes and classes -------------------------------------------------
+
+    def hex_escape(self, digits, who):
+        text = self.p[self.i:self.i + digits]
+        if len(text) != digits or any(ch not in "0123456789abcdefABCDEF" for ch in text):
+            self.fail("{} needs {} hexadecimal digits".format(who, digits))
+        value = int(text, 16)
+        if value > CODE_POINT_MAX:
+            self.fail("{} is beyond the last code point".format(who))
+        self.i += digits
+        return value
+
+    def escape_value(self, in_class):
+        """After a backslash: ("char", code) or ("set", ranges). The index is on the character after the backslash."""
+        p = self.p
+        if self.i >= len(p):
+            self.fail("a pattern cannot end with a backslash")
+        c = p[self.i]
+        self.i += 1
+        shortcuts = {"d": REGEX_DIGIT, "w": REGEX_WORD, "s": REGEX_SPACE}
+        if c in shortcuts:
+            return "set", list(shortcuts[c])
+        if c in "DWS":
+            return "set", regex_negate(shortcuts[c.lower()])
+        simple = {"n": 10, "r": 13, "t": 9, "f": 12, "v": 11}
+        if c in simple:
+            return "char", simple[c]
+        if c == "x":
+            return "char", self.hex_escape(2, "\\x")
+        if c == "u":
+            return "char", self.hex_escape(4, "\\u")
+        if c == "U":
+            return "char", self.hex_escape(8, "\\U")
+        if c == "b" and in_class:
+            return "char", 8
+        if c in "bB" and not in_class:
+            return ("wordb" if c == "b" else "nwordb"), None
+        if "0" <= c <= "9":
+            self.fail("back-references and octal escapes are not supported (write \\x.. for a character code)")
+        if c.isascii() and c.isalpha():
+            self.fail("unknown escape \\{}".format(c))
+        return "char", ord(c)
+
+    def escape(self):
+        self.i += 1
+        kind, value = self.escape_value(False)
+        if kind == "char":
+            return self.literal(value)
+        if kind == "set":
+            return ("set", value)
+        return (kind,)
+
+    def class_item(self):
+        """One member of a [...] class: ("char", code) or ("set", ranges)."""
+        c = self.p[self.i]
+        self.i += 1
+        if c == "\\":
+            return self.escape_value(True)
+        return "char", ord(c)
+
+    def char_class(self):
+        p = self.p
+        self.i += 1
+        negate = False
+        if self.i < len(p) and p[self.i] == "^":
+            negate = True
+            self.i += 1
+        ranges = []
+        first = True
+        while True:
+            if self.i >= len(p):
+                self.fail("missing ], unterminated character class")
+            if p[self.i] == "]" and not first:
+                self.i += 1
+                break
+            first = False
+            kind, value = self.class_item()
+            if self.i + 1 < len(p) and p[self.i] == "-" and p[self.i + 1] != "]":
+                if kind == "set":
+                    self.fail("a character class shortcut cannot start a range")
+                self.i += 1
+                kind2, value2 = self.class_item()
+                if kind2 == "set" or value2 < value:
+                    self.fail("bad character range")
+                ranges.append((value, value2))
+            elif kind == "char":
+                ranges.append((value, value))
+            else:
+                ranges.extend(value)
+        ranges = regex_normalize(ranges)
+        if self.fold:
+            ranges = regex_fold(ranges)
+        if negate:
+            ranges = regex_negate(ranges)
+        return ("set", ranges)
+
+
+class RegexProgram:
+    """A compiled pattern: parallel lists of op codes and operands, and what the matcher needs to start fast."""
+
+    def __init__(self):
+        self.ops = []
+        self.xs = []
+        self.ys = []
+        self.groups = 0
+        self.names = {}
+        self.work = 0
+        self.prefix = ""
+        self.anchored = False
+
+    def add(self, op, x=None, y=None):
+        if len(self.ops) >= REGEX_MAX_PROGRAM:
+            raise RegexError("the pattern is too large: it expands to more than {} instructions".format(REGEX_MAX_PROGRAM))
+        self.ops.append(op)
+        self.xs.append(x)
+        self.ys.append(y)
+        return len(self.ops) - 1
+
+    def emit(self, node):
+        self.work += 1
+        if self.work > REGEX_MAX_COMPILE_WORK:
+            raise RegexError("the pattern is too large: its repeats expand to more than {} steps".format(REGEX_MAX_COMPILE_WORK))
+        kind = node[0]
+        if kind == "lit":
+            self.add(R_CHAR, chr(node[1]))
+        elif kind == "any":
+            self.add(R_ANY)
+        elif kind == "set":
+            ranges = node[1]
+            table = [False] * 128
+            for lo, hi in ranges:
+                for code in range(lo, min(hi, 127) + 1):
+                    table[code] = True
+            self.add(R_SET, (tuple(table), [lo for lo, _ in ranges], [hi for _, hi in ranges]))
+        elif kind == "bol":
+            self.add(R_BOL)
+        elif kind == "eol":
+            self.add(R_EOL)
+        elif kind == "wordb":
+            self.add(R_WORDB)
+        elif kind == "nwordb":
+            self.add(R_NWORDB)
+        elif kind == "cat":
+            for item in node[1]:
+                self.emit(item)
+        elif kind == "alt":
+            jumps = []
+            branches = node[1]
+            for index, branch in enumerate(branches):
+                if index < len(branches) - 1:
+                    split = self.add(R_SPLIT)
+                    self.xs[split] = len(self.ops)
+                    self.emit(branch)
+                    jumps.append(self.add(R_JMP))
+                    self.ys[split] = len(self.ops)
+                else:
+                    self.emit(branch)
+            for jump in jumps:
+                self.xs[jump] = len(self.ops)
+        elif kind == "group":
+            self.add(R_SAVE, 2 * node[1])
+            self.emit(node[2])
+            self.add(R_SAVE, 2 * node[1] + 1)
+        elif kind == "rep":
+            self.emit_repeat(*node[1:])
+        # "empty" emits nothing
+
+    def emit_repeat(self, body, low, high, greedy):
+        if high is None:
+            copies = low - 1 if low >= 1 else 0
+            for _ in range(copies):
+                self.emit(body)
+            # x* is (?:x+)?. The jump back is R_LOOP, not a plain split: an iteration that matched nothing has
+            # come back to a place already visited, and it must leave the loop for what follows (as in Perl and
+            # Python) with the captures of that empty iteration, instead of ending the thread.
+            first = None
+            if low == 0:
+                first = self.add(R_SPLIT)
+            start = len(self.ops)
+            self.emit(body)
+            again = self.add(R_LOOP)
+            end = len(self.ops)
+            self.xs[again] = (start, end, greedy)
+            if first is not None:
+                self.xs[first], self.ys[first] = (start, end) if greedy else (end, start)
+            return
+        for _ in range(low):
+            self.emit(body)
+        splits = []
+        for _ in range(high - low):
+            splits.append(self.add(R_SPLIT))
+            self.emit(body)
+        end = len(self.ops)
+        for split in splits:
+            inside = split + 1
+            self.xs[split], self.ys[split] = (inside, end) if greedy else (end, inside)
+
+    def finish(self):
+        """The start-up hints: a literal every match begins with, and whether a match must begin at the text's start."""
+        ops, xs = self.ops, self.xs
+        pc = 1                          # past `SAVE 0`
+        letters = []
+        while ops[pc] == R_CHAR:
+            letters.append(xs[pc])
+            pc += 1
+        self.prefix = "".join(letters)
+        self.anchored = ops[1] == R_BOL
+
+
+def regex_parse_error(reason):
+    return RegexError(reason)
+
+
+def regex_compile(pattern):
+    """The RegexProgram of `pattern` (cached: programs are never changed), or a RegexError."""
+    program = REGEX_CACHE.get(pattern)
+    if program is not None:
+        return program
+    try:
+        parser = RegexParser(pattern)
+        tree = parser.parse()
+        program = RegexProgram()
+        program.groups = parser.groups
+        program.names = parser.names
+        program.add(R_SAVE, 0)
+        program.emit(tree)
+        program.add(R_SAVE, 1)
+        program.add(R_MATCH)
+        program.finish()
+    except RecursionError:
+        raise RegexError("the pattern is nested too deeply")
+    if len(REGEX_CACHE) >= REGEX_CACHE_SIZE:
+        REGEX_CACHE.clear()
+    REGEX_CACHE[pattern] = program
+    return program
+
+
+REGEX_CACHE = {}
+
+
+class RegexMeter:
+    """Charges the matcher's work to the run: one step of the budget per REGEX_UNIT thread-steps, and the
+    clock is read through Interpreter.charge as for any long operation ([sbx.limits], time)."""
+
+    def __init__(self, interpreter, position):
+        self.interpreter = interpreter
+        self.position = position
+        self.pending = 0
+
+    def tick(self, units):
+        self.pending += units
+        if self.pending >= REGEX_UNIT:
+            steps, self.pending = divmod(self.pending, REGEX_UNIT)
+            interpreter = self.interpreter
+            for _ in range(steps):
+                interpreter.step(self.position)
+            interpreter.charge(steps * REGEX_UNIT, self.position)
+
+
+def regex_search(program, text, start, meter, no_empty_at_start=False, exists=False):
+    """The captures of the leftmost-first match of `program` in `text` that starts at or after `start`, as a
+    list [start0, end0, start1, end1, ...] (None for a group that did not take part), or None.
+    `no_empty_at_start` refuses an empty match at `start` (how find_all moves on after an empty match);
+    `exists` stops at the first thread that matches (the caller wants no captures)."""
+    ops, xs, ys = program.ops, program.xs, program.ys
+    n = len(text)
+    prefix, anchored = program.prefix, program.anchored
+    if anchored and start > 0:
+        return None
+    seen = [-1] * len(ops)
+    base = (None,) * (2 * program.groups + 2)
+
+    def add(threads, pc, caps, at, mark):
+        stack = [(pc, caps)]
+        while stack:
+            pc, caps = stack.pop()
+            while True:
+                op = ops[pc]
+                if op == R_LOOP:
+                    start, end, greedy = xs[pc]
+                    if seen[start] == mark:
+                        pc = end
+                    elif greedy:
+                        stack.append((end, caps))
+                        pc = start
+                    else:
+                        stack.append((start, caps))
+                        pc = end
+                    continue
+                if seen[pc] == mark:
+                    break
+                seen[pc] = mark
+                if op == R_SPLIT:
+                    stack.append((ys[pc], caps))
+                    pc = xs[pc]
+                elif op == R_JMP:
+                    pc = xs[pc]
+                elif op == R_SAVE:
+                    slot = xs[pc]
+                    caps = caps[:slot] + (at,) + caps[slot + 1:]
+                    pc += 1
+                elif op == R_BOL:
+                    if at != 0:
+                        break
+                    pc += 1
+                elif op == R_EOL:
+                    if at == n or (at == n - 1 and text[at] == "\n"):
+                        pc += 1
+                    else:
+                        break
+                elif op == R_WORDB or op == R_NWORDB:
+                    before = at > 0 and text[at - 1] in REGEX_WORD_CHARS
+                    after = at < n and text[at] in REGEX_WORD_CHARS
+                    if (before != after) == (op == R_WORDB):
+                        pc += 1
+                    else:
+                        break
+                else:
+                    threads.append((pc, caps))
+                    break
+
+    pos = start
+    mark = 0
+    clist = []
+    matched = None
+    while True:
+        if matched is None and (not anchored or pos == 0):
+            if not clist and prefix:
+                found = text.find(prefix, pos)
+                if found < 0:
+                    break
+                if found != pos:
+                    pos = found
+                    mark += 1
+            add(clist, 0, base, pos, mark)
+        if not clist:
+            if matched is not None or anchored or pos >= n:
+                break
+            pos += 1                    # nothing alive: look for a match one place on
+            mark += 1
+            continue
+        meter.tick(len(clist))
+        c = text[pos] if pos < n else None
+        mark += 1
+        following = []
+        for pc, caps in clist:
+            op = ops[pc]
+            if op == R_CHAR:
+                ok = c == xs[pc]
+            elif op == R_ANY:
+                ok = c is not None and c != "\n"
+            elif op == R_SET:
+                ok = False
+                if c is not None:
+                    table, los, his = xs[pc]
+                    code = ord(c)
+                    if code < 128:
+                        ok = table[code]
+                    else:
+                        k = bisect.bisect_right(los, code) - 1
+                        ok = k >= 0 and code <= his[k]
+            else:                       # R_MATCH: the threads behind this one are of lower priority, so they end
+                if no_empty_at_start and pos == start:
+                    continue
+                matched = caps
+                if exists:
+                    return matched
+                break
+            if ok:
+                add(following, pc + 1, caps, pos + 1, mark)
+        pos += 1
+        if pos > n:
+            break
+        clist = following
+    return list(matched) if matched is not None else None
+
+
+def regex_iter(program, text, meter, limit=None, first_start=0):
+    """Every match, left to right, as capture lists: at most `limit` of them (None for all). After an empty
+    match the next one must not be empty at the same place, as in Python 3.7 and later."""
+    pos = first_start
+    must_advance = False
+    count = 0
+    while pos <= len(text) and (limit is None or count < limit):
+        caps = regex_search(program, text, pos, meter, must_advance)
+        if caps is None:
+            return
+        count += 1
+        yield caps
+        must_advance = caps[1] == caps[0]
+        pos = caps[1]
+
+
+def regex_match_value(program, text, caps):
+    """The dictionary a std:regex match is: {start, end, text, groups, named}."""
+    groups = []
+    for index in range(1, program.groups + 1):
+        begin, end = caps[2 * index], caps[2 * index + 1]
+        groups.append(NOTHING if begin is None or end is None else text[begin:end])
+    named = {name: groups[index - 1] for name, index in sorted(program.names.items(), key=lambda item: item[1])}
+    return {"start": caps[0], "end": caps[1], "text": text[caps[0]:caps[1]], "groups": groups, "named": named}
+
+
+def regex_template(program, replacement):
+    """A replacement string as a list of pieces: literal text, or a group number to insert."""
+    pieces = []
+    literal = []
+    i = 0
+    while i < len(replacement):
+        c = replacement[i]
+        if c != "\\":
+            literal.append(c)
+            i += 1
+            continue
+        i += 1
+        if i >= len(replacement):
+            raise RegexError("a replacement cannot end with a backslash")
+        d = replacement[i]
+        if d == "\\":
+            literal.append("\\")
+            i += 1
+            continue
+        if "1" <= d <= "9":
+            index = int(d)
+            i += 1
+        elif d == "g":
+            end = replacement.find(">", i)
+            if i + 1 >= len(replacement) or replacement[i + 1] != "<" or end < 0:
+                raise RegexError("\\g must be written \\g<name> or \\g<number>")
+            name = replacement[i + 2:end]
+            if name.isdigit() and name.isascii():
+                index = int(name)
+            elif name in program.names:
+                index = program.names[name]
+            else:
+                raise RegexError("the replacement names a group that the pattern does not have: {}".format(name))
+            i = end + 1
+        else:
+            raise RegexError("unknown escape \\{} in the replacement (use \\\\ for a backslash)".format(d))
+        if index > program.groups:
+            raise RegexError("the replacement uses group {}, and the pattern has {}".format(index, program.groups))
+        if literal:
+            pieces.append("".join(literal))
+            literal = []
+        pieces.append(index)
+    if literal:
+        pieces.append("".join(literal))
+    return pieces
+
+
+def regex_escape(text):
+    return "".join("\\" + c if c in REGEX_ESCAPED else c for c in text)
+
+
+def regex_meter(interpreter, position):
+    return RegexMeter(interpreter, position)
+
+
+def builtin_regex(args, position, interpreter):
     pattern = text_argument(args[0], "the pattern for regex()", position)
     text = text_argument(args[1], "the text for regex()", position)
     try:
-        return re.search(pattern, text, re.ASCII) is not None   # \d \w \s \b are ASCII (D-021)
-    except re.error as problem:
+        program = regex_compile(pattern)
+    except RegexError as problem:
         raise NovaError("regex(): bad pattern: {}".format(problem), position, label="TypeError")
+    return regex_search(program, text, 0, regex_meter(interpreter, position), exists=True) is not None
 
 
 def builtin_replace_all(args, position):
@@ -3070,7 +3782,7 @@ BUILTINS = {
     "remove": BuiltinFunction("remove", 1, builtin_remove, paths=((0, "write"),)),
     "rename": BuiltinFunction("rename", 2, builtin_rename, paths=((0, "write"), (1, "write"))),
     "copy": BuiltinFunction("copy", 2, builtin_copy, paths=((0, "read"), (1, "write"))),
-    "regex": BuiltinFunction("regex", 2, builtin_regex),
+    "regex": BuiltinFunction("regex", 2, builtin_regex, needs_interpreter=True),
     "replace_all": BuiltinFunction("replace_all", 3, builtin_replace_all),
     "split_lines": BuiltinFunction("split_lines", 1, builtin_split_lines),
     "pad": BuiltinFunction("pad", 2, builtin_pad),
@@ -5339,14 +6051,198 @@ def native_check_size(result, limit, position):
             pending.extend(value)
 
 
-def _natives(module, table):
-    def guarded(implementation):
+# -- std:regex -------------------------------------------------------------------------------
+
+def regex_limits(interpreter):
+    """(longest list, longest string) a result of std:regex may have in this run."""
+    if getattr(interpreter, "counting", False):
+        return interpreter.limits.list, interpreter.limits.string
+    return MAX_LIST_LENGTH, REGEX_HARD_STRING
+
+
+def regex_text(who, role, value, position):
+    if not isinstance(value, str):
+        raise native_error("the {} for regex.{}() needs a string, but got {}".format(role, who, type_category(value)), position)
+    return value
+
+
+def regex_program(who, value, position):
+    pattern = regex_text(who, "pattern", value, position)
+    try:
+        return regex_compile(pattern)
+    except RegexError as problem:
+        raise NovaError("regex.{}(): bad pattern: {}".format(who, problem), position, label="TypeError")
+
+
+def regex_count(who, role, value, position):
+    count = decimal_whole(value)
+    if count is None or count < 0:
+        raise native_error("the {} for regex.{}() needs a whole number of at least 0".format(role, who), position)
+    return count
+
+
+def regex_list(who, program, text, meter, limit, interpreter, position, build):
+    cap = regex_limits(interpreter)[0]
+    out = []
+    for caps in regex_iter(program, text, meter, limit):
+        if len(out) >= cap:
+            raise NovaError("a list cannot grow beyond {} items".format(cap), position)
+        out.append(build(caps))
+    return out
+
+
+def native_regex_test(args, position, interpreter):
+    program = regex_program("test", args[0], position)
+    text = regex_text("test", "text", args[1], position)
+    return regex_search(program, text, 0, regex_meter(interpreter, position), exists=True) is not None
+
+
+def native_regex_match(args, position, interpreter):
+    program = regex_program("match", args[0], position)
+    text = regex_text("match", "text", args[1], position)
+    caps = regex_search(program, text, 0, regex_meter(interpreter, position))
+    return NOTHING if caps is None else regex_match_value(program, text, caps)
+
+
+def native_regex_match_from(args, position, interpreter):
+    program = regex_program("match_from", args[0], position)
+    text = regex_text("match_from", "text", args[1], position)
+    start = regex_count("match_from", "start", args[2], position)
+    if start > len(text):
+        raise native_error("the start for regex.match_from() is {}, past the end of a text of {} characters".format(start, len(text)), position)
+    caps = regex_search(program, text, start, regex_meter(interpreter, position))
+    return NOTHING if caps is None else regex_match_value(program, text, caps)
+
+
+def native_regex_find_all(args, position, interpreter):
+    program = regex_program("find_all", args[0], position)
+    text = regex_text("find_all", "text", args[1], position)
+    return regex_list("find_all", program, text, regex_meter(interpreter, position), None, interpreter, position,
+                      lambda caps: regex_match_value(program, text, caps))
+
+
+def native_regex_find_n(args, position, interpreter):
+    program = regex_program("find_n", args[0], position)
+    text = regex_text("find_n", "text", args[1], position)
+    limit = regex_count("find_n", "limit", args[2], position)
+    return regex_list("find_n", program, text, regex_meter(interpreter, position), limit, interpreter, position,
+                      lambda caps: regex_match_value(program, text, caps))
+
+
+def regex_substitute(who, program, template, text, limit, interpreter, position):
+    meter = regex_meter(interpreter, position)
+    cap = regex_limits(interpreter)[1]
+    out = []
+    size = 0
+    last = 0
+    for caps in regex_iter(program, text, meter, limit):
+        pieces = [text[last:caps[0]]]
+        for item in template:
+            if isinstance(item, int):
+                begin, end = caps[2 * item], caps[2 * item + 1]
+                pieces.append("" if begin is None or end is None else text[begin:end])
+            else:
+                pieces.append(item)
+        for piece in pieces:
+            size += len(piece)
+            out.append(piece)
+        if size > cap:
+            raise NovaError("a string cannot grow beyond {} characters".format(cap), position)
+        last = caps[1]
+    out.append(text[last:])
+    return "".join(out)
+
+
+def regex_replacement(who, program, value, position):
+    replacement = regex_text(who, "replacement", value, position)
+    try:
+        return regex_template(program, replacement)
+    except RegexError as problem:
+        raise NovaError("regex.{}(): bad replacement: {}".format(who, problem), position, label="TypeError")
+
+
+def native_regex_sub(args, position, interpreter):
+    program = regex_program("sub", args[0], position)
+    template = regex_replacement("sub", program, args[1], position)
+    text = regex_text("sub", "text", args[2], position)
+    return regex_substitute("sub", program, template, text, None, interpreter, position)
+
+
+def native_regex_sub_n(args, position, interpreter):
+    program = regex_program("sub_n", args[0], position)
+    template = regex_replacement("sub_n", program, args[1], position)
+    text = regex_text("sub_n", "text", args[2], position)
+    count = regex_count("sub_n", "count", args[3], position)
+    return regex_substitute("sub_n", program, template, text, count, interpreter, position)
+
+
+def regex_pieces(who, program, text, limit, interpreter, position):
+    meter = regex_meter(interpreter, position)
+    cap = regex_limits(interpreter)[0]
+    out = []
+    last = 0
+    for caps in regex_iter(program, text, meter, limit):
+        if len(out) >= cap:
+            raise NovaError("a list cannot grow beyond {} items".format(cap), position)
+        out.append(text[last:caps[0]])
+        last = caps[1]
+    out.append(text[last:])
+    return out
+
+
+def native_regex_pieces(args, position, interpreter):
+    program = regex_program("pieces", args[0], position)
+    text = regex_text("pieces", "text", args[1], position)
+    return regex_pieces("pieces", program, text, None, interpreter, position)
+
+
+def native_regex_pieces_n(args, position, interpreter):
+    program = regex_program("pieces_n", args[0], position)
+    text = regex_text("pieces_n", "text", args[1], position)
+    limit = regex_count("pieces_n", "limit", args[2], position)
+    return regex_pieces("pieces_n", program, text, limit, interpreter, position)
+
+
+def native_builtin_regex(args, position, interpreter):
+    return builtin_regex(args, position, interpreter)
+
+
+def native_regex_escape(args, position, interpreter):
+    return regex_escape(regex_text("escape", "text", args[0], position))
+
+
+class _HostView:
+    """What a native sees of the self-hosted engine: no limits (they are the engine's own) and a way to charge
+    work to the engine's counters, which `work` (a function of the engine's, called with the units of work done)
+    adds to its step budget and time check, as Interpreter.step and charge do for the Python engines."""
+    counting = False
+
+    def __init__(self, interpreter, work):
+        self.interpreter = interpreter
+        self.work = work
+
+    def step(self, position=None):
+        pass
+
+    def charge(self, units, position=None):
+        if self.work is not None:
+            self.interpreter.call_value(self.work, [units], position)
+
+
+def _natives(module, table, metered=()):
+    """The BuiltinFunctions of a module's natives. A function named in `metered` is also given the interpreter
+    (or, for the self-hosted engine, a view of its host), to charge its work to the run."""
+    def guarded(implementation, wants_interpreter):
         def run(args, position, interpreter):
-            result = implementation(args, position)
+            if wants_interpreter:
+                result = implementation(args, position, interpreter)
+            else:
+                result = implementation(args, position)
             native_check_size(result, interpreter.limits.string if interpreter.counting else 0, position)
             return result
         return run
-    return {name: BuiltinFunction("{}.{}".format(module, name), arity, guarded(implementation), needs_interpreter=True, paths=paths)
+    return {name: BuiltinFunction("{}.{}".format(module, name), arity, guarded(implementation, name in metered),
+                                  needs_interpreter=True, paths=paths)
             for name, (arity, implementation, paths) in table.items()}
 
 
@@ -5364,6 +6260,15 @@ NATIVE_FUNCTIONS = {
         "to_float": (1, native_decimal_to_float, ()), "total": (1, native_decimal_total, ()),
     }),
     "text": _natives("text", {"chr": (1, native_text_chr, ()), "ord": (1, native_text_ord, ())}),
+    # not a module: the global regex() for the self-hosted engine, so that its work is charged to the engine's counters
+    "builtin": _natives("builtin", {"regex": (2, native_builtin_regex, ())}, metered=("regex",)),
+    "regex": _natives("regex", {
+        "test": (2, native_regex_test, ()), "match": (2, native_regex_match, ()),
+        "match_from": (3, native_regex_match_from, ()), "find_all": (2, native_regex_find_all, ()),
+        "find_n": (3, native_regex_find_n, ()), "sub": (3, native_regex_sub, ()), "sub_n": (4, native_regex_sub_n, ()),
+        "pieces": (2, native_regex_pieces, ()), "pieces_n": (3, native_regex_pieces_n, ()),
+        "escape": (1, native_regex_escape, ()),
+    }, metered=("test", "match", "match_from", "find_all", "find_n", "sub", "sub_n", "pieces", "pieces_n", "escape")),
     "files": _natives("files", {
         "size": (1, native_files_size, READ_PATH), "is_dir": (1, native_files_is_dir, READ_PATH),
         "is_link": (1, native_files_is_link, READ_PATH), "next_lines": (3, native_files_next_lines, READ_PATH),
@@ -5371,15 +6276,16 @@ NATIVE_FUNCTIONS = {
 }
 
 
-def native_call(args, position):
-    """`native_call("module.name", [arguments], string_limit)`: how the self-hosted interpreter reaches a
-    native. It passes its own string limit (0 for none), which the host cannot see."""
-    qualified, call_args, limit = args
+def native_call(args, position, interpreter=None):
+    """`native_call("module.name", [arguments], string_limit, work)`: how the self-hosted interpreter reaches a
+    native. It passes its own string limit (0 for none), which the host cannot see, and `work`, its function that
+    counts the units of work a native reports; `interpreter` is the host interpreter that runs the engine."""
+    qualified, call_args, limit, work = args
     module, _, name = qualified.partition(".")
     function = NATIVE_FUNCTIONS[module][name]
     if function.arity is not None and len(call_args) != function.arity:
         raise NovaError("{}() expects {} argument(s) but got {}".format(name, function.arity, len(call_args)), position)
-    result = function.implementation(call_args, position, _NO_LIMITS)
+    result = function.implementation(call_args, position, _HostView(interpreter, work) if interpreter is not None else _NO_LIMITS)
     native_check_size(result, limit, position)
     return result
 
@@ -5387,6 +6293,12 @@ def native_call(args, position):
 class _NoLimits:
     """Stands in for the interpreter when the self-hosted engine calls a native: its limits are its own."""
     counting = False
+
+    def step(self, position=None):
+        pass
+
+    def charge(self, units, position=None):
+        pass
 
 
 _NO_LIMITS = _NoLimits()

@@ -1,0 +1,15 @@
+# micro: std:regex - pull the status out of 3,000 access-log lines with one pattern, and sub and split a long line (M13 slice 4).
+import "std:regex" as re
+let line = "203.0.113.9 - bob [10/Oct/2026:13:55:36 +0000] \"GET /a/b?c=d HTTP/1.1\" 200 2326 \"-\" \"Mozilla/5.0\""
+let pattern = "\"(?:[^\"\\\\]|\\\\.)*\"\\s+([1-5]\\d\\d)\\s"
+let i = 0
+let total = 0
+while i < 3000 {
+    let m = re.match(pattern, line)
+    total = total + num(m.groups[0])
+    i = i + 1
+}
+print(total)
+let long = "word, " * 3000
+print(len(re.pieces(",\\s*", long)), len(re.sub("o", "0", long)))
+print(re.test("(a+)+$", "a" * 4000 + "b"))

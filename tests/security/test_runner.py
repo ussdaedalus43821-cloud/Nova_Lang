@@ -36,7 +36,7 @@ class Api(unittest.TestCase):
 
     def test_a_hang_inside_a_call_the_engine_cannot_interrupt_is_killed_from_outside(self):
         started = time.monotonic()
-        result = nl.run_isolated('print(regex("(a+)+$", "a" * 40 + "!"))', regex=True, limits={"time": 400})
+        result = nl.run_isolated('python.import("time")\npython.call("time.sleep", 30)', python=["time"], limits={"time": 400})
         self.assertEqual((result.killed, result.status), ("time", 1))
         self.assertEqual(result.error, "LimitError: time limit of 400 ms exceeded")
         self.assertLess(time.monotonic() - started, 20)

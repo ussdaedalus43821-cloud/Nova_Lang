@@ -231,6 +231,202 @@ case("std-files-exports", ["lib.std-files", "mod.std"],
      'import "std:files" as files\nprint(join(sorted(keys(files)), " "))', ["each_line is_dir is_link lines size"],
      profile="sandbox", sandbox=GRANT)
 
+
+# ---- std:regex ---------------------------------------------------------------------------------
+# The NovaLang sources below are raw strings, so a backslash here is the backslash NovaLang sees: the
+# pattern \d is written "\\d" in NovaLang, and a line feed is "\n".
+RE = 'import "std:regex" as re\n'
+RGRANT = {"profile": "restricted", "regex": True}
+case("std-regex-needs-the-regex-capability", ["mod.std", "sbx.capabilities", "lib.std-regex"],
+     RE + 'print(re.test("a", "a"))',
+     [], error="ImportError: std:regex needs the 'regex' capability, which this run did not grant", error_line=1, exit=1,
+     profile="sandbox", sandbox={"profile": "restricted"})
+case("std-regex-runs-with-the-regex-capability", ["mod.std", "sbx.capabilities", "lib.std-regex"],
+     RE + 'print(re.test("^a+$", "aaa"), re.test("^a+$", "aab"))',
+     ["true false"], profile="sandbox", sandbox=RGRANT)
+case("std-regex-exports", ["lib.std-regex", "mod.std"],
+     RE + 'print(join(sorted(keys(re)), " "))', ["escape find_all find_n match match_from pieces pieces_n sub sub_n test"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-match-is-a-dictionary-of-offsets-text-and-groups", ["lib.std-regex"],
+     RE + r"""let m = re.match("(\\d+)-(?P<tail>\\d+)(x)?", "call 555-1234 now")
+print(m.start, m.end, m.text)
+print(m.groups)
+print(m.named)
+print(sorted(keys(m)))
+print(re.match("x", "abc"))""",
+     ["5 13 555-1234", '["555", "1234", nothing]', '{tail: "1234"}', '["end", "groups", "named", "start", "text"]', "nothing"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-offsets-count-characters-not-bytes", ["lib.std-regex"],
+     RE + r"""let m = re.match("é+", "caféé!")
+print(m.start, m.end, len(m.text))""",
+     ["3 5 2"], profile="sandbox", sandbox=RGRANT)
+case("std-regex-match-from", ["lib.std-regex"],
+     RE + r"""print(re.match_from("\\d", "1a2b3", 1).start, re.match_from("\\d", "1a2b3", 5), re.match_from("^1", "1a1", 2))
+try { re.match_from("a", "abc", 4) } catch e { print(e) }
+try { re.match_from("a", "abc", -1) } catch e { print(e) }""",
+     ["2 nothing nothing", "the start for regex.match_from() is 4, past the end of a text of 3 characters",
+      "the start for regex.match_from() needs a whole number of at least 0"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-find-all-leftmost-first-not-overlapping", ["lib.std-regex"],
+     RE + r"""def texts(ms) {
+  let out = []
+  for m in ms { append(out, m.text) }
+  return out
+}
+print(texts(re.find_all("\\d+", "a1b22c333")))
+print(texts(re.find_all("aa", "aaaaa")))
+print(texts(re.find_all("a|ab", "abab")))
+print(texts(re.find_all("a*", "baac")))
+print(len(re.find_all("x", "")), texts(re.find_n("\\d", "1234", 2)), texts(re.find_n("\\d", "1234", 0)))""",
+     ['["1", "22", "333"]', '["aa", "aa"]', '["a", "a"]', '["", "aa", "", ""]', '0 ["1", "2"] []'],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-sub", ["lib.std-regex"],
+     RE + r"""print(re.sub("\\s+", " ", "a   b \n c"))
+print(re.sub("(\\w+)@(\\w+)", "\\2 at \\1", "joe@site and ann@home"))
+print(re.sub("(?P<w>b+)", "[\\g<w>|\\g<1>|\\\\]", "abbc"))
+print(re.sub("a*", "-", "baac"))
+print(re.sub("x", "y", "abc"), re.sub("(a)|b", "<\\1>", "ab"))
+print(re.sub_n("a", "A", "aaaa", 2), re.sub_n("a", "A", "aaaa", 0))""",
+     ["a b c", "site at joe and home at ann", "a[bb|bb|\\]c", "-b--c-", "abc <a><>", "AAaa aaaa"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-pieces", ["lib.std-regex"],
+     RE + r"""print(re.pieces(",\\s*", "a, b,c"))
+print(re.pieces("x", "abc"), re.pieces("b", "abc"), re.pieces("c", "abc"))
+print(re.pieces("x*", "axbc"))
+print(re.pieces_n(",", "a,b,c,d", 2), re.pieces_n(",", "a,b", 0))""",
+     ['["a", "b", "c"]', '["abc"] ["a", "c"] ["ab", ""]', '["", "a", "", "b", "c", ""]', '["a", "b", "c,d"] ["a,b"]'],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-escape-makes-text-match-itself", ["lib.std-regex"],
+     RE + r"""print(re.escape("a.b*c"))
+for s in ["a.b", "(x)|[y]", "^$", "1+1=2?", "back\\slash", "{2}", "a-b"] {
+  print(re.test("^" + re.escape(s) + "$", s))
+}""",
+     ["a\\.b\\*c"] + ["true"] * 7, profile="sandbox", sandbox=RGRANT)
+case("std-regex-the-dialect", ["lib.regex"],
+     RE + r"""print(re.test("^a.c$", "abc"), re.test("^a.c$", "a\nc"), re.test("^[^a]$", "\n"))
+print(re.test("\\bcat\\b", "a cat sat"), re.test("\\bcat\\b", "concat"), re.test("\\Bcat", "concat"))
+print(re.match("a+?", "aaa").text, re.match("a+", "aaa").text, re.match("a{2,3}", "aaaa").text, re.match("a{2}", "aaaa").text, re.match("a{2,}?", "aaaa").text)
+print(re.test("(?i)HeLLo", "say hELLO"), re.test("(?i)[a-c]+$", "ABC"), re.test("HeLLo", "say hello"))
+print(re.test("^\\d+$", "١٢٣"), re.test("^\\w+$", "é"), re.test("^[\\d_]+$", "1_2"), re.test("^\\D\\W\\S$", "a-b"))
+print(re.test("^(?:ab)+$", "abab"), re.match("(a)|(b)", "b").groups, re.match("x*", "").end, re.test("a|", "zzz"))
+print(re.test("a$", "a\n"), re.test("a$", "a\n\n"), re.test("^$", ""), re.test("[a\\]]", "]"), re.test("[]a]", "]"))
+print(re.test("\\B", ""), re.test("\\b", ""), re.test("x{", "x{"), re.test("a{1", "a{1"), re.test("\\x41\\u0042", "AB"))""",
+     ["true false true", "true false true", "a aaa aaa aa aa", "true true false", "false false true true",
+      'true [nothing, "b"] 0 true', "true false true true true", "true false true true true"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-bad-patterns-are-refused-with-a-reason", ["lib.regex", "lib.std-regex"],
+     RE + r"""def bad(p) {
+  try { re.test(p, "x") } catch e { print(e) }
+}
+for p in ["(a", "a)", "[a", "a\\", "(?=a)", "(?!a)", "(?<=a)", "(?<!a)", "(?>a)", "(?(1)a)", "(?#c)", "(?s)a", "a(?i)", "(?<n>a)", "(?P<n>a)(?P<n>b)", "(?P=n)", "(a)\\1", "\\0", "\\A", "\\q", "a**", "a*+", "a++", "?", "*a", "^*", "a{2,1}", "a{,2}", "a{1001}", "[z-a]", "[\\d-z]"] {
+  bad(p)
+}""",
+     ["TypeError: regex.test(): bad pattern: missing ), unterminated group",
+      "TypeError: regex.test(): bad pattern: unbalanced parenthesis",
+      "TypeError: regex.test(): bad pattern: missing ], unterminated character class",
+      "TypeError: regex.test(): bad pattern: a pattern cannot end with a backslash",
+      "TypeError: regex.test(): bad pattern: look-ahead is not supported",
+      "TypeError: regex.test(): bad pattern: look-ahead is not supported",
+      "TypeError: regex.test(): bad pattern: look-behind is not supported",
+      "TypeError: regex.test(): bad pattern: look-behind is not supported",
+      "TypeError: regex.test(): bad pattern: atomic groups are not supported",
+      "TypeError: regex.test(): bad pattern: conditional groups are not supported",
+      "TypeError: regex.test(): bad pattern: comment groups are not supported",
+      "TypeError: regex.test(): bad pattern: the flag group (?i) is allowed only at the start of the pattern, and no other flag is supported",
+      "TypeError: regex.test(): bad pattern: the flag group (?i) is allowed only at the start of the pattern, and no other flag is supported",
+      "TypeError: regex.test(): bad pattern: a named group is written (?P<name>...)",
+      "TypeError: regex.test(): bad pattern: the group name n is used twice",
+      "TypeError: regex.test(): bad pattern: back-references are not supported",
+      "TypeError: regex.test(): bad pattern: back-references and octal escapes are not supported (write \\x.. for a character code)",
+      "TypeError: regex.test(): bad pattern: back-references and octal escapes are not supported (write \\x.. for a character code)",
+      "TypeError: regex.test(): bad pattern: unknown escape \\A",
+      "TypeError: regex.test(): bad pattern: unknown escape \\q",
+      "TypeError: regex.test(): bad pattern: multiple repeat",
+      "TypeError: regex.test(): bad pattern: possessive quantifiers are not supported",
+      "TypeError: regex.test(): bad pattern: possessive quantifiers are not supported",
+      "TypeError: regex.test(): bad pattern: nothing to repeat",
+      "TypeError: regex.test(): bad pattern: nothing to repeat",
+      "TypeError: regex.test(): bad pattern: nothing to repeat",
+      "TypeError: regex.test(): bad pattern: the repeat count {2,1} has its minimum above its maximum",
+      "TypeError: regex.test(): bad pattern: write {0,2} for a repeat of up to 2",
+      "TypeError: regex.test(): bad pattern: a repeat count is limited to 1000",
+      "TypeError: regex.test(): bad pattern: bad character range",
+      "TypeError: regex.test(): bad pattern: a character class shortcut cannot start a range"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-pattern-limits", ["lib.regex"],
+     RE + r"""def bad(p) {
+  try { re.test(p, "x") } catch e { print(e) }
+}
+bad("a" * 4001)
+print(re.test("^" + "a" * 3998 + "$", "a" * 3998))
+bad("(" * 101 + "a" + ")" * 101)
+bad("(?:" * 100 + "a" + ")" * 100 + "|(")
+bad("(a{1000}){1000}")
+bad("((a{1000}){1000}){1000}")
+bad("(?:(?:(?:(?:){1000}){1000}){1000}){1000}")
+print(re.test("^(a{1000}){2}$", "a" * 2000))
+let groups = ""
+for i in range(1001) { groups = groups + "(a)" }
+bad(groups)
+print(re.test("^" + "(a)" * 1000 + "$", "a" * 1000))""",
+     ["TypeError: regex.test(): bad pattern: the pattern is longer than 4000 characters", "true",
+      "TypeError: regex.test(): bad pattern: groups are nested more than 100 deep",
+      "TypeError: regex.test(): bad pattern: missing ), unterminated group",
+      "TypeError: regex.test(): bad pattern: the pattern is too large: it expands to more than 20000 instructions",
+      "TypeError: regex.test(): bad pattern: the pattern is too large: it expands to more than 20000 instructions",
+      "TypeError: regex.test(): bad pattern: the pattern is too large: its repeats expand to more than 400000 steps",
+      "true",
+      "TypeError: regex.test(): bad pattern: a pattern has at most 1000 groups", "true"],
+     profile="sandbox", sandbox={"profile": "restricted", "regex": True, "limits": {"time": 120000}})
+case("std-regex-patterns-that-are-exponential-for-a-backtracking-engine", ["lib.regex"],
+     RE + r"""let a = "a" * 5000
+print(re.test("(a+)+$", a + "b"), re.test("^(a|aa)+$", a + "b"), re.test("(a*)*b", a), re.test("^(a?){40}a{40}$", "a" * 40))
+print(regex("(x+x+)+y", "x" * 5000), regex("^(\\w+\\s?)*$", "word " * 800 + "!"))""",
+     ["false false false true", "false false"],
+     profile="sandbox", sandbox={"profile": "restricted", "regex": True, "limits": {"time": 120000, "steps": 5000000}})
+case("std-regex-work-is-charged-to-the-steps-of-the-run", ["lib.regex", "sbx.limits"],
+     RE + r"""print(re.test("a", "a"))
+print(re.test("(a|b)*c", "ab" * 5000))""",
+     ["true"], error="LimitError: step budget of 200 steps exhausted - is there a loop that never ends?", exit=1,
+     profile="sandbox", sandbox={"profile": "restricted", "regex": True, "limits": {"steps": 200, "time": 120000}},
+     extra={"error_like": r"^LimitError: step budget of 200 steps exhausted - is there a loop that never ends\?$"})
+case("std-regex-wrong-argument-types", ["lib.std-regex"],
+     RE + r"""try { re.test(5, "a") } catch e { print(e) }
+try { re.test("a", 5) } catch e { print(e) }
+try { re.sub("a", [], "a") } catch e { print(e) }
+try { re.find_n("a", "a", -1) } catch e { print(e) }
+try { re.find_n("a", "a", 1.5) } catch e { print(e) }
+try { re.sub_n("a", "b", "a", "1") } catch e { print(e) }
+try { re.sub("(a)", "\\2", "a") } catch e { print(e) }
+try { re.sub("a", "\\q", "a") } catch e { print(e) }
+try { re.sub("a", "\\", "a") } catch e { print(e) }
+try { re.sub("(?P<n>a)", "\\g<m>", "a") } catch e { print(e) }
+try { re.escape(1) } catch e { print(e) }
+try { re.test("a") } catch e { print(e) }""",
+     ["the pattern for regex.test() needs a string, but got number",
+      "the text for regex.test() needs a string, but got number",
+      "the replacement for regex.sub() needs a string, but got list",
+      "the limit for regex.find_n() needs a whole number of at least 0",
+      "the limit for regex.find_n() needs a whole number of at least 0",
+      "the count for regex.sub_n() needs a whole number of at least 0",
+      "TypeError: regex.sub(): bad replacement: the replacement uses group 2, and the pattern has 1",
+      "TypeError: regex.sub(): bad replacement: unknown escape \\q in the replacement (use \\\\ for a backslash)",
+      "TypeError: regex.sub(): bad replacement: a replacement cannot end with a backslash",
+      "TypeError: regex.sub(): bad replacement: the replacement names a group that the pattern does not have: m",
+      "the text for regex.escape() needs a string, but got number",
+      "test() expects 2 argument(s) but got 1"],
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-the-builtin-regex-has-the-same-dialect", ["lib.regex"],
+     r"""print(regex("(?i)^ab+$", "ABBB"))
+print(regex("a(?=b)", "ab"))""",
+     ["true"], error="TypeError: regex(): bad pattern: look-ahead is not supported", error_line=2, exit=1,
+     profile="sandbox", sandbox=RGRANT)
+case("std-regex-builtin-is-ungated-by-std-and-bad-pattern-is-type-error", ["lib.regex", "sbx.capabilities"],
+     r"""try { regex("(", "x") } catch e { print(e) }
+print(regex("^\\d{3}$", "123"))""",
+     ["TypeError: regex(): bad pattern: missing ), unterminated group", "true"],
+     profile="sandbox", sandbox=RGRANT)
+
 json.dump  # (kept for clarity)
 doc = {"area": "std", "version": 1, "cases": cases}
 open(ROOT + "tests/conformance/cases/std.json", "w", encoding="utf-8").write(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")

@@ -457,6 +457,22 @@ reach (and marked unreviewed until the independent review); no merge without the
 | 6 | **Packages, part 2: the registry** | the archive format and the hardened extractor, the static index and its signatures (Ed25519 verifier and vectors), serial and expiry, revocation, `pack`, `publish`, `yank`, install from a directory or HTTPS registry (a hardened fetch core: HTTPS only, size and time limits, no proxy); the end-to-end test of the roadmap's exit criterion; the supply-chain table of 5.5 as tests | 5 | L |
 | 7 | **HTTP** (**moved to M14 by D6; not M13 scope**) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
 
+### Slice 4: progress (branch `m13/slice-4-regex`; a draft until the owner has read it)
+
+| Item of the slice | State |
+| --- | --- |
+| The dialect (D3) | **Built and specified** in `[lib.regex]`: literals and escapes, `.`, classes, ASCII `\d \w \s \b` and their negations, `^ $`, capturing, non-capturing and named groups, `\|`, greedy and lazy repeats, `(?i)` at the start. Back-references, look-around, atomic groups, possessive quantifiers, conditionals, comments and other flags are refused with a reason that names them. `$` also matches before a final line feed (as the old `regex()` did), so no existing pattern changes meaning |
+| The matcher | **Built**, in `novalang.py` ("regular expressions"): parser, compiler, Pike virtual machine with leftmost-first priority; pattern x text time. A literal prefix and an anchored start skip work. The self-hosted engine uses the same code (the global `regex()` and every `std:regex` function through `native_call`) |
+| Step accounting | **Built on all three engines**: 128 thread-steps cost one step of the budget and the clock is read as for any long operation (`Interpreter.charge`; for the self-hosted engine, a callback into its own counters). `tests/std/test_regex.py` proves a step budget and a time limit end a run on both Python engines, and the corpus case does so on all three |
+| `std:regex` | **Built** (capability `regex`, provisional): `test`, `match`, `match_from`, `find_all`, `find_n`, `sub`, `sub_n`, `pieces`, `pieces_n`, `escape`. **Two departures from the plan's table:** NovaLang has no optional arguments, so each of `find_all`, `sub` and `split` has a second form with the count or limit (`find_n`, `sub_n`, `pieces_n`); and `split` is a built-in name and cannot be exported, so it is `pieces`. Results are held to the list and string limits while they are built (`sub` cannot build a string past the limit before the check) |
+| The global `regex()` | **Same matcher**, same signature. Two behaviours that were `re`'s are now the dialect's: a pattern that used a refused construct is a bad pattern, and `\B` matches in an empty text |
+| Limits | **Built** as in the plan: 4,000 characters, 1,000 groups, repeat counts to 1,000, 20,000 instructions, plus a nesting depth of 100 and a bound on compile work (a repeat of an empty group adds no instruction and would otherwise be unbounded) |
+| The differential fuzzer | **Built** (`tests/std/test_regex.py`): 1,500 random patterns x 6 texts compared with `re` on whether there is a match, its span and every group, and the same patterns' `find_all`, `sub` and splits; tens of thousands more were run by hand while building it. **One specified difference:** when a repeated item can match the empty string (`(a|b*)*`), only whether there is a match and where it starts are held to `re`; the end and the final captures may differ, because a Pike machine cannot revisit an instruction at the same place the way a backtracker does (`[lib.regex]`). That class is compared on existence and start only |
+| The time tests | **Built**: nine patterns that are exponential for a backtracking engine finish within pattern x text units and a few seconds |
+| Runner tests | The runner's "a call the engine cannot interrupt" case used `regex("(a+)+$", ...)`; it now answers at once, so the cases (conformance and unit) use `time.sleep` through the `python` bridge |
+| Nova_Log's done-when (the status extraction is one pattern and its tests pass) | See the report of the slice; Nova_Log is a separate repository |
+| The capability | **Kept** (`regex`), as the plan says, until a release of fuzzing; `[sbx.capabilities]` and the threat model's review log say so, and the review log asks the reviewer to read the matcher |
+
 ### Slice 3: progress (branch `m13/slice-3-native-tier`; a draft until the owner has read it)
 
 | Item of the slice | State |
@@ -578,7 +594,7 @@ its signatures (slice 6).
 | --- | --- | --- |
 | G-001 | Big integers are exact | PASS: the basis of `std:decimal` |
 | G-002 | `num()` throws on text | Slice 1: `text.is_number`, `text.parse_number(s, default)` (`num` keeps throwing: stable) |
-| G-003 | `regex()` returns only true or false | **Slice 4** |
+| G-003 | `regex()` returns only true or false | **Slice 4: built** (`std:regex`) |
 | G-004, G-005 | No escape character, no `chr`/`ord` | Slice 3: `text.chr`, `text.ord` (moved from slice 1: they need a native function and the native module tier starts in slice 3; a global name would break programs) |
 | G-006 | No `find`, `startswith`, `endswith` | Slice 1: `std:text` |
 | G-007, G-008 | No thousands separator, no number formatting | Slice 2: `std:format` (D10) |

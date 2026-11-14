@@ -76,7 +76,7 @@ In `restricted` a capability is absent unless granted.
 | `random` | `random`, `randint`, `choice`, `shuffle` | on or off | |
 | `stdin` | `input` | on or off | |
 | `process` | `exit`, `args`, `platform`, `cwd`, `abspath`, `realpath` | on or off | `exit` ends the run with that status and never ends the embedder's process; `cwd`, `abspath` and `realpath` reveal the layout of the machine |
-| `regex` | `regex` | on or off | a pattern can run for ever on a small input and no engine can interrupt it, so this is off unless granted, and a host that grants it must be able to stop the run from outside (`[sbx.limits]`, `time`) |
+| `regex` | `regex`, `std:regex` | on or off | off unless granted. Until M13 a pattern could run for ever on a small input and no engine could interrupt it, and a host that granted it had to be able to stop the run from outside. The matcher is now the one of `[lib.regex]`: its time is the pattern times the text whatever the pattern, and its work is charged to the run (`[sbx.limits]`), so it can no longer hang a run. The capability is **kept** while the matcher is new: it is the one engine whose work is written here and not borrowed from the host, and a release of fuzzing (`tests/std/test_regex.py`) comes before relaxing it, which is additive. A host's own matcher MUST meet the same time bound before it grants the capability |
 | `python` | the `python` bridge | module names | `[py.off]`, `[py.registry]`; a granted module is the embedder's decision. **The grant replaces the default import list of `[py.import]`**: only the modules named in it can be imported, because `re`, `random` and `datetime` are on the default list and would give back `regex`, `random` and `clock` |
 
 There is **no network capability**: NovaLang has no network built-in, so nothing is defined
@@ -222,10 +222,9 @@ on two long lists, `a == b`, a slice, `sorted`, `join`, `str` of a list, `range`
 size of what it walks, and the clock is read for every 50,000 units charged. The error may
 therefore come a little after the limit, but never from a program that ends sooner, and the
 overrun is at most the time one such operation takes on the largest collection the limits allow
-(about 0.4 seconds for a search of a list of a million items on a small machine). A host function
-that cannot be interrupted while it runs (`regex`, a blocking read of standard input, a function
-the embedder wrote) is not covered by the engine's own check, which is why `regex` is a
-capability and why the subprocess runner (slice 5 of M11) stops a run from outside; the runner
+(about 0.4 seconds for a search of a list of a million items on a small machine). The regex matcher (`[lib.regex]`) is charged in the same way: 128 units of its work are one step of the budget, and the clock is read every 50,000 units. A host function
+that cannot be interrupted while it runs (a blocking read of standard input, a call through the `python` bridge, a function
+the embedder wrote) is not covered by the engine's own check, which is why the subprocess runner (slice 5 of M11) stops a run from outside; the runner
 starts its wall-clock deadline before it feeds the child any input.
 
 **Output.** The write that would take the total over the limit is **not made at all**: the
@@ -306,7 +305,7 @@ Each row is a cell of the coverage matrix and needs a case on every engine:
 ## [sbx.runner] The subprocess runner
 
 The limits of `[sbx.limits]` are checked by the engine, so they cannot stop a call that never returns to it:
-a pattern that backtracks for ever inside `regex`, or a host function the embedder wrote. The **runner** adds a
+a blocking call through the `python` bridge, or a host function the embedder wrote. The **runner** adds a
 check from outside. It starts the interpreter in a separate process, watches the clock and the output from the
 parent, and kills the child when a limit is passed.
 
@@ -352,7 +351,7 @@ Each row is a cell of the coverage matrix and needs a case on every engine:
 
 | Cell | Kinds | What it pins |
 | --- | --- | --- |
-| `runner.time` | trip | a `regex` that never returns, and an endless loop of the `trusted` profile, are killed from outside |
+| `runner.time` | trip | a call the engine cannot interrupt (a `time.sleep` through the `python` bridge), and an endless loop of the `trusted` profile, are killed from outside |
 | `runner.output` | trip | a flood is cut off at the cap |
 | `runner.memory` | trip | a program that allocates past `memory_mb` ends with the memory error (Linux only) |
 | `runner.env` | deny grant | the child's environment is empty, and `pass_env` hands a named variable over |

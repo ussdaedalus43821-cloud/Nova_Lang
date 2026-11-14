@@ -3,13 +3,13 @@
  "version": 1,
  "cases": [
   {
-   "name": "sbx-runner-kills-a-regex-that-never-returns",
+   "name": "sbx-runner-kills-a-call-the-engine-cannot-interrupt",
    "spec": [
     "sbx.runner",
     "sbx.profiles"
    ],
    "profile": "sandbox",
-   "source": "print(regex(\"(a+)+$\", \"a\" * 40 + \"!\"))",
+   "source": "python.import(\"time\")\npython.call(\"time.sleep\", 30)",
    "output": [],
    "error": "LimitError: time limit of 500 ms exceeded",
    "error_line": null,
@@ -17,7 +17,9 @@
    "host_calls": [],
    "sandbox": {
     "profile": "restricted",
-    "regex": true,
+    "python": [
+     "time"
+    ],
     "limits": {
      "time": 500
     },
