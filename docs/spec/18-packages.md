@@ -4,8 +4,8 @@ A *package* is a folder with a `nova.json` that a project depends on. `tools/nov
 dependencies, writes `nova.lock` and copies the packages into `.nova_modules/`; `import "name"` (a bare name, no `.nova`
 and no `/`) then loads the package's entry file ([mod.import]). This chapter specifies the manifest, the folder layout,
 the lockfile, what the tool checks, and the **declared capabilities** of a package, which the interpreter and the tool
-check in the same way (decision D9 of the M13 plan, `[sbx.capabilities]`). The registry (names with an owner, the index,
-signatures and `publish`) is the business of a later version and is not specified here.
+check in the same way (decision D9 of the M13 plan, `[sbx.capabilities]`). The registry (the signed index, the archive, `publish`) is described at the end of the chapter; it is
+the tool's business, and a conforming host needs none of it.
 
 The sections with an id are what a conforming host does and are held by the conformance corpus (the `modules` and
 `sandbox` profiles); the sections about the tool have no id: `tools/nova-pkg.py` is a Python program, not part of a
@@ -66,6 +66,12 @@ project/
     math-utils/          one folder per package, flat: one version of each name
       nova.json  main.nova  src/...
 ```
+
+A package named with an owner (`acme/ledger`) is installed in two folders, `.nova_modules/acme/ledger/`, and imported as
+`import "acme/ledger"`: a string of two names, each of the form of a package name, with one `/` between them and no `.nova`
+at the end, is a package import; any other string with a `/` is a file path as before. It binds the part after the slash
+(`ledger`; `import "acme/ledger" as l` binds `l`). The owner's folder is not a package: `import "acme"` is `cannot find package`.
+The checks of [pkg.capabilities] and the label `acme/ledger/main.nova` in messages are the same as for an unscoped package.
 
 `import "math-utils"` finds the nearest `.nova_modules/math-utils/nova.json` walking up from the importing file's folder
 and loads its `main` (so a package's own imports find its dependencies, which are installed beside it). The packages are
@@ -129,3 +135,61 @@ In this order, and nothing is copied until all of it passes:
 `nova-pkg.py capabilities [PACKAGE]` prints, for each installed package (or one), what it declares and what its files
 use, marks a capability used and not declared (a file edited after install), and the project's policy. `nova-pkg.py init
 [NAME]` writes a version-2 manifest with an empty `capabilities` list.
+
+## The registry (the tool)
+
+A registry is a tree of files (decision D7: a static signed index, nothing to operate and no service to attack), served by
+a folder, a `file://` address or HTTPS (decision D8: the protocol and a reference implementation are shipped; no public
+registry is operated by M13, and a client trusts no registry until the project names its keys):
+
+```
+registry.json                       signed by the ROOT keys the client trusts
+revoked.json                        signed by the registry's signing keys
+index/<owner>/<name>.json           signed: every version of one package
+archive/<owner>/<name>/<version>.tar
+```
+
+**Signed files.** `{"signed": {...}, "signatures": [{"keyid", "sig"}]}`. The bytes signed are the canonical JSON of `signed`
+(sorted keys, no spaces, ASCII), the signature is Ed25519 (RFC 8032; `tools/nova_registry.py` holds a pure-Python
+implementation tested against the RFC's vectors and, where it is installed, the `cryptography` package), a key id is the first
+16 hex digits of the SHA-256 of the public key, and a file is valid when at least `threshold` **distinct** trusted keys signed it.
+
+- `registry.json` (`_type` "registry"): `name`, `serial` (a whole number that rises with every change), `expires` (a UTC
+  time), `keys` (the public keys that sign the other files) and `threshold`, and `snapshot`, the SHA-256 of `revoked.json` and
+  of every index file. It is the root of trust: the client verifies it with the keys of `registryKeys` in the project's
+  `nova.json` (and `registryThreshold`, default 1), never with keys the registry names for itself. The keys it lists are how a
+  signing key is rotated without the client changing anything.
+- `index/<owner>/<name>.json` (`_type` "index"): per version `sha256` and `size` of the archive, `nova` (range), `capabilities`,
+  `yanked`. `revoked.json`: `keys` (key ids that must no longer sign) and `archives` (hashes that must not be installed), each
+  with a reason.
+
+**The archive** is a ustar file written to be reproducible: entries sorted by path, time 0, mode 0644, owner 0, regular files
+only, no directories, no links; so the same files give the same bytes and a hash means something. The reader (written for this
+tool; `tarfile` is never used on a downloaded file) accepts nothing else: regular files with clean relative names (no `..`,
+no absolute path, no backslash, no drive letter, no control character, no duplicate, also by case), only the kinds of file a package
+may hold, at most 2,000 files, 1 MiB for a file, 16 MiB in all, 255 bytes of path, every checksum right, zeros after the last
+entry. It writes into a fresh folder and renames it into place, creates files with `x` (never through an existing file or a link),
+executes nothing, and leaves nothing behind when it refuses.
+
+**What a client checks, in order:** `registry.json` is signed by enough trusted keys; it has not expired; its serial is not
+below the highest this machine has seen for that registry (a rollback; kept in `~/.nova/pkg-state.json` or `$NOVA_PKG_STATE`);
+`revoked.json` and each index file match the hashes `registry.json` pins for them (so files of different times cannot be
+mixed) and are signed by enough of its signing keys, none revoked; the archive matches the hash and size of its index entry and
+is not revoked; then it is unpacked. `nova.lock` records, for each package, `resolved` (the archive's address), `archive` (its
+hash) and `signedBy` (the key ids that signed its index), and an install from the lock checks the archive against that hash.
+`yank` marks a version so that ranges no longer choose it, while a lock that names it still installs; `revoke` refuses an archive
+or a key everywhere. A published version is never changed or removed. A directory registry that has no `registry.json` is the
+older, unsigned layout (`<registry>/<name>/<version>/`) and works only for local folders; an HTTPS registry must be signed.
+
+**Fetching** is internal to `nova-pkg` and is not a NovaLang capability (decision D6): HTTPS only, certificate verification on
+and no switch to turn it off (`$NOVA_PKG_CA_FILE` adds a certificate authority for a private registry), no proxy, a timeout of 15 s
+and a deadline of 60 s, a size limit for every file, and a redirect only to the same host over HTTPS.
+
+**Commands.** `keygen --out FILE` writes a signing key (mode 0600, never overwritten) and prints its public key. `pack [--out DIR]`
+builds the archive of the package in the current folder from its `files` list (or every file of an allowed kind), after the
+checks of publishing (a valid manifest, `[pkg.capabilities]` on the files that are packed, no file named like a key, a
+credential or an `.env`), and prints its SHA-256. `publish --registry DIR --key FILE [--key FILE ...] [--dry-run]
+[--expires-days N] [--registry-name NAME]` packs, refuses a name that is too like another owner's (one letter away, or the same
+without case and the separators - _ .), writes the archive, the index and `registry.json` (the last file, with the next serial),
+and creates the registry if the folder has none; the keys must be the registry's. `yank VERSION` and `unyank VERSION` and
+`revoke (--archive SHA256 | --keyid ID) [--reason TEXT]` change the signed files the same way.

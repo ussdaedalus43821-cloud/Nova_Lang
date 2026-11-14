@@ -5641,7 +5641,7 @@ def is_number(value):
 # '/' in it - is a file, resolved exactly as before packages existed.
 # ---------------------------------------------------------------------------
 
-PACKAGE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
+PACKAGE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)?\Z")   # "name", or "owner/name" ([pkg.layout])
 PACKAGE_DIR = ".nova_modules"
 
 
@@ -5689,8 +5689,11 @@ def package_of(path):
     if marker not in path:
         return None
     before, after = path.rsplit(marker, 1)
-    name = after.split(os.sep)[0]
-    return before + marker + name, name
+    parts = after.split(os.sep)
+    name = parts[0]
+    if not os.path.isfile(os.path.join(before + marker + name, "nova.json")) and len(parts) > 1:
+        name = parts[0] + "/" + parts[1]                  # "owner/name": the first folder is the owner
+    return before + marker + name.replace("/", os.sep), name
 
 
 def package_declared(directory, name, position):
@@ -6403,7 +6406,7 @@ def resolve_package(name, start_dir, position):
     directory = os.path.abspath(start_dir or os.getcwd())
     searched = []
     while True:
-        package = os.path.join(directory, PACKAGE_DIR, name)
+        package = os.path.join(directory, PACKAGE_DIR, *name.split("/"))
         if os.path.isfile(os.path.join(package, "nova.json")):
             break
         searched.append(os.path.join(directory, PACKAGE_DIR))
@@ -6496,7 +6499,7 @@ def default_module_name(raw_path, position):
     if is_std_import(raw_path):
         stem = raw_path[len(STD_PREFIX):]
     elif is_package_import(raw_path):
-        stem = raw_path.replace("-", "_").replace(".", "_")
+        stem = raw_path.rsplit("/", 1)[-1].replace("-", "_").replace(".", "_")
     else:
         stem = os.path.splitext(os.path.basename(raw_path))[0]
     if not is_bare_name(stem):

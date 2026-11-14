@@ -118,7 +118,7 @@ class Manifest(Project):
             (dict(base, name="nova/x"), '"nova" is a reserved owner'),
             (dict(base, name="Acme"), '"name" must be a lowercase package name'),
             (dict(base, name="a/b/c"), '"name" must be a lowercase package name'),
-            (dict(base, dependencies={"acme/ledger": "*"}), "is a scoped name"),
+            (dict(base, dependencies={"std/text": "*"}), '"std" is a reserved owner'),
             (dict(base, dependencies={"Bad": "*"}), "is not a valid package name"),
             (dict(base, version="1.0"), "is not a version"),
         ]
@@ -130,13 +130,11 @@ class Manifest(Project):
         write(os.path.join(self.project, "nova.json"), {"name": "acme/app", "version": "1.0.0"})
         self.installed()
 
-    def test_a_dependency_cannot_have_a_scoped_name_yet(self):
-        self.publish("lib", "1.0.0", PURE)
-        write(os.path.join(self.registry, "lib", "1.0.0", "nova.json"), {"name": "acme/lib", "version": "1.0.0"})
-        self.manifest({"lib": "*"})
+    def test_a_scoped_dependency_needs_a_registry(self):
+        write(os.path.join(self.project, "nova.json"), {"name": "app", "version": "1.0.0", "dependencies": {"acme/lib": "*"}})
         code, out, err = self.pkg("install")
         self.assertEqual(code, 1)
-        self.assertIn("scoped names", err)
+        self.assertIn("needs a package from a registry, but none is set", err)
 
     def test_the_nova_range_is_held_against_the_running_version(self):
         self.publish("lib", "1.0.0", PURE, extra={"nova": "^9.0.0"})
