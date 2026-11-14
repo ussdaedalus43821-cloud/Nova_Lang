@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 The Nova Project Contributors
+#
+# Licensed under either of
+#   * Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+#   * MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
+# at your option.
+
 # NovaLang v2.4.0 - a small language built from a hand-written lexer,
 # recursive-descent parser, bytecode compiler and virtual machine.
 """
