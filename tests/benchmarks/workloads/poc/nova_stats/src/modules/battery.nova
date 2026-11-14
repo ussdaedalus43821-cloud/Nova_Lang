@@ -1,0 +1,78 @@
+# battery.nova - the battery reader (Stats: Modules/Battery/readers.swift).
+# Stats shows the time macOS reports and does no estimating of its own. Here the raw gauge
+# comes from `ioreg -rn AppleSmartBattery`, the model in battery_model.nova does the
+# arithmetic, and macOS's own figures (pmset and the gauge's TimeRemaining) are kept next to
+# the result so they can be compared.
+import "../kit.nova" as kit
+import "../battery_model.nova" as model
+
+def yes(text) {
+    return text == "Yes"
+}
+
+# "-InternalBattery-0 (id=0)	65%; discharging; 11:45 remaining present: true"
+def parse_pmset(text) {
+    let source = "unknown"
+    let minutes = -1
+    let status = ""
+    let percent = -1
+    for line in split_lines(text) {
+        if kit.has_prefix(line, "Now drawing from") {
+            source = kit.between(line, "'", "'")
+        }
+        if "InternalBattery" in line {
+            let fields = split(kit.after(line, "\t"), ";")
+            percent = kit.to_num(replace_all(trim(fields[0]), "%", ""), -1)
+            if len(fields) >= 2 {
+                status = trim(fields[1])
+            }
+            for word in split(line) {
+                # a clock-style word such as 11:45, not the "present:" label
+                if ":" in word and word[-1:] != ":" {
+                    let hm = split(word, ":")
+                    minutes = kit.to_num(hm[0], 0) * 60 + kit.to_num(hm[1], 0)
+                }
+            }
+        }
+    }
+    return {source: source, status: status, percent: percent, minutes: minutes}
+}
+
+export def sample(ctx, state) {
+    let io = ctx.sh(["/usr/sbin/ioreg", "-rn", "AppleSmartBattery", "-w0"])
+    if trim(io) == "" {
+        return {present: false}
+    }
+    let raw = kit.ioreg_fields(io)
+    let bd = kit.flat_dict(raw.BatteryData)
+    let gauge = {
+        remaining_mah: bd.RemainingCapacity,
+        full_mah: bd.FullChargeCapacity,
+        design_mah: bd.DesignCapacity,
+        voltage_mv: kit.to_num(raw.Voltage, 0),
+        current_ma: kit.signed64(kit.to_num(raw.Amperage, 0)),
+        reported_power_mw: kit.signed64(bd.BatteryPower),
+        cycles: kit.to_num(raw.CycleCount, 0),
+        design_cycles: kit.to_num(raw.DesignCycleCount9C, 1000),
+        external: yes(raw.ExternalConnected),
+        charging: yes(raw.IsCharging)
+    }
+    let result = model.compute(gauge, state.battery, ctx.t)
+    let pm = parse_pmset(ctx.sh(["/usr/bin/pmset", "-g", "batt"]))
+    result.present = true
+    result.source = pm.source
+    result.macos_status = pm.status
+    result.macos_percent = pm.percent
+    result.macos_minutes = pm.minutes
+    result.gauge_to_empty_minutes = model.gauge_minutes(kit.to_num(raw.AvgTimeToEmpty, 65535))
+    result.gauge_to_full_minutes = model.gauge_minutes(kit.to_num(raw.AvgTimeToFull, 65535))
+    result.nominal_mah = bd.NominalChargeCapacity
+    result.system_load_w = 0
+    if "PowerTelemetryData" in raw {
+        let telemetry = kit.flat_dict(raw.PowerTelemetryData)
+        if "SystemLoad" in telemetry {
+            result.system_load_w = telemetry.SystemLoad / 1000
+        }
+    }
+    return result
+}

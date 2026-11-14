@@ -1,0 +1,59 @@
+# cpu.nova - the CPU reader (Stats: Modules/CPU/readers.swift).
+# Stats reads host_processor_info() through Mach; there is no such call here, so usage
+# comes from `top`, which samples twice one second apart (a single sample reports a
+# figure since boot). Top processes come from `ps`, as they do in Stats itself.
+import "../kit.nova" as kit
+
+def top_processes(text, limit) {
+    let lines = split_lines(text)
+    let out = []
+    for i = 1 to len(lines) - 1 {
+        let t = split(lines[i])
+        if len(t) >= 3 and len(out) < limit {
+            out = out + [{pid: kit.to_num(t[0], 0), cpu: kit.to_num(t[1], 0), name: join(t[2:], " ")}]
+        }
+    }
+    return out
+}
+
+export def sample(ctx, state) {
+    let top = ctx.sh(["/usr/bin/top", "-l", "2", "-s", "1", "-n", "0"])
+    let usage = ""
+    let load = ""
+    let procs = 0
+    for line in split_lines(top) {
+        if kit.has_prefix(line, "CPU usage:") {
+            usage = line
+        }
+        if kit.has_prefix(line, "Load Avg:") {
+            load = line
+        }
+        if kit.has_prefix(line, "Processes:") {
+            procs = kit.to_num(kit.word_after(line, "Processes:"), 0)
+        }
+    }
+    if usage == "" {
+        throw("top printed no 'CPU usage:' line")
+    }
+    let u = split(usage)
+    let user_pct = num(replace_all(u[2], "%", ""))
+    let system_pct = num(replace_all(u[4], "%", ""))
+    let idle_pct = num(replace_all(u[6], "%", ""))
+    let loads = []
+    for word in split(replace_all(kit.after(load, "Load Avg:"), ",", " ")) {
+        loads = loads + [kit.to_num(word, 0)]
+    }
+    let cores = kit.to_num(trim(ctx.sh(["/usr/sbin/sysctl", "-n", "hw.ncpu"])), 1)
+    let ps = ctx.sh(["/bin/ps", "-Aceo", "pid,pcpu,comm", "-r"])
+    return {
+        user: user_pct,
+        system: system_pct,
+        idle: idle_pct,
+        total: round(user_pct + system_pct, 2),
+        load: loads,
+        cores: cores,
+        processes: procs,
+        brand: trim(ctx.sh(["/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"])),
+        top: top_processes(ps, 5)
+    }
+}

@@ -1,0 +1,85 @@
+# pipeline.nova - one tick: run every reader, never let one failure stop the others, and
+# merge the results into a single snapshot that both renderers read.
+import "kit.nova" as kit
+import "modules/cpu.nova" as cpu
+import "modules/ram.nova" as ram
+import "modules/disk.nova" as disk
+import "modules/net.nova" as net
+import "modules/battery.nova" as battery
+import "modules/clock.nova" as clock
+import "battery_model.nova" as model
+
+export def new_state() {
+    return {net: {}, battery: {window: []}}
+}
+
+# A reader that throws becomes {ok: false, error: <text>} and an entry in the log; the
+# dashboard shows that module as unavailable and the loop carries on.
+def guarded(name, reader, ctx, state) {
+    try {
+        let result = reader(ctx, state)
+        result.ok = true
+        return result
+    } catch e {
+        ctx.log("ERROR " + name + ": " + e)
+        return {ok: false, error: e}
+    }
+}
+
+# ctx: {sh, t (monotonic seconds), wall (epoch seconds), iso (UTC text), log(fn), baselines}
+export def collect(ctx, state) {
+    let tick = {sh: kit.cached(ctx.sh), t: ctx.t, wall: ctx.wall, log: ctx.log}
+    let modules = {
+        cpu: guarded("cpu", cpu.sample, tick, state),
+        ram: guarded("ram", ram.sample, tick, state),
+        disk: guarded("disk", disk.sample, tick, state),
+        net: guarded("net", net.sample, tick, state),
+        battery: guarded("battery", battery.sample, tick, state),
+        clock: guarded("clock", clock.sample, tick, state)
+    }
+    let snapshot = {time: ctx.iso, modules: modules, benchmark: []}
+    let b = modules.battery
+    if b.ok and b.present and "baselines" in ctx {
+        snapshot.benchmark = model.benchmark(ctx.baselines, b.health_pct, b.full_charge_runtime_h)
+    }
+    return snapshot
+}
+
+# One CSV row per tick: how the model's estimate lines up with what macOS says.
+export def compare_header() {
+    return "time,state,percent,power_w,runtime_inst_h,runtime_smoothed_h,macos_pmset_h,macos_gauge_h,smoothed_minus_pmset_min,charge_model_h,macos_gauge_full_h"
+}
+
+# An unknown duration (-1) is an empty cell, not a number.
+def hours_cell(h) {
+    if h < 0 {
+        return ""
+    }
+    return kit.fixed(h, 3)
+}
+
+export def compare_row(snapshot) {
+    let b = snapshot.modules.battery
+    if not b.ok or not b.present {
+        return ""
+    }
+    let pm_h = -1
+    if b.macos_minutes >= 0 {
+        pm_h = b.macos_minutes / 60
+    }
+    let gauge_h = -1
+    if b.gauge_to_empty_minutes >= 0 {
+        gauge_h = b.gauge_to_empty_minutes / 60
+    }
+    let full_h = -1
+    if b.gauge_to_full_minutes >= 0 {
+        full_h = b.gauge_to_full_minutes / 60
+    }
+    let diff = ""
+    if b.runtime_smoothed_h >= 0 and b.macos_minutes >= 0 {
+        diff = kit.fixed(b.runtime_smoothed_h * 60 - b.macos_minutes, 1)
+    }
+    return join([snapshot.time, b.state, b.percent, kit.fixed(b.power_w, 3), hours_cell(b.runtime_h),
+        hours_cell(b.runtime_smoothed_h), hours_cell(pm_h), hours_cell(gauge_h), diff,
+        hours_cell(b.charge_h), hours_cell(full_h)], ",")
+}

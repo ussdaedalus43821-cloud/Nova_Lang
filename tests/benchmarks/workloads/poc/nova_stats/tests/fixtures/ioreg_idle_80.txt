@@ -1,0 +1,55 @@
++-o AppleSmartBattery  <class AppleSmartBattery, id 0x100000870, registered, matched, active, busy 0 (4 ms), retain 10>
+  | {
+  |   "TimeRemaining" = 65535
+  |   "AvgTimeToEmpty" = 65535
+  |   "ChargerCount" = 1
+  |   "PowerDistribution" = {"IPDWattageOverride"=30000,"IPDInputPower"=45000,"IPDInputCurrent"=2250,"IPDChargingAllowed"=0,"IPDRatio"=100,"IPDRatioOverride"=255,"IPDInputVoltage"=20000}
+  |   "ExternalConnected" = Yes
+  |   "ExternalChargeCapable" = Yes
+  |   "BootVoltage" = 0
+  |   "FullPathUpdated" = 1794497404
+  |   "AppleRawExternalConnected" = Yes
+  |   "Voltage" = 11958
+  |   "PowerTelemetryData" = {"AccumulatedWallEnergyEstimate"=176316610,"SystemEnergyConsumed"=1383,"SystemPowerInAccumulatorCount"=69550,"AdapterEfficiencyLoss"=18446744073709551547,"SystemLoad"=4982,"AccumulatedSystemLoad"=510040520,"AccumulatedSystemEnergyConsumed"=377185352461,"SystemCurrentIn"=254,"WallEnergyEstimate"=1314,"AccumSystemEffectiveTotalLoadCount"=0,"SystemLoadAccumulatorCount"=300379,"AdapterEfficiencyLossAccumulatorCount"=67454,"AccumSystemEffectiveTotalLoad"=0,"SystemVoltageIn"=19572,"SystemPowerIn"=4982,"AccumulatedBatteryPower"=334597130,"PowerTelemetryErrorCount"=0,"AccumulatedAdapterEfficiencyLoss"=239968417478611,"SystemEffectiveTotalLoad"=0,"BatteryPowerAccumulatorCount"=11683,"AccumulatedSystemPowerIn"=1357867358624,"BatteryPower"=0,"AccumulatedBatteryDischarge"=18446744073522607054,"BatteryDischargeAccumulatorCount"=74951}
+  |   "BatteryInvalidWakeSeconds" = 30
+  |   "AdapterInfo" = 0
+  |   "MaxCapacity" = 100
+  |   "BatteryShutdownReason" = {"ShutDownTimestamp"=1794192755,"ShutDownUpoReboot"=0}
+  |   "DeadBatteryBootData" = {"ActivePayloads"=0}
+  |   "UpdateTime" = 1794497884
+  |   "built-in" = Yes
+  |   "Location" = 0
+  |   "CurrentCapacity" = 80
+  |   "BatteryInstalled" = Yes
+  |   "CycleCount" = 630
+  |   "ChargerData" = {"NotChargingReason"=16777216,"SlowChargingReason"=0,"PMUConfigured"=2176,"PMUConfiguration"=2250,"TimeChargingThermallyLimited"=0,"IsCharging"=0}
+  |   "ChargerConfiguration" = 2176
+  |   "BatteryData" = {"FullChargeCapacity"=3893,"NominalChargeCapacity"=4026,"FullyCharged"=0,"AvgTimeToEmpty"=65535,"RemainingCapacity"=3075,"AbsoluteCapacity"=0,"MaxCapacity"=100,"DesignCapacity"=5103,"CurrentCapacity"=80,"BatteryPower"=0,"TrueRemainingCapacity"=0}
+  |   "AvgTimeToFull" = 65535
+  |   "AtCriticalLevel" = No
+  |   "BestAdapterIndex" = 0
+  |   "BootPathUpdated" = 1793222604
+  |   "SkipperNEIgnoreAtCritical" = No
+  |   "PostDischargeWaitSeconds" = 120
+  |   "UserVisiblePathUpdated" = 1794497884
+  |   "IOReportLegendPublic" = Yes
+  |   "InstantAmperage" = 0
+  |   "ManufacturerData" = <0000000010020001237800000331353303303033035344490131000000000000>
+  |   "FullyCharged" = No
+  |   "AppleRawBatteryVoltage" = 11958
+  |   "IOGeneralInterest" = "IOCommand is not serializable"
+  |   "Amperage" = 0
+  |   "IsCharging" = No
+  |   "DesignCycleCount9C" = 1000
+  |   "PostChargeWaitSeconds" = 120
+  |   "BatteryPackCount" = 1
+  | }
+  | 
+  +-o AppleSmartBatteryPack  <class AppleSmartBatteryPack, id 0x100000875, registered, matched, active, busy 0 (1 ms), retain 9>
+  | | +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x100000877, registered, matched, active, busy 0 (1 ms), retain 6>
+  | | +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x100000878, registered, matched, active, busy 0 (1 ms), retain 6>
+  | | +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x10000087a, registered, matched, active, busy 0 (1 ms), retain 6>
+  | | +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x10000087b, registered, matched, active, busy 0 (0 ms), retain 6>
+  |   +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x10000087d, registered, matched, active, busy 0 (1 ms), retain 6>
+  |   +-o AppleSmartBatteryCell  <class AppleSmartBatteryCell, id 0x10000087e, registered, matched, active, busy 0 (1 ms), retain 6>
+

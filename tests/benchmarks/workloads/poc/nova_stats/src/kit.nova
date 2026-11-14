@@ -1,0 +1,187 @@
+# kit.nova - parsing and formatting helpers.
+# The counterpart of Stats' Kit/helpers.swift. Everything here exists because the
+# standard library has no find/startswith/endswith, no number formatting, no
+# capture groups and no null; each workaround points at its entry in docs/GAPS.md.
+
+# num() throws on text that is not a number (G-002), so every parse goes through here.
+export def to_num(text, fallback) {
+    try {
+        return num(text)
+    } catch e {
+        return fallback
+    }
+}
+
+# There is no startswith() (G-006): slice and compare.
+export def has_prefix(text, prefix) {
+    return text[:len(prefix)] == prefix
+}
+
+# There is no find()/index_of() (G-006): split on the marker and rejoin what follows it.
+export def after(text, marker) {
+    let parts = split(text, marker)
+    if len(parts) < 2 {
+        return ""
+    }
+    return join(parts[1:], marker)
+}
+
+# regex() answers true/false only, with no captures (G-003). A number that follows a
+# label is read by splitting on whitespace instead.
+export def word_after(text, label) {
+    let tail = after(text, label)
+    let words = split(tail)
+    if len(words) == 0 {
+        return ""
+    }
+    return words[0]
+}
+
+# The text between two markers: the nearest thing to a regex capture group.
+export def between(text, left, right) {
+    let tail = after(text, left)
+    if tail == "" {
+        return ""
+    }
+    return split(tail, right)[0]
+}
+
+# Whole-number text for a count: no thousands separator exists either (G-007).
+export def group_digits(n) {
+    let digits = str(round(n))
+    let out = ""
+    let count = 0
+    for i = len(digits) - 1 downto 0 {
+        if count > 0 and count % 3 == 0 {
+            out = "," + out
+        }
+        out = digits[i] + out
+        count = count + 1
+    }
+    return out
+}
+
+# str(5.0) is "5", and there is no format()/printf (G-008): fixed-point text is built from
+# integer arithmetic so "5.0" and "0.05" print the way a dashboard needs them to.
+export def fixed(x, digits) {
+    let scale = pow(10, digits)
+    let scaled = round(abs(x) * scale)
+    let whole = scaled // scale
+    let frac = str(scaled % scale)
+    let text = str(whole)
+    if digits > 0 {
+        text = text + "." + "0" * (digits - len(frac)) + frac
+    }
+    if x < 0 and scaled > 0 {
+        text = "-" + text
+    }
+    return text
+}
+
+export def two(n) {
+    if n < 10 {
+        return "0" + str(n)
+    }
+    return str(n)
+}
+
+# There is no null literal (G-009): "unknown" is a negative number in every duration field,
+# and this is the only place that turns it into text.
+export def duration(hours) {
+    if hours < 0 {
+        return "n/a"
+    }
+    let total = round(hours * 60)
+    return str(total // 60) + ":" + two(total % 60)
+}
+
+export def minutes_text(minutes) {
+    if minutes < 0 {
+        return "n/a"
+    }
+    return duration(minutes / 60)
+}
+
+export def human_bytes(n) {
+    let units = ["B", "KB", "MB", "GB", "TB"]
+    let v = n
+    let i = 0
+    while v >= 1024 and i < 4 {
+        v = v / 1024
+        i = i + 1
+    }
+    if i == 0 {
+        return str(round(v)) + " B"
+    }
+    return fixed(v, 1) + " " + units[i]
+}
+
+export def human_rate(n) {
+    return human_bytes(n) + "/s"
+}
+
+export def clamp(x, low, high) {
+    return max(low, min(high, x))
+}
+
+export def bar(pct, width) {
+    let filled = round(clamp(pct, 0, 100) / 100 * width)
+    return "█" * filled + "░" * (width - filled)
+}
+
+# ioreg prints  | "Key" = value  one per line. Returns {Key: "raw value text"}.
+export def ioreg_fields(text) {
+    let out = {}
+    for line in split_lines(text) {
+        let parts = split(line, "\" = ")
+        if len(parts) >= 2 {
+            let pieces = split(parts[0], "\"")
+            out[pieces[len(pieces) - 1]] = join(parts[1:], "\" = ")
+        }
+    }
+    return out
+}
+
+# A flat ioreg dictionary {"A"=1,"B"=Yes} becomes {A: 1, B: "Yes"}. Nested values need more
+# than this and are not attempted (the dictionaries read here are flat).
+export def flat_dict(text) {
+    let body = trim(text)
+    if body[:1] == "{" {
+        body = body[1:]
+    }
+    if body[-1:] == "}" {
+        body = body[:len(body) - 1]
+    }
+    let out = {}
+    for pair in split(body, ",") {
+        let kv = split(pair, "=")
+        if len(kv) == 2 {
+            let value = trim(kv[1])
+            out[replace_all(trim(kv[0]), "\"", "")] = to_num(value, value)
+        }
+    }
+    return out
+}
+
+# ioreg writes a signed 64-bit counter as the unsigned number with the same bits:
+# -171 mA arrives as 18446744073709551445. Exact big-integer arithmetic makes the fix one line (G-001, a pass).
+export def signed64(v) {
+    if v >= 9223372036854775808 {
+        return v - 18446744073709551616
+    }
+    return v
+}
+
+# One tick runs each command at most once even when two modules want it (CPU and Disk both
+# read `top`): the cache lives for the tick only.
+export def cached(sh) {
+    let memo = {}
+    def run(argv) {
+        let key = join(argv, " ")
+        if not (key in memo) {
+            memo[key] = sh(argv)
+        }
+        return memo[key]
+    }
+    return run
+}

@@ -17,6 +17,8 @@ What it measures, and what it does not:
   loop       steady-state execution of a tight loop on the bytecode VM and on the tree-walker, with the opcode
              work of one iteration counted as one iteration, and on the VM under the `restricted` profile so that
              the price of M11's limit checks is a number (trusted is unlimited);
+  workloads  programs that do real work, in-process, trusted and restricted (see suite.py): about a dozen micro
+             programs, Nova_Data, Nova_Log and Nova_Stats; --full adds the 50 MB Nova_Log benchmark
   embedding  the embedding API: creating an engine, `eval` of a cached script, `call` of a NovaLang function from
              Python, and a call that goes back out to a Python host function.
 
@@ -54,8 +56,10 @@ print(total)
 EMBEDDING_SOURCE = "def add(a, b) { return a + b }\ndef twice(f, x) { return f(f(x)) }\n"
 
 
-def sample(function, repeat, warmup=1):
-    """`repeat` timings of function() in seconds, after `warmup` untimed calls."""
+def sample(function, repeat, warmup=None):
+    """`repeat` timings of function() in seconds, after `warmup` untimed calls (default 1; NOVA_BENCH_WARMUP=n for a JIT)."""
+    if warmup is None:
+        warmup = int(os.environ.get("NOVA_BENCH_WARMUP", "1"))
     for _ in range(warmup):
         function()
     times = []
@@ -177,42 +181,63 @@ def embedding(repeat):
     return rows
 
 
-GROUPS = {"startup": None, "compile": compile_stages, "loop": loops, "embedding": embedding}
+def workloads_group(repeat):
+    import suite
+    return suite.workloads(min(repeat, WORKLOAD_REPEAT), full=OPTIONS["full"], log_file=OPTIONS["log_file"])
+
+
+WORKLOAD_REPEAT = 5      # workloads are long; the default of 9 samples would take half an hour
+OPTIONS = {"full": False, "log_file": None}
+GROUPS = {"startup": None, "compile": compile_stages, "loop": loops, "embedding": embedding,
+          "workloads": workloads_group}
 
 
 def environment():
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(ROOT), capture_output=True,
+                                text=True).stdout.strip() or "unknown"
+        dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=str(ROOT),
+                                    capture_output=True, text=True).stdout.strip())
+    except OSError:
+        commit, dirty = "unknown", False
     return {"python": platform.python_version(), "implementation": platform.python_implementation(),
             "system": platform.system(), "machine": platform.machine(), "cpus": os.cpu_count(),
-            "novalang": nl.__version__}
+            "novalang": nl.__version__, "commit": commit + ("+modified" if dirty else "")}
 
 
 def table(rows, markdown):
     def line(row):
         rate = "{:,.0f} {}".format(row["per_second"], row["unit"]) if "per_second" in row else ""
-        return (row["name"], "{:.3f}".format(row["median_ms"]), "{:.3f}".format(row["min_ms"]),
-                "{:.0%}".format(row["spread"]), rate)
-    header = ("measurement", "median ms", "min ms", "spread", "rate")
+        name = row["name"] + (" [{}]".format(row["profile"]) if "profile" in row else "")
+        compile_cell = ("{:.1f} ({:.1%})".format(row["compile_ms"], row["compile_share"])
+                        if "compile_ms" in row else "")
+        return (name, "{:.3f}".format(row["median_ms"]), "{:.3f}".format(row["min_ms"]),
+                "{:.0%}".format(row["spread"]), rate, compile_cell)
+    header = ("measurement", "median ms", "min ms", "spread", "rate", "compile ms (share)")
     body = [line(row) for row in rows]
     out = []
     if markdown:
         out.append("| " + " | ".join(header) + " |")
-        out.append("| --- | ---: | ---: | ---: | ---: |")
+        out.append("| --- | ---: | ---: | ---: | ---: | ---: |")
         out += ["| " + " | ".join(cells) + " |" for cells in body]
     else:
-        widths = [max(len(cells[i]) for cells in [header] + body) for i in range(5)]
+        widths = [max(len(cells[i]) for cells in [header] + body) for i in range(6)]
         for cells in [header] + body:
-            out.append("  ".join(cells[i].ljust(widths[i]) if i == 0 else cells[i].rjust(widths[i]) for i in range(5)))
+            out.append("  ".join(cells[i].ljust(widths[i]) if i == 0 else cells[i].rjust(widths[i]) for i in range(6)))
     return "\n".join(out)
 
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--repeat", type=int, default=9)
+    parser.add_argument("--repeat", type=int, default=9, help="samples per measurement (workloads use at most 5)")
     parser.add_argument("--json")
     parser.add_argument("--markdown", action="store_true")
     parser.add_argument("--only", choices=sorted(GROUPS))
     parser.add_argument("--bootstrap", action="store_true", help="also time the self-hosted interpreter's start-up")
+    parser.add_argument("--full", action="store_true", help="workloads: also run the 50 MB Nova_Log benchmark (3 samples)")
+    parser.add_argument("--log-file", help="workloads: also time Nova_Log on this access log (trusted)")
     arguments = parser.parse_args(argv)
+    OPTIONS["full"], OPTIONS["log_file"] = arguments.full, arguments.log_file
     rows = []
     for name in GROUPS:
         if arguments.only and arguments.only != name:

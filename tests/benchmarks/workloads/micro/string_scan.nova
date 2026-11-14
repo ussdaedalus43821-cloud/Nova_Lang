@@ -1,0 +1,32 @@
+# micro: a character loop over a string (what a hand-written parser does): index, compare, accumulate.
+def parse_digits(text) {
+    let value = 0
+    let count = 0
+    for i = 0 to len(text) - 1 {
+        let ch = text[i]
+        if ch >= "0" and ch <= "9" {
+            value = (value * 10 + (ord_of(ch))) % 1000003
+            count = count + 1
+        }
+    }
+    return value + count
+}
+let DIGITS = "0123456789"
+def ord_of(ch) {
+    for i = 0 to 9 {
+        if DIGITS[i] == ch {
+            return i
+        }
+    }
+    return 0
+}
+let text = "ab12cd345 ef6 78g9 "
+let big = ""
+for i = 1 to 40 {
+    big = big + text
+}
+let total = 0
+for pass = 1 to 40 {
+    total = total + parse_digits(big)
+}
+print(total)

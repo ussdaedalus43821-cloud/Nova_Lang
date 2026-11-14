@@ -1,0 +1,31 @@
+  PID    RSS COMM
+ 9517 505952 Claude Helper (Renderer)
+12174 314864 claude
+ 9478 162976 Claude
+27870 116144 mediaanalysisd
+  654  90448 Finder
+ 5588  78064 com.apple.WebKit.WebContent
+85721  63936 Safari
+  414  51152 WindowServer
+ 8808  48352 Stats
+30010  42368 com.apple.WebKit.WebContent
+  651  40560 ControlCenter
+  418  37408 loginwindow
+  539  37408 com.apple.DriverKit-AppleBCMWLAN
+ 9825  36608 com.apple.Virtualization.VirtualMachine
+ 9488  34656 Claude Helper
+  606  32800 mds_stores
+57930  32464 Messages
+  700  25680 cloudd
+ 2910  23888 com.apple.WebKit.WebContent
+  677  22800 fileproviderd
+  691  22448 Siri AI
+28590  21952 bird
+ 9522  20624 Claude Helper
+  372  20064 mds
+  783  19392 NotificationCenter
+  635  19376 WindowManager
+ 7773  19296 com.apple.Passwords.MenuBarExtra
+  419  19216 runningboardd
+30077  18944 mdworker_shared
+27107  18928 aned

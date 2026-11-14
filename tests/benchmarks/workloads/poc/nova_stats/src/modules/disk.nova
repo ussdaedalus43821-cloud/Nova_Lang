@@ -1,0 +1,35 @@
+# disk.nova - the disk reader (Stats: Modules/Disk/readers.swift).
+# Capacity comes from `df`. Stats reads per-second read/write rates from IOKit; the only
+# source reachable here is the totals line of `top`, rounded to whole gigabytes, so it
+# reports cumulative figures and no rate (docs/GAPS.md G-012).
+import "../kit.nova" as kit
+
+export def sample(ctx, state) {
+    let lines = split_lines(ctx.sh(["/bin/df", "-k", "/System/Volumes/Data"]))
+    if len(lines) < 2 {
+        throw("df printed no volume line")
+    }
+    let t = split(lines[1])
+    let total = num(t[1]) * 1024
+    let avail = num(t[3]) * 1024
+    let used = total - avail
+    let read_total = ""
+    let written_total = ""
+    for line in split_lines(ctx.sh(["/usr/bin/top", "-l", "2", "-s", "1", "-n", "0"])) {
+        if kit.has_prefix(line, "Disks:") {
+            let w = split(line)
+            read_total = split(w[1], "/")[1]
+            written_total = split(w[3], "/")[1]
+        }
+    }
+    return {
+        volume: join(t[8:], " "),
+        device: t[0],
+        total: total,
+        used: used,
+        free: avail,
+        used_pct: round(used * 100 / total, 1),
+        read_total: read_total,
+        written_total: written_total
+    }
+}

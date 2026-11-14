@@ -1,0 +1,31 @@
+  PID  %CPU COMM
+  414  30.1 WindowServer
+  699  14.0 WallpaperMacintoshExtension
+ 9517  12.8 Claude Helper (Renderer)
+12174  12.5 claude
+ 9478   5.5 Claude
+ 8808   4.9 Stats
+  539   3.7 com.apple.DriverKit-AppleBCMWLAN
+ 9488   1.8 Claude Helper
+  654   0.9 Finder
+  384   0.6 opendirectoryd
+  480   0.6 airportd
+  651   0.5 ControlCenter
+  458   0.5 clocksyncd
+ 9825   0.5 com.apple.Virtualization.VirtualMachine
+    1   0.3 launchd
+  342   0.2 logd
+  410   0.2 corebrightnessd
+  512   0.2 symptomsd
+  652   0.2 MenuBarAgent
+  408   0.1 notifyd
+  356   0.1 configd
+85727   0.1 com.apple.WebKit.Networking
+  375   0.1 diskarbitrationd
+29956   0.0 parsecd
+29869   0.0 mediaanalysisd-access
+29851   0.0 SetStoreUpdateService
+29850   0.0 biomesyncd
+29849   0.0 SetStoreUpdateService
+29637   0.0 mapssyncd
+29037   0.0 swcd

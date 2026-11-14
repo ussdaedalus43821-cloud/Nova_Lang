@@ -1,0 +1,242 @@
+# nova_log.nova - Nova_Log: count the HTTP status codes in a web server access log.
+#
+#   python3 novalang/novalang.py nova_log.nova ACCESS.LOG [TOP_N]
+#
+# The whole tool is this one NovaLang program: no Python host, no imports, no regular expressions. The
+# combined log format is
+#   ip - user [time] "METHOD /path HTTP/1.1" STATUS BYTES "referrer" "agent"
+# and the status is the first word after the second quote. NovaLang has no capture groups and no
+# find()/index_of() (docs/GAPS.md G-037), so the line is split on the quote character and counted
+# from either end.
+#
+# It reads with `read` and nothing else, and needs only `process` (for args and exit) and, if it is
+# there, `clock` (for the timings). Under the `restricted` profile that is `--allow-read DIR
+# --allow-process`; a log over the 1,000,000-character `string.read` limit is refused (G-036).
+
+let DIGITS = "0123456789"
+
+let NAMES = {
+    "200": "OK", "201": "Created", "204": "No Content", "206": "Partial Content",
+    "301": "Moved Permanently", "302": "Found", "304": "Not Modified",
+    "400": "Bad Request", "401": "Unauthorized", "403": "Forbidden", "404": "Not Found",
+    "408": "Request Timeout", "429": "Too Many Requests",
+    "500": "Internal Server Error", "502": "Bad Gateway", "503": "Service Unavailable", "504": "Gateway Timeout"
+}
+let CLASSES = {"1": "1xx informational", "2": "2xx success", "3": "3xx redirect", "4": "4xx client error", "5": "5xx server error"}
+
+# ---- helpers the standard library does not have (each points at its entry in docs/GAPS.md) ----
+
+# No thousands separator (G-007 in Nova_Stats).
+def group_digits(n) {
+    let digits = str(round(n))
+    let out = ""
+    let count = 0
+    for i = len(digits) - 1 downto 0 {
+        if count > 0 and count % 3 == 0 {
+            out = "," + out
+        }
+        out = digits[i] + out
+        count = count + 1
+    }
+    return out
+}
+
+# No number formatting (G-008 in Nova_Stats): fixed-point text from integer arithmetic.
+def fixed(x, digits) {
+    let scale = pow(10, digits)
+    let scaled = round(abs(x) * scale)
+    let whole = scaled // scale
+    let frac = str(scaled % scale)
+    let text = str(whole)
+    if digits > 0 {
+        text = text + "." + "0" * (digits - len(frac)) + frac
+    }
+    return text
+}
+
+def seconds_text(ms) {
+    return fixed(ms / 1000, 2) + " s"
+}
+
+# ---- parsing ----
+
+# num() throws on text that is not a number and accepts more than digits (" 7", "+5", "0200"; G-039), and
+# there is no way to ask "is this a number?" without a try block, so "three digits, 100 to 599" is
+# tested by hand, one character at a time.
+def is_status(text) {
+    if len(text) != 3 {
+        return false
+    }
+    return text[0] in "12345" and text[1] in DIGITS and text[2] in DIGITS
+}
+
+# The status of one line, or "" if the line has none. Two strategies, because a quote inside the
+# request ("GET /odd\"path HTTP/1.1") moves every quote-delimited piece by one:
+#   1. the first word after the second quote (the usual case), then
+#   2. counting from the end: the pieces after it are  referrer, " ", agent, "" (so index n - 5).
+# Returns [status, strategy] and strategy is 1 or 2.
+def status_of(line) {
+    let parts = split(line, "\"")
+    let n = len(parts)
+    if n >= 3 {
+        let words = split(parts[2])
+        if len(words) >= 1 and is_status(words[0]) {
+            return [words[0], 1]
+        }
+    }
+    if n >= 6 {
+        let words = split(parts[n - 5])
+        if len(words) >= 1 and is_status(words[0]) {
+            return [words[0], 2]
+        }
+    }
+    return ["", 0]
+}
+
+# ---- the program ----
+
+let argv = args()
+if len(argv) < 1 {
+    print("usage: nova_log.nova ACCESS.LOG [TOP_N]")
+    exit(2)
+}
+let path = argv[0]
+let top_n = 0
+if len(argv) >= 2 {
+    top_n = num(argv[1])
+}
+
+# `monotonic` is a `clock` name: when the capability is not granted the timings are left out (G-029 in Nova_Sort).
+let have_clock = true
+let started = 0
+try {
+    started = monotonic()
+} catch e {
+    have_clock = false
+}
+
+let text = ""
+try {
+    text = read(path)
+} catch e {
+    print("nova_log: cannot read " + path + ": " + str(e))
+    exit(1)
+}
+let read_done = started
+if have_clock {
+    read_done = monotonic()
+}
+
+let lines = split_lines(text)
+let counts = {}
+let blank = 0
+let unparsed = 0
+let by_end = 0
+let samples = []
+for line in lines {
+    if line == "" {
+        blank = blank + 1
+    } else {
+        let found = status_of(line)
+        if found[1] == 0 {
+            unparsed = unparsed + 1
+            if len(samples) < 5 {
+                samples = samples + [line[:100]]
+            }
+        } else {
+            if found[1] == 2 {
+                by_end = by_end + 1
+            }
+            let code = found[0]
+            if code in counts {
+                counts[code] = counts[code] + 1
+            } else {
+                counts[code] = 1
+            }
+        }
+    }
+}
+let parse_done = read_done
+if have_clock {
+    parse_done = monotonic()
+}
+
+# ---- the report ----
+
+let total_lines = len(lines)
+let parsed = total_lines - blank - unparsed
+print("Nova_Log: " + path)
+# A line cannot be continued after an operator (G-040), so long lines are built in pieces.
+let summary = "  " + group_digits(total_lines) + " lines: " + group_digits(parsed) + " with a status, "
+summary = summary + group_digits(unparsed) + " unparsed, " + group_digits(blank) + " blank"
+print(summary)
+if by_end > 0 {
+    print("  " + group_digits(by_end) + " of those were found by counting from the end of the line (a quote inside the request)")
+}
+print("")
+
+# sorted() cannot order pairs (G-038), so each code and its count are packed into one number:
+# count * 1000 + (1000 - code). Descending order is then "most frequent first, lower code first on a tie".
+let packed = []
+for code in keys(counts) {
+    packed = packed + [counts[code] * 1000 + (1000 - num(code))]
+}
+packed = sorted(packed, true)
+
+print("  " + pad("Status", 8) + pad("Meaning", 24) + pad_left("Count", 10) + pad_left("Share", 9) + "  " + "Bar")
+let shown = 0
+let class_totals = {}
+for key in packed {
+    let count = key // 1000
+    let code = str(1000 - key % 1000)
+    let share = 0
+    if parsed > 0 {
+        share = count * 100 / parsed
+    }
+    let meaning = ""
+    if code in NAMES {
+        meaning = NAMES[code]
+    }
+    let first = code[:1]
+    if first in class_totals {
+        class_totals[first] = class_totals[first] + count
+    } else {
+        class_totals[first] = count
+    }
+    if top_n == 0 or shown < top_n {
+        let width = round(share / 100 * 24)
+        if width < 1 {
+            width = 1
+        }
+        let row = "  " + pad(code, 8) + pad(meaning, 24) + pad_left(group_digits(count), 10)
+        row = row + pad_left(fixed(share, 1) + "%", 9) + "  " + "█" * width
+        print(row)
+        shown = shown + 1
+    }
+}
+if shown < len(packed) {
+    print("  ... and " + str(len(packed) - shown) + " more status codes")
+}
+print("")
+print("  By class")
+for first in sorted(keys(class_totals)) {
+    let count = class_totals[first]
+    let label = first + "xx"
+    if first in CLASSES {
+        label = CLASSES[first]
+    }
+    print("  " + pad(label, 22) + pad_left(group_digits(count), 10) + pad_left(fixed(count * 100 / parsed, 1) + "%", 9))
+}
+if len(samples) > 0 {
+    print("")
+    print("  Unparsed lines (first " + str(len(samples)) + "):")
+    for s in samples {
+        print("    " + s)
+    }
+}
+if have_clock {
+    print("")
+    let timing = "  read " + seconds_text((read_done - started) * 1000) + ", parse " + seconds_text((parse_done - read_done) * 1000)
+    timing = timing + ", " + group_digits(total_lines / max(0.001, parse_done - read_done)) + " lines/s"
+    print(timing)
+}

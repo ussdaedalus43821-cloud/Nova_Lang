@@ -1,0 +1,70 @@
+# ram.nova - the memory reader (Stats: Modules/RAM/readers.swift).
+# Same arithmetic as Stats: used = active + inactive + speculative + wired + compressed
+# - purgeable - external, in pages. The page counts come from `vm_stat` text instead of
+# host_statistics64().
+import "../kit.nova" as kit
+
+def top_by_memory(text, limit) {
+    let lines = split_lines(text)
+    let out = []
+    for i = 1 to len(lines) - 1 {
+        let t = split(lines[i])
+        if len(t) >= 3 and len(out) < limit {
+            out = out + [{pid: kit.to_num(t[0], 0), bytes: kit.to_num(t[1], 0) * 1024, name: join(t[2:], " ")}]
+        }
+    }
+    return out
+}
+
+export def sample(ctx, state) {
+    let text = ctx.sh(["/usr/bin/vm_stat"])
+    let page_size = 4096
+    let pages = {}
+    for line in split_lines(text) {
+        if kit.has_prefix(line, "Mach Virtual Memory") {
+            page_size = kit.to_num(kit.word_after(line, "page size of"), 4096)
+        } else {
+            let kv = split(line, ":")
+            if len(kv) == 2 {
+                pages[trim(kv[0])] = kit.to_num(replace_all(trim(kv[1]), ".", ""), 0)
+            }
+        }
+    }
+    let total = kit.to_num(trim(ctx.sh(["/usr/sbin/sysctl", "-n", "hw.memsize"])), 0)
+    if total <= 0 {
+        throw("hw.memsize is not a number")
+    }
+    let wired = pages["Pages wired down"] * page_size
+    let compressed = pages["Pages occupied by compressor"] * page_size
+    let purgeable = pages["Pages purgeable"] * page_size
+    let external = pages["File-backed pages"] * page_size
+    let active = pages["Pages active"] * page_size
+    let inactive = pages["Pages inactive"] * page_size
+    let speculative = pages["Pages speculative"] * page_size
+    let used = active + inactive + speculative + wired + compressed - purgeable - external
+    let swap = split(ctx.sh(["/usr/sbin/sysctl", "-n", "vm.swapusage"]))
+    let swap_used = kit.to_num(replace_all(swap[5], "M", ""), 0) * 1048576
+    let swap_total = kit.to_num(replace_all(swap[2], "M", ""), 0) * 1048576
+    let pressure_code = kit.to_num(trim(ctx.sh(["/usr/sbin/sysctl", "-n", "kern.memorystatus_vm_pressure_level"])), 1)
+    let pressure = "normal"
+    if pressure_code == 2 {
+        pressure = "warning"
+    }
+    if pressure_code >= 4 {
+        pressure = "critical"
+    }
+    return {
+        total: total,
+        used: used,
+        free: total - used,
+        used_pct: round(used * 100 / total, 1),
+        wired: wired,
+        compressed: compressed,
+        app: used - wired - compressed,
+        cache: purgeable + external,
+        swap_used: swap_used,
+        swap_total: swap_total,
+        pressure: pressure,
+        top: top_by_memory(ctx.sh(["/bin/ps", "-Aceo", "pid,rss,comm", "-m"]), 5)
+    }
+}

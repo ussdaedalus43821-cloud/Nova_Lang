@@ -1,0 +1,77 @@
+# bench.nova - how long NovaLang itself takes to run one tick (parse + battery model + both
+# renders) once the commands' output is already in hand. Run from the project root:
+#   python3 novalang/novalang.py tests/bench.nova [rounds]
+#   python3 novalang/novalang.py --bootstrap tests/bench.nova [rounds]
+import "../src/pipeline.nova" as pipeline
+import "../src/render_term.nova" as term
+import "../src/render_html.nova" as html
+
+let FIX = "tests/fixtures/"
+let SYSCTL = {
+    "hw.memsize": "sysctl_memsize.txt",
+    "hw.ncpu": "sysctl_ncpu.txt",
+    "machdep.cpu.brand_string": "sysctl_brand.txt",
+    "vm.swapusage": "sysctl_swap.txt",
+    "kern.memorystatus_vm_pressure_level": "sysctl_pressure.txt"
+}
+let FILES = {top: "top.txt", vm_stat: "vm_stat.txt", df: "df_data.txt", netstat: "netstat_a.txt", ioreg: "ioreg_discharging_65.txt", pmset: "pmset_discharging.txt"}
+let TEXT = {}
+for name in keys(FILES) {
+    TEXT[name] = read(FIX + FILES[name])
+}
+for name in keys(SYSCTL) {
+    TEXT[name] = read(FIX + SYSCTL[name])
+}
+TEXT["ps_cpu"] = read(FIX + "ps.txt")
+TEXT["ps_mem"] = read(FIX + "ps_mem.txt")
+
+# Fixtures are read once up front so the timing below is the language, not the disk.
+def sh(argv) {
+    let name = split(argv[0], "/")[-1]
+    if name == "ps" {
+        if "pcpu" in argv[2] {
+            return TEXT["ps_cpu"]
+        }
+        return TEXT["ps_mem"]
+    }
+    if name == "sysctl" {
+        return TEXT[argv[2]]
+    }
+    return TEXT[name]
+}
+
+def log_nothing(message) {
+}
+
+let argv = args()
+let rounds = 50
+if len(argv) > 0 {
+    rounds = num(argv[0])
+}
+let state = pipeline.new_state()
+let style = {esc: "", color: false}
+let snapshot = {}
+let t0 = monotonic()
+for i = 1 to rounds {
+    snapshot = pipeline.collect({sh: sh, t: i * 2, wall: 1767225600 + i * 2, iso: "x", log: log_nothing}, state)
+}
+let t1 = monotonic()
+for i = 1 to rounds {
+    term.frame(snapshot, style)
+}
+let t2 = monotonic()
+for i = 1 to rounds {
+    html.render(snapshot, 2)
+}
+let t3 = monotonic()
+let json_text = ""
+for i = 1 to rounds {
+    json_text = json.pretty(snapshot)
+}
+let t4 = monotonic()
+print("rounds", rounds)
+print("collect (6 readers + battery model): " + str(round((t1 - t0) * 1000 / rounds, 2)) + " ms per tick")
+print("terminal frame:                      " + str(round((t2 - t1) * 1000 / rounds, 2)) + " ms")
+print("html page:                           " + str(round((t3 - t2) * 1000 / rounds, 2)) + " ms")
+print("json.pretty (" + str(len(json_text)) + " chars):              " + str(round((t4 - t3) * 1000 / rounds, 2)) + " ms")
+print("whole tick:                          " + str(round((t4 - t0) * 1000 / rounds, 2)) + " ms")

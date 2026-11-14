@@ -1,0 +1,15 @@
+# micro: split, join, trim and upper over a few thousand fields (the Nova_Log / Nova_Data pattern).
+let row = "2025-03-14,Whole Foods Market,  125.50 ,Groceries,extra,more"
+def work(n) {
+    let total = 0
+    for i = 1 to n {
+        let fields = split(row, ",")
+        let amount = trim(fields[2])
+        total = total + len(fields) + len(amount) + len(upper(fields[3]))
+        if i % 100 == 0 {
+            total = total + len(join(fields, "|"))
+        }
+    }
+    return total
+}
+print(work(40000))

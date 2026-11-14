@@ -1,0 +1,8 @@
+# micro: recursion and calls (fib).  CALL, RETURN, LT, ADD, SUB, JUMP_IF_NOT_TRUE.
+def fib(n) {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+print(fib(23))

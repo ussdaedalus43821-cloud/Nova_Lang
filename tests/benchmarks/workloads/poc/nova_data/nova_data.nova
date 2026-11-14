@@ -1,0 +1,672 @@
+# nova_data.nova - Nova_Data: a spending report from a CSV file of financial transactions.
+#
+#   python3 novalang/novalang.py nova_data.nova TRANSACTIONS.CSV
+#
+# The whole tool is this one NovaLang program: no Python host, no imports, no regular expressions. It reads
+# Date,Description,Amount,Category records, totals them per category, finds the largest single charge and prints
+# a terminal report with dollar amounts and bar charts.
+#
+# The design rule is: MONEY IS NEVER A FLOAT. An amount like "1,250.50" is read by hand into integer cents
+# (125050), every sum is an integer, and the only place cents become text is `money()` below. NovaLang has no
+# decimal type, `round` is half-to-even and `str(5.0)` is "5" (docs/GAPS.md G-043, G-044, and G-008 in
+# Nova_Stats), so a float would be wrong in ways that are easy to miss. A naive float sum is still kept on the
+# side, only so the report can show how far it drifts from the exact one.
+#
+# Sign convention (a credit-card export): a charge is positive, a refund or credit is negative. "Spent" is the
+# net of both.
+#
+# It reads with `read` and nothing else, and needs only `process` (for args and exit) and, if it is there,
+# `clock` (for the timings). Under the `restricted` profile that is `--allow-read DIR --allow-process`.
+
+let DIGITS = "0123456789"
+let LAST_DAY = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+let EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
+let BAR_WIDTH = 20
+let MAX_CONTINUATION = 8
+let MAX_CATEGORIES = 999
+
+# ---- text helpers the standard library does not have (each points at its entry in docs/GAPS.md) ----
+
+# One or more ASCII digits and nothing else. A loop over the characters is exact but slow (about 6 microseconds a
+# character on the VM), so the text is first checked at both ends and for a "." and then handed to num(): given
+# those guards, num() accepts only plain digits (probed in tests/test_units.py). num() alone is too loose
+# (" 7", "+5", "1.5" all pass: G-039 in Nova_Log), and there is no isdigit.
+def all_digits(text) {
+    let n = len(text)
+    if n == 0 or not (text[0] in DIGITS) or not (text[n - 1] in DIGITS) or "." in text {
+        return false
+    }
+    if n <= 2 {
+        return n == 1 or text[1] in DIGITS
+    }
+    try {
+        num(text)
+        return true
+    } catch e {
+        return false
+    }
+}
+
+def two_digits(n) {
+    if n < 10 {
+        return "0" + str(n)
+    }
+    return str(n)
+}
+
+# No thousands separator (G-007 in Nova_Stats). `n` is a non-negative integer.
+def group_digits(n) {
+    let digits = str(n)
+    let out = ""
+    let count = 0
+    for i = len(digits) - 1 downto 0 {
+        if count > 0 and count % 3 == 0 {
+            out = "," + out
+        }
+        out = digits[i] + out
+        count = count + 1
+    }
+    return out
+}
+
+# Cents to "$1,250.50" / "-$45.10". `//` and `%` round toward minus infinity (G-045), so the sign is taken off
+# first and the arithmetic is done on the magnitude: -1250050 // 100 is -12501, not -12500.
+def money(cents) {
+    let sign = ""
+    let magnitude = cents
+    if cents < 0 {
+        sign = "-"
+        magnitude = -cents
+    }
+    return sign + "$" + group_digits(magnitude // 100) + "." + two_digits(magnitude % 100)
+}
+
+# a / b rounded half away from zero, for integers with b > 0. There is no integer division that rounds
+# (`round` works on floats, half-to-even: G-043), and a float is exactly what this must avoid.
+def div_round(a, b) {
+    if a < 0 {
+        return -((-a * 2 + b) // (2 * b))
+    }
+    return (a * 2 + b) // (2 * b)
+}
+
+# part / whole as a percentage with one decimal, from integers only.
+def percent(part, whole) {
+    if whole <= 0 {
+        return "-"
+    }
+    let tenths = div_round(part * 1000, whole)
+    let sign = ""
+    if tenths < 0 {
+        sign = "-"
+        tenths = -tenths
+    }
+    return sign + str(tenths // 10) + "." + str(tenths % 10) + "%"
+}
+
+# A bar in eighths of a block, so 20 characters give 160 steps, not 20. All integers.
+def bar(value, biggest) {
+    if value <= 0 or biggest <= 0 {
+        return ""
+    }
+    let eighths = div_round(value * BAR_WIDTH * 8, biggest)
+    if eighths < 1 {
+        eighths = 1
+    }
+    return "█" * (eighths // 8) + EIGHTHS[eighths % 8]
+}
+
+# Seconds with two decimals, from integers (G-008): floor(x + 0.5) is a half-up round of a positive number.
+def seconds_text(x) {
+    let hundredths = floor(x * 100 + 0.5)
+    return str(hundredths // 100) + "." + two_digits(hundredths % 100) + " s"
+}
+
+# "1 record", "2 records". There is no conditional expression and `and`/`or` give only true or false (G-049),
+# so even a plural takes an `if`.
+def counted(n, one, many) {
+    if n == 1 {
+        return group_digits(n) + " " + one
+    }
+    return group_digits(n) + " " + many
+}
+
+# A description may hold a newline (a quoted field spanning lines); the report is one line per item.
+# replace_all() would do it, but it belongs to the `regex` capability and does not exist in a plain restricted
+# run (G-050), so it is split and joined instead.
+def one_line(text) {
+    return join(split(join(split(trim(text), "\r"), " "), "\n"), " ")
+}
+
+def fit(text, width) {
+    if len(text) <= width {
+        return text
+    }
+    return text[:width - 1] + "…"
+}
+
+# ---- validation by hand (num() throws on bad text and accepts more than digits: G-039 in Nova_Log) ----
+
+def is_leap(year) {
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+}
+
+# "YYYY-MM-DD", a real calendar day. No date type, no parser (G-046).
+def is_date(text) {
+    if len(text) != 10 or text[4] != "-" or text[7] != "-" {
+        return false
+    }
+    let y = text[:4]
+    let m = text[5:7]
+    let d = text[8:]
+    if not (all_digits(y) and all_digits(m) and all_digits(d)) {
+        return false
+    }
+    let year = num(y)
+    let month = num(m)
+    let day = num(d)
+    if year < 1 or month < 1 or month > 12 or day < 1 {
+        return false
+    }
+    let last = LAST_DAY[month - 1]
+    if month == 2 and is_leap(year) {
+        last = 29
+    }
+    return day <= last
+}
+
+# Money text to integer cents: [cents, ""] or [0, "why not"]. Accepts 12, 12.5, 12.50, -12.50, +12.50, $12.50,
+# -$12.50, (12.50) for a negative, and 1,250.50 with correctly placed thousands separators. More than two decimals
+# is refused, not rounded: a fraction of a cent is a data error, and rounding it would need `round`.
+def parse_cents(raw) {
+    # The fast path: 1 to 9 digits, a point, two digits. That is nearly every row, and it skips the general path.
+    let size = len(raw)
+    if size >= 4 and size <= 12 and raw[size - 3] == "." {
+        let w = raw[:size - 3]
+        let f = raw[size - 2:]
+        if all_digits(w) and all_digits(f) {
+            return [num(w) * 100 + num(f), ""]
+        }
+    }
+    let text = trim(raw)
+    if text == "" {
+        return [0, "amount is empty"]
+    }
+    let negative = false
+    if len(text) >= 3 and text[0] == "(" and text[len(text) - 1] == ")" {
+        negative = true
+        text = trim(text[1:len(text) - 1])
+    }
+    if text[:1] == "-" or text[:1] == "+" {
+        if text[0] == "-" {
+            negative = true
+        }
+        text = text[1:]
+    }
+    if text[:1] == "$" {
+        text = text[1:]
+    }
+    let parts = split(text, ".")
+    if len(parts) > 2 {
+        return [0, "amount has more than one decimal point: " + raw]
+    }
+    let whole = parts[0]
+    let frac = ""
+    if len(parts) == 2 {
+        frac = parts[1]
+        if len(frac) == 0 {
+            return [0, "amount has a decimal point but no cents: " + raw]
+        }
+    }
+    if len(frac) > 2 {
+        return [0, "amount has a fraction of a cent: " + raw]
+    }
+    if frac != "" and not all_digits(frac) {
+        return [0, "amount is not money: " + raw]
+    }
+    if "," in whole {
+        let groups = split(whole, ",")
+        for g in groups {
+            if not all_digits(g) {
+                return [0, "amount is not money: " + raw]
+            }
+        }
+        if len(groups[0]) > 3 {
+            return [0, "misplaced thousands separator: " + raw]
+        }
+        for i = 1 to len(groups) - 1 {
+            if len(groups[i]) != 3 {
+                return [0, "misplaced thousands separator: " + raw]
+            }
+        }
+        whole = join(groups, "")
+    }
+    if not all_digits(whole) or len(whole) > 12 {
+        return [0, "amount is not money: " + raw]
+    }
+    frac = frac + "0" * (2 - len(frac))
+    let cents = num(whole) * 100 + num(frac)
+    if negative {
+        cents = -cents
+    }
+    return [cents, ""]
+}
+
+# ---- CSV (RFC 4180 as far as a bank export needs it) ----
+
+# True when a line leaves a quoted field open: an odd number of quote characters.
+def open_quote(line) {
+    return len(split(line, "\"")) % 2 == 0
+}
+
+# One record into fields: [fields, ""] or [[], "why not"]. Handles "quoted, fields", "" for a quote inside a quoted
+# field, and a trailing comma meaning one more empty field. A quote in the middle of an unquoted field, or text
+# after a closing quote, is an error rather than a guess. Everything is done with `split` and `join` on the
+# part of the line still to read, because NovaLang has no find() (G-037 in Nova_Log) and a loop over the
+# characters is about 20 times slower.
+def parse_fields(line) {
+    if not ("\"" in line) {
+        return [split(line, ","), ""]
+    }
+    let fields = []
+    let rest = line
+    while true {
+        if rest[:1] == "\"" {
+            # pieces[0] ends at the next quote. That quote is the first half of "" when the piece after it is
+            # empty and more text follows (pieces[k+1] == "" and k+2 < len); otherwise it closes the field.
+            let pieces = split(rest[1:], "\"")
+            let count = len(pieces)
+            let value = pieces[0]
+            let k = 0
+            while k + 2 < count and pieces[k + 1] == "" {
+                value = value + "\"" + pieces[k + 2]
+                k = k + 2
+            }
+            if k + 1 >= count {
+                return [[], "a quoted field is never closed"]
+            }
+            fields = fields + [value]
+            let tail = join(pieces[k + 1:], "\"")
+            if tail == "" {
+                break
+            }
+            if tail[0] != "," {
+                return [[], "text after a closing quote"]
+            }
+            rest = tail[1:]
+        } else {
+            let pieces = split(rest, ",")
+            if "\"" in pieces[0] {
+                return [[], "a quote in the middle of an unquoted field"]
+            }
+            fields = fields + [pieces[0]]
+            if len(pieces) == 1 {
+                break
+            }
+            rest = join(pieces[1:], ",")
+        }
+    }
+    return [fields, ""]
+}
+
+# ---- the program ----
+
+let argv = args()
+if len(argv) < 1 {
+    print("usage: nova_data.nova TRANSACTIONS.CSV")
+    exit(2)
+}
+let path = argv[0]
+
+# `monotonic` is a `clock` name: when the capability is not granted the timings are left out (G-029 in Nova_Sort).
+let have_clock = true
+let started = 0
+try {
+    started = monotonic()
+} catch e {
+    have_clock = false
+}
+
+let text = ""
+try {
+    text = read(path)
+} catch e {
+    print("nova_data: cannot read " + path + ": " + str(e))
+    exit(1)
+}
+let read_done = started
+if have_clock {
+    read_done = monotonic()
+}
+if text[:1] == "﻿" {
+    text = text[1:]
+}
+let lines = split_lines(text)
+
+let col_date = -1
+let col_desc = -1
+let col_amount = -1
+let col_category = -1
+let width = 0
+
+let counts = {}
+let totals = {}
+let charges = {}
+let refunds = {}
+let records = 0
+let valid = 0
+let blank = 0
+let rejected = 0
+let reject_notes = []
+let charge_count = 0
+let refund_count = 0
+let charge_cents = 0
+let refund_cents = 0
+let float_sum = 0.0
+let first_date = ""
+let last_date = ""
+let best_cents = 0
+let best = []
+let worst_cents = 0
+let worst = []
+let header_done = false
+let date_ok = {}
+
+let idx = 0
+while idx < len(lines) {
+    let line = lines[idx]
+    let line_no = idx + 1
+    idx = idx + 1
+    if trim(line) == "" {
+        blank = blank + 1
+        continue
+    }
+    # A quoted field may contain a newline, which `split_lines` has already cut: glue the next lines back on while
+    # a quote is open, but give up after MAX_CONTINUATION lines so one stray quote cannot swallow the file (G-047).
+    if "\"" in line and open_quote(line) {
+        let glued = line
+        let taken = 0
+        let next_idx = idx
+        while open_quote(glued) and next_idx < len(lines) and taken < MAX_CONTINUATION {
+            glued = glued + "\n" + lines[next_idx]
+            next_idx = next_idx + 1
+            taken = taken + 1
+        }
+        if not open_quote(glued) {
+            line = glued
+            idx = next_idx
+        }
+    }
+    let parsed = parse_fields(line)
+    let fields = parsed[0]
+
+    if not header_done {
+        header_done = true
+        if parsed[1] != "" {
+            print("nova_data: " + path + ": the header line is not valid CSV: " + parsed[1])
+            exit(1)
+        }
+        width = len(fields)
+        for c = 0 to width - 1 {
+            let name = lower(trim(fields[c]))
+            if name == "date" {
+                col_date = c
+            } else if name == "description" {
+                col_desc = c
+            } else if name == "amount" {
+                col_amount = c
+            } else if name == "category" {
+                col_category = c
+            }
+        }
+        if col_date < 0 or col_desc < 0 or col_amount < 0 or col_category < 0 {
+            print("nova_data: " + path + ": the header must name Date, Description, Amount and Category (found: " + join(fields, ",") + ")")
+            exit(1)
+        }
+        continue
+    }
+
+    records = records + 1
+    let why = parsed[1]
+    let cents = 0
+    if why == "" and len(fields) != width {
+        why = "expected " + str(width) + " fields, found " + str(len(fields))
+    }
+    if why == "" {
+        let date = trim(fields[col_date])
+        # a file has a few hundred distinct dates and thousands of rows, so each date is checked once
+        if not (date in date_ok) {
+            date_ok[date] = is_date(date)
+        }
+        if not date_ok[date] {
+            why = "not a valid date (YYYY-MM-DD): " + date
+        } else {
+            let money_parsed = parse_cents(fields[col_amount])
+            cents = money_parsed[0]
+            why = money_parsed[1]
+        }
+    }
+    if why != "" {
+        rejected = rejected + 1
+        if len(reject_notes) < 5 {
+            reject_notes = reject_notes + ["line " + group_digits(line_no) + ": " + why]
+        }
+        continue
+    }
+
+    valid = valid + 1
+    let date = trim(fields[col_date])
+    let category = trim(fields[col_category])
+    if category == "" {
+        category = "Uncategorized"
+    }
+    if first_date == "" or date < first_date {
+        first_date = date
+    }
+    if last_date == "" or date > last_date {
+        last_date = date
+    }
+    if category in counts {
+        counts[category] = counts[category] + 1
+        totals[category] = totals[category] + cents
+    } else {
+        counts[category] = 1
+        totals[category] = cents
+        charges[category] = 0
+        refunds[category] = 0
+    }
+    if cents >= 0 {
+        charge_count = charge_count + 1
+        charge_cents = charge_cents + cents
+        charges[category] = charges[category] + cents
+        # strictly greater: on a tie the earliest record in the file is the one reported
+        if cents > best_cents {
+            best_cents = cents
+            best = [date, one_line(fields[col_desc]), category, line_no]
+        }
+    } else {
+        refund_count = refund_count + 1
+        refund_cents = refund_cents + cents
+        refunds[category] = refunds[category] + cents
+        if cents < worst_cents {
+            worst_cents = cents
+            worst = [date, one_line(fields[col_desc]), category, line_no]
+        }
+    }
+    # the naive way, kept only to be compared with the exact total
+    float_sum = float_sum + cents / 100
+}
+let parse_done = read_done
+if have_clock {
+    parse_done = monotonic()
+}
+if not header_done {
+    print("nova_data: " + path + ": the file has no header line (it is empty or all blank)")
+    exit(1)
+}
+
+# ---- the report ----
+
+let names = sorted(keys(counts))
+if len(names) > MAX_CATEGORIES {
+    print("nova_data: more than " + str(MAX_CATEGORIES) + " categories; the sort key below packs the category number into three digits")
+    exit(1)
+}
+let grand = charge_cents + refund_cents
+
+# sorted() cannot order pairs (G-038 in Nova_Log), so each category and its total are packed into one number:
+# total * 1000 + (999 - position in alphabetical order). Descending order is then "biggest total first, then
+# alphabetical". `//` and `%` floor, so this decodes exactly even when a total is negative.
+let packed = []
+for i = 0 to len(names) - 1 {
+    packed = packed + [totals[names[i]] * 1000 + (999 - i)]
+}
+packed = sorted(packed, true)
+
+# ---- the layout: every column is as wide as its widest cell, so nothing collides whatever the amounts are ----
+
+def widest(cells, least) {
+    let w = least
+    for cell in cells {
+        if len(cell) > w {
+            w = len(cell)
+        }
+    }
+    return w
+}
+
+let name_width = 8
+let biggest = 0
+let cell_name = []
+let cell_n = []
+let cell_total = []
+let cell_avg = []
+let cell_share = []
+let cell_bar = []
+let rule_len = 78
+let w_n = 4
+let w_total = 5
+let w_avg = 7
+let w_share = 5
+let foot_avg = ""
+if valid > 0 {
+    for n in names {
+        if len(n) > name_width {
+            name_width = len(n)
+        }
+        if totals[n] > biggest {
+            biggest = totals[n]
+        }
+    }
+    if name_width > 16 {
+        name_width = 16
+    }
+    for key in packed {
+        let n = names[999 - key % 1000]
+        cell_name = cell_name + [pad(fit(n, name_width), name_width)]
+        cell_n = cell_n + [group_digits(counts[n])]
+        cell_total = cell_total + [money(totals[n])]
+        cell_avg = cell_avg + [money(div_round(totals[n], counts[n]))]
+        cell_share = cell_share + [percent(totals[n], grand)]
+        cell_bar = cell_bar + [bar(totals[n], biggest)]
+    }
+    foot_avg = money(div_round(grand, valid))
+    w_n = widest(cell_n + [group_digits(valid)], 4)
+    w_total = widest(cell_total + [money(grand)], 5)
+    w_avg = widest(cell_avg + [foot_avg], 7)
+    w_share = widest(cell_share + ["100.0%"], 5)
+    # two spaces of margin, the name, then each column with two spaces in front, then the bar
+    let table_width = 2 + name_width + (w_n + 2) + (w_total + 2) + (w_avg + 2) + (w_share + 2) + 2 + BAR_WIDTH
+    if table_width > rule_len {
+        rule_len = table_width
+    }
+}
+let rule = "━" * rule_len
+let thin = "─" * rule_len
+print("")
+print("  NOVA_DATA  ·  " + path)
+print("  " + rule)
+let summary = "  " + counted(records, "record", "records") + ": " + group_digits(valid) + " read, " + group_digits(rejected) + " rejected"
+if blank > 0 {
+    summary = summary + ", " + counted(blank, "blank line", "blank lines") + " skipped"
+}
+print(summary)
+if valid > 0 {
+    print("  " + first_date + "  to  " + last_date + "   ·   " + counted(len(names), "category", "categories"))
+}
+if valid == 0 {
+    print("")
+    print("  Nothing to report: no valid transactions.")
+}
+
+if valid > 0 {
+    print("")
+    print("  SPENDING BY CATEGORY  (net of refunds)")
+    print("  " + thin)
+    let head = "  " + pad("Category", name_width) + pad_left("Txns", w_n + 2) + pad_left("Total", w_total + 2) + pad_left("Average", w_avg + 2)
+    head = head + pad_left("Share", w_share + 2) + "  Bar"
+    print(head)
+    for i = 0 to len(cell_name) - 1 {
+        let row = "  " + cell_name[i] + pad_left(cell_n[i], w_n + 2) + pad_left(cell_total[i], w_total + 2)
+        row = row + pad_left(cell_avg[i], w_avg + 2) + pad_left(cell_share[i], w_share + 2) + "  " + cell_bar[i]
+        print(row)
+    }
+    print("  " + thin)
+    let foot = "  " + pad("TOTAL", name_width) + pad_left(group_digits(valid), w_n + 2) + pad_left(money(grand), w_total + 2)
+    foot = foot + pad_left(foot_avg, w_avg + 2) + pad_left("100.0%", w_share + 2)
+    print(foot)
+    print("")
+    let w_money = widest([money(charge_cents), money(refund_cents)], 10)
+    print("  " + pad("Charges", 9) + pad_left(money(charge_cents), w_money) + "   in " + counted(charge_count, "transaction", "transactions"))
+    print("  " + pad("Refunds", 9) + pad_left(money(refund_cents), w_money) + "   in " + counted(refund_count, "transaction", "transactions"))
+
+    print("")
+    print("  LARGEST SINGLE TRANSACTION")
+    print("  " + thin)
+    let w_card = 11
+    if len(best) > 0 {
+        w_card = widest([money(best_cents)], w_card)
+    }
+    if len(worst) > 0 {
+        w_card = widest([money(worst_cents)], w_card)
+    }
+    let indent = " " * (2 + 8 + w_card + 3)
+    if len(best) > 0 {
+        print("  " + pad("Charge", 8) + pad_left(money(best_cents), w_card) + "   " + fit(best[1], 44))
+        print(indent + best[2] + "  ·  " + best[0] + "  ·  line " + group_digits(best[3]))
+    } else {
+        print("  (no charges)")
+    }
+    if len(worst) > 0 {
+        print("  " + pad("Refund", 8) + pad_left(money(worst_cents), w_card) + "   " + fit(worst[1], 44))
+        print(indent + worst[2] + "  ·  " + worst[0] + "  ·  line " + group_digits(worst[3]))
+    }
+
+    # The float sum, to show what the integer cents avoid. Fixed-point text is built from integers (G-008 in
+    # Nova_Stats): str() of a small float switches to exponent form ("4.8e-08", G-048), which num() cannot read
+    # back (G-039 in Nova_Log).
+    let drift_nano = floor(abs(float_sum - grand / 100) * 1000000000 + 0.5)
+    let drift_frac = str(drift_nano % 1000000000)
+    let drift = "$" + group_digits(drift_nano // 1000000000) + "." + "0" * (9 - len(drift_frac)) + drift_frac
+    print("")
+    print("  PRECISION CHECK")
+    print("  " + thin)
+    print("  " + pad("exact sum (integer cents)", 30) + money(grand))
+    print("  " + pad("naive float sum, via str()", 30) + str(float_sum))
+    print("  " + pad("float error", 30) + drift + " after " + counted(valid, "addition", "additions"))
+}
+if rejected > 0 {
+    print("")
+    print("  REJECTED RECORDS  (first " + str(len(reject_notes)) + " of " + group_digits(rejected) + ")")
+    print("  " + thin)
+    for note in reject_notes {
+        print("  " + note)
+    }
+}
+if have_clock {
+    print("")
+    let timing = "  read " + seconds_text(read_done - started) + ", parse " + seconds_text(parse_done - read_done)
+    timing = timing + ", " + group_digits(floor(records / max(0.001, parse_done - read_done))) + " records/s"
+    print(timing)
+}
+print("")
