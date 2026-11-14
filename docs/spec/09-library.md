@@ -264,9 +264,19 @@ Indexes are in code points, as `len` and slicing are.
   `["a/b/c.tar", ".gz"]`, and `.bashrc`, `a.b/c`, `..x` have no extension (`""`) while `x.` has
   the extension `"."`.
 
-The module's exports are exactly the eight names above (`basename`, `ends_with`, `find`,
-`find_from`, `is_number`, `parse_number`, `splitext`, `starts_with`); anything else in its file is
-private. `chr` and `ord` (G-004, G-005) are not in this version of the module.
+- `text.chr(n)` is the one-character string whose code point is `n`, a whole number from 0 to 1114111
+  other than the surrogates 55296 to 57343 (the one place a program can get an escape character, `text.chr(27)`:
+  `"\x1b"`, `"\u001b"` and `"\e"` are lexical errors, `[lex.escapes]`, G-004). Anything else is `the number for
+  text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)`. What a program
+  prints reaches its output as it is, so a program that prints an escape sequence does what the receiving
+  terminal does with one.
+- `text.ord(s)` is the code point of the one-character string `s` (G-005); a string of any other length is
+  `the text for text.ord() needs exactly one character, but got 2`, a non-string `the text for text.ord() needs a string,
+  but got number`. `text.ord(text.chr(n)) == n`. (`chr` and `ord` are native, `[mod.std]` 6.)
+
+The module's exports are exactly the ten names above (`basename`, `chr`, `ends_with`, `find`,
+`find_from`, `is_number`, `ord`, `parse_number`, `splitext`, `starts_with`); anything else in its file is
+private.
 
 ## [lib.std-decimal] `std:decimal`
 
@@ -274,8 +284,9 @@ private. `chr` and `ord` (G-004, G-005) are not in this version of the module.
 import "std:decimal" as dec
 ```
 
-Exact base-10 arithmetic (G-043, G-044, G-045), written in NovaLang over exact integers
-(`[port.integers]`): no capability, every profile, deterministic. A **decimal** is the list
+Exact base-10 arithmetic (G-043, G-044, G-045) over exact integers (`[port.integers]`), native
+(`[mod.std]` 6: the first version, plain NovaLang, cost about 60 microseconds an operation): no capability, every
+profile, deterministic. A **decimal** is the list
 `[unscaled, scale]` and means `unscaled / 10^scale`: `[1999, 2]` is `19.99`. Both are whole
 numbers and `scale` is 0 to 1000. A program makes decimals with this module's functions and
 reads them with its functions; the layout is **not** part of the interface (it can change in
@@ -388,3 +399,43 @@ Number to text (G-007, G-008, G-048), in NovaLang.
 `str` of a float is **unchanged** by this module: a small float still prints as `1e-07` (G-048) and `fmt.fixed` is the way out.
 A float literal too large for a float is still infinity (G-052, decided: kept, and now documented here, because making the lexer
 refuse it would break programs that run today). The module's exports are exactly `fixed`, `grouped`, `pad_zero`.
+
+## [lib.std-files] `std:files`
+
+```
+import "std:files" as files
+```
+
+Reading files in pieces (G-030, G-032, G-036, G-041). The module declares the `files.read` capability
+(`[mod.std]` 3): `import "std:files"` in a `restricted` run that was not granted it is `ImportError:
+std:files needs the 'files.read' capability, which this run did not grant`. Every path is held to the granted
+folders exactly as `read` is (`[sbx.paths]`: judged by its real location, before the file is touched, so the error
+is the same whether or not the file exists), and a path outside them is
+`FileError: <path> is outside the folders this program may use`. A path that is not a string is a type error
+that names the function.
+
+- `files.size(path)` is the size of the file in bytes. A folder is `FileError: <path> is a directory, not a file`, a missing file
+  `FileNotFoundError: <path>`.
+- `files.is_dir(path)` is `true` for a folder. `files.is_link(path)` is `true` when the path is a symbolic link, the
+  link itself and not what it points at (the grant is still judged by where the link leads). Both are `false` for
+  a path that does not exist.
+- `files.lines(path)` is every line of the file as a list: a line ends at a line feed, a carriage return, or a
+  carriage return followed by a line feed (one line end), nothing else does, and a last line end starts no
+  new line (the rule of `split_lines`, `[lib.text]`). The file is read **in pieces** of at most 64 KiB (a longer line
+  makes its piece grow, up to 16 MiB), so no string of the whole file is ever made and the string limit
+  applies only to each line: a file of any size can be read in the `restricted` profile as long as its lines and the
+  list of them fit the limits (`[sbx.limits]`, `string` and `list`). A line over the string limit is that limit's error,
+  `a string cannot grow beyond <N> characters` (`[sbx.limits]`, `string`); a file that is not UTF-8 is
+  `FileError: <path>: <reason>`.
+- `files.each_line(path, handle)` calls `handle(line)` for every line, in order, the same lines, **without ever holding
+  more than one piece and its lines**, and returns `nothing`; it is the way to read a file that is too large to hold as a
+  list. An error in `handle` ends the loop and is the caller's.
+
+**Nothing stays open.** Each piece is read by opening the file, reading from a byte offset and closing it, and the grant
+is judged again for every piece, so a file replaced between two pieces is judged again, and a loop left by an error, by
+`break` in the caller or by the end of the program leaves nothing behind. (Reading the same file while it is being written
+gives whatever each piece found.)
+
+The module's exports are exactly `each_line`, `is_dir`, `is_link`, `lines`, `size`. A lazily read `for line in ...` is not
+part of this version.
+

@@ -11,7 +11,7 @@
    "profile": "core",
    "source": "import \"std:text\"\nprint(type(text), sorted(keys(text)))",
    "output": [
-    "dict [\"basename\", \"ends_with\", \"find\", \"find_from\", \"is_number\", \"parse_number\", \"splitext\", \"starts_with\"]"
+    "dict [\"basename\", \"chr\", \"ends_with\", \"find\", \"find_from\", \"is_number\", \"ord\", \"parse_number\", \"splitext\", \"starts_with\"]"
    ],
    "error": "",
    "error_line": null,
@@ -707,6 +707,289 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "std-text-chr-and-ord",
+   "spec": [
+    "lib.std-text",
+    "mod.std"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.chr(65), text.chr(233), text.chr(8364), text.ord(\"A\"), text.ord(\"é\"), text.ord(\"€\"))\nprint(json.dumps(text.chr(27)), json.dumps(text.chr(0)), len(text.chr(128512)), text.ord(text.chr(128512)))\nprint(text.ord(text.chr(1114111)), text.chr(10) == \"\\n\", text.chr(48) + text.chr(49))",
+   "output": [
+    "A é € 65 233 8364",
+    "\"\\u001b\" \"\\u0000\" 1 128512",
+    "1114111 true 01"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-chr-and-ord-refuse-what-is-not-a-character",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\ntry { text.chr(-1) } catch e { print(e) }\ntry { text.chr(1114112) } catch e { print(e) }\ntry { text.chr(55296) } catch e { print(e) }\ntry { text.chr(1.5) } catch e { print(e) }\ntry { text.chr(\"a\") } catch e { print(e) }\ntry { text.ord(\"\") } catch e { print(e) }\ntry { text.ord(\"ab\") } catch e { print(e) }\ntry { text.ord(5) } catch e { print(e) }",
+   "output": [
+    "the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)",
+    "the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)",
+    "the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)",
+    "the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)",
+    "the number for text.chr() needs a whole number from 0 to 1114111, other than 55296 to 57343 (the surrogates)",
+    "the text for text.ord() needs exactly one character, but got 0",
+    "the text for text.ord() needs exactly one character, but got 2",
+    "the text for text.ord() needs a string, but got number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-native-is-visible-only-inside-a-standard-module",
+   "spec": [
+    "mod.std"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\ntry { print(native) } catch e { print(e) }\nprint(\"native\" in keys(text))\nlet native = 5\nprint(native)",
+   "output": [
+    "undefined name 'native'",
+    "false",
+    "5"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-files-needs-the-files-read-capability",
+   "spec": [
+    "mod.std",
+    "sbx.capabilities",
+    "lib.std-files"
+   ],
+   "profile": "sandbox",
+   "source": "print(\"start\")\nimport \"std:files\" as files\nprint(files.size(\"data/in.txt\"))",
+   "output": [
+    "start"
+   ],
+   "error": "ImportError: std:files needs the 'files.read' capability, which this run did not grant",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   },
+   "files": {
+    "data/in.txt": "a\nb\r\nc\rd\n\ne",
+    "data/empty.txt": "",
+    "data/nl.txt": "\n",
+    "data/last.txt": "one\ntwo\n",
+    "secret.txt": "top secret",
+    "data/sub/deep.txt": "deep"
+   }
+  },
+  {
+   "name": "std-files-lines-and-each-line",
+   "spec": [
+    "lib.std-files"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\nprint(json.dumps(files.lines(\"data/in.txt\")))\nprint(json.dumps(files.lines(\"data/empty.txt\")), json.dumps(files.lines(\"data/nl.txt\")), json.dumps(files.lines(\"data/last.txt\")))\nlet seen = []\ndef note(line) { append(seen, upper(line)) }\nfiles.each_line(\"data/last.txt\", note)\nprint(seen)\nprint(type(files.each_line(\"data/empty.txt\", note)))",
+   "output": [
+    "[\"a\", \"b\", \"c\", \"d\", \"\", \"e\"]",
+    "[] [\"\"] [\"one\", \"two\"]",
+    "[\"ONE\", \"TWO\"]",
+    "nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "files": {
+    "data/in.txt": "a\nb\r\nc\rd\n\ne",
+    "data/empty.txt": "",
+    "data/nl.txt": "\n",
+    "data/last.txt": "one\ntwo\n",
+    "secret.txt": "top secret",
+    "data/sub/deep.txt": "deep"
+   }
+  },
+  {
+   "name": "std-files-size-is-dir-and-is-link",
+   "spec": [
+    "lib.std-files"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\nprint(files.size(\"data/in.txt\"), files.size(\"data/empty.txt\"), files.is_dir(\"data\"), files.is_dir(\"data/in.txt\"), files.is_dir(\"data/nothing\"))\nprint(files.is_link(\"data/in.txt\"), files.is_link(\"data/nothing\"))\ntry { files.size(\"data\") } catch e { print(e) }\ntry { files.size(\"data/nothing\") } catch e { print(e) }\ntry { files.lines(\"data/nothing\") } catch e { print(e) }",
+   "output": [
+    "11 0 true false false",
+    "false false",
+    "FileError: data is a directory, not a file",
+    "FileNotFoundError: data/nothing",
+    "FileNotFoundError: data/nothing"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "files": {
+    "data/in.txt": "a\nb\r\nc\rd\n\ne",
+    "data/empty.txt": "",
+    "data/nl.txt": "\n",
+    "data/last.txt": "one\ntwo\n",
+    "secret.txt": "top secret",
+    "data/sub/deep.txt": "deep"
+   }
+  },
+  {
+   "name": "std-files-obeys-the-folders-that-were-granted",
+   "spec": [
+    "lib.std-files",
+    "sbx.paths"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\ntry { files.lines(\"secret.txt\") } catch e { print(e) }\ntry { files.size(\"data/../secret.txt\") } catch e { print(e) }\ntry { files.is_dir(\"../data\") } catch e { print(e) }\ntry { files.is_link(\"secret.txt\") } catch e { print(e) }\nlet seen = []\ndef note(line) { append(seen, line) }\ntry { files.each_line(\"secret.txt\", note) } catch e { print(e) }\nprint(len(seen))",
+   "output": [
+    "FileError: secret.txt is outside the folders this program may use",
+    "FileError: data/../secret.txt is outside the folders this program may use",
+    "FileError: ../data is outside the folders this program may use",
+    "FileError: secret.txt is outside the folders this program may use",
+    "FileError: secret.txt is outside the folders this program may use",
+    "0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "files": {
+    "data/in.txt": "a\nb\r\nc\rd\n\ne",
+    "data/empty.txt": "",
+    "data/nl.txt": "\n",
+    "data/last.txt": "one\ntwo\n",
+    "secret.txt": "top secret",
+    "data/sub/deep.txt": "deep"
+   }
+  },
+  {
+   "name": "std-files-reads-what-read-cannot-hold-in-one-string",
+   "spec": [
+    "lib.std-files",
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\ntry { read(\"data/big.txt\") } catch e { print(e) }\nlet n = 0\ndef count(line) { n = n + len(line) }\nlet all = files.lines(\"data/big.txt\")\nprint(len(all), len(all[0]), len(all[29]))\nlet total = 0\nfor line in all { total = total + len(line) }\nprint(total)",
+   "output": [
+    "a string cannot grow beyond 1000 characters",
+    "30 99 99",
+    "2970"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "limits": {
+     "string": 1000
+    }
+   },
+   "files": {
+    "data/big.txt": "00xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n01xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n02xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n03xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n04xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n05xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n06xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n07xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n08xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n09xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n10xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n11xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n12xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n13xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n14xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n15xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n16xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n17xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n18xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n19xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n20xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n21xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n22xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n23xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n24xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n25xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n26xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n27xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n28xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n29xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+   }
+  },
+  {
+   "name": "std-files-a-line-longer-than-the-string-limit-is-that-limits-error",
+   "spec": [
+    "lib.std-files",
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\ntry { files.lines(\"data/long.txt\") } catch e { print(e) }",
+   "output": [
+    "a string cannot grow beyond 1000 characters"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ],
+    "limits": {
+     "string": 1000
+    }
+   },
+   "files": {
+    "data/long.txt": "ok\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nafter\n"
+   }
+  },
+  {
+   "name": "std-files-in-the-trusted-profile",
+   "spec": [
+    "lib.std-files"
+   ],
+   "profile": "modules",
+   "source": "import \"std:files\" as files\nprint(json.dumps(files.lines(\"data/last.txt\")), files.size(\"data/last.txt\"))",
+   "output": [
+    "[\"one\", \"two\"] 8"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "data/last.txt": "one\ntwo\n"
+   }
+  },
+  {
+   "name": "std-files-exports",
+   "spec": [
+    "lib.std-files",
+    "mod.std"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\nprint(join(sorted(keys(files)), \" \"))",
+   "output": [
+    "each_line is_dir is_link lines size"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   }
   }
  ]
 }

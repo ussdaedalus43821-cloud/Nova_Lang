@@ -138,3 +138,16 @@ export def splitext(path) {
     }
     return [head + lead, last[dot:]]
 }
+
+# The character with code point `n` (0 to 1114111, except the surrogates 55296 to 57343): the way to
+# write an escape character, text.chr(27), where "\x1b" and "\e" are errors (G-004). Whatever
+# a program prints reaches the terminal as it is, so a program that prints an escape sequence can do
+# what the terminal lets an escape sequence do.
+export def chr(n) {
+    return native.chr(n)
+}
+
+# The code point of a one-character string (G-005).
+export def ord(s) {
+    return native.ord(s)
+}

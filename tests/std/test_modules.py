@@ -40,7 +40,8 @@ class Registry(unittest.TestCase):
     def test_descriptors_are_complete_and_use_known_words(self):
         for name, descriptor in self.modules.items():
             with self.subTest(module=name):
-                self.assertEqual(sorted(descriptor), ["capabilities", "exports", "since", "tier"])
+                self.assertEqual(sorted(set(descriptor) - {"native"}), ["capabilities", "exports", "since", "tier"])
+                self.assertEqual(sorted(descriptor.get("native", [])), descriptor.get("native", []))
                 self.assertTrue(set(descriptor["capabilities"]) <= CAPABILITIES)
                 self.assertIn(descriptor["tier"], ("provisional", "stable"))
                 self.assertRegex(descriptor["since"], r"^\d+\.\d+\.\d+$")

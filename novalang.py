@@ -4467,6 +4467,7 @@ class Interpreter:
         if resolved_path in self.modules:
             return self.modules[resolved_path]
 
+        std_name = raw_path[len(STD_PREFIX):] if is_std_import(raw_path) else None
         if resolved_path in self.import_stack:
             cycle = self.import_stack[self.import_stack.index(resolved_path):] + [resolved_path]
             chain = " -> ".join(module_label(path) for path in cycle)
@@ -4490,6 +4491,9 @@ class Interpreter:
         saved = (self.globals, self.env, self.call_stack, self.current_exports)
         self.globals = self.new_global_scope()
         self.env = self.globals
+        if std_name is not None and std_registry()[std_name].get("native"):
+            # the native functions of this one standard module, nothing else ([mod.std] 6)
+            self.globals.define("native", dict(NATIVE_FUNCTIONS[std_name]))
         self.call_stack = []
         self.current_exports = {}
         self.import_stack.append(resolved_path)
@@ -4936,6 +4940,456 @@ def resolve_std(raw_path, position):
                 raw_path, ", ".join(STD_PREFIX + known for known in sorted(registry))),
             position, label="ImportError")
     return os.path.join(STD_DIR, name + ".nova"), registry[name]
+
+
+# ---------------------------------------------------------------------------
+# Native standard modules (docs/spec/08-modules.md [mod.std], M13 slice 3)
+# ---------------------------------------------------------------------------
+#
+# A standard module written in NovaLang can reach Python-implemented functions through a predefined
+# global `native`, defined in the scope of a standard module that lists `native` names in
+# lib/std/modules.json and in no other scope: no program can name it, and it reserves nothing. The
+# functions are plain (args, position) built-ins kept in NATIVE_FUNCTIONS, not in BUILTINS. The
+# self-hosted interpreter reaches the same functions through `native_call`, which bootstrap.py defines
+# for it alone. One implementation, so the three engines cannot disagree about what these compute.
+
+DECIMAL_MODES = ("half_even", "half_up", "half_down", "up", "down", "floor", "ceiling")
+DECIMAL_MAX_SCALE = 1000
+_ASCII_DIGITS = "0123456789"
+
+
+def native_error(message, position):
+    return NovaError(message, position, label="Error")
+
+
+def decimal_fail(who, what, position):
+    raise native_error("decimal.{}() {}".format(who, what), position)
+
+
+def decimal_whole(x):
+    """The integer a whole number stands for (5, 5.0 and 1e30 all do), or None."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return None
+    if isinstance(x, float):
+        if x != x or x in (float("inf"), float("-inf")) or x != math.floor(x):
+            return None
+        return int(x)
+    return x
+
+
+def decimal_read(who, role, a, position):
+    """(unscaled, scale) of the decimal `a`, or the error that names the argument."""
+    if isinstance(a, list) and len(a) == 2:
+        unscaled, scale = decimal_whole(a[0]), decimal_whole(a[1])
+        if unscaled is not None and scale is not None and 0 <= scale <= DECIMAL_MAX_SCALE:
+            return unscaled, scale
+    decimal_fail(who, "needs a decimal for {}, but got {}".format(role, format_value(a)), position)
+
+
+def decimal_places(who, places, position):
+    value = decimal_whole(places)
+    if value is None or not 0 <= value <= DECIMAL_MAX_SCALE:
+        decimal_fail(who, "needs places to be a whole number from 0 to {}".format(DECIMAL_MAX_SCALE), position)
+    return value
+
+
+def decimal_mode(who, mode, position):
+    if not isinstance(mode, str) or mode not in DECIMAL_MODES:
+        decimal_fail(who, "needs a rounding mode: {}".format(", ".join(DECIMAL_MODES)), position)
+    return mode
+
+
+def decimal_make(unscaled, scale, position):
+    return [bounded_integer(unscaled, position), scale]
+
+
+def decimal_round_div(n, d, mode):
+    """n / d (d > 0) rounded to a whole number by `mode`."""
+    q, r = divmod(n, d)
+    if r == 0:
+        return q
+    negative = n < 0
+    if mode == "floor":
+        return q
+    if mode == "ceiling":
+        return q + 1
+    if mode == "down":
+        return q + 1 if negative else q
+    if mode == "up":
+        return q if negative else q + 1
+    twice = 2 * r
+    if twice < d:
+        return q
+    if twice > d:
+        return q + 1
+    if mode == "half_up":
+        return q if negative else q + 1
+    if mode == "half_down":
+        return q + 1 if negative else q
+    return q if q % 2 == 0 else q + 1
+
+
+def decimal_scan(text, allow_exponent):
+    """(unscaled, scale) for the text of a number (sign, digits, a point, digits, and when allowed an
+    e and a whole exponent), or None. At least one digit and nothing else."""
+    n, i, negative = len(text), 0, False
+    if n and text[0] in "+-":
+        negative = text[0] == "-"
+        i = 1
+    digits, scale, seen_point = [], 0, False
+    while i < n:
+        ch = text[i]
+        if ch in _ASCII_DIGITS:
+            digits.append(ch)
+            if seen_point:
+                scale += 1
+        elif ch == "." and not seen_point:
+            seen_point = True
+        else:
+            break
+        i += 1
+    if not digits or len(digits) > MAX_INTEGER_DIGITS:
+        return None
+    exponent = 0
+    if i < n:
+        if not allow_exponent or text[i] not in "eE":
+            return None
+        i += 1
+        exp_negative = False
+        if i < n and text[i] in "+-":
+            exp_negative = text[i] == "-"
+            i += 1
+        start = i
+        while i < n and text[i] in _ASCII_DIGITS:
+            i += 1
+        exp_digits = text[start:i]
+        if not exp_digits or len(exp_digits) > 4 or i != n:
+            return None
+        exponent = -int(exp_digits) if exp_negative else int(exp_digits)
+    unscaled = int("".join(digits))
+    scale -= exponent
+    if scale < 0:
+        if -scale > 3900:
+            return None
+        unscaled *= 10 ** -scale
+        scale = 0
+    if scale > DECIMAL_MAX_SCALE:
+        return None
+    return (-unscaled if negative else unscaled), scale
+
+
+def decimal_aligned(x, y):
+    """(a, b, scale): the unscaled values of two decimals at the larger of their scales."""
+    scale = max(x[1], y[1])
+    return x[0] * 10 ** (scale - x[1]), y[0] * 10 ** (scale - y[1]), scale
+
+
+def native_decimal_parse(args, position):
+    if not isinstance(args[0], str):
+        decimal_fail("parse", "needs a string, but got {}".format(type_category(args[0])), position)
+    found = decimal_scan(args[0], False)
+    if found is None:
+        decimal_fail("parse", 'cannot read a decimal from "{}"'.format(args[0]), position)
+    return decimal_make(found[0], found[1], position)
+
+
+def native_decimal_try_parse(args, position):
+    if not isinstance(args[0], str):
+        decimal_fail("try_parse", "needs a string, but got {}".format(type_category(args[0])), position)
+    found = decimal_scan(args[0], False)
+    return NOTHING if found is None else decimal_make(found[0], found[1], position)
+
+
+def native_decimal_from_int(args, position):
+    n = decimal_whole(args[0])
+    if n is None:
+        decimal_fail("from_int", "needs a whole number, but got {}".format(format_value(args[0])), position)
+    return decimal_make(n, 0, position)
+
+
+def native_decimal_from_float(args, position):
+    x, places, mode = args
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        decimal_fail("from_float", "needs a number, but got {}".format(type_category(x)), position)
+    p = decimal_places("from_float", places, position)
+    decimal_mode("from_float", mode, position)
+    found = decimal_scan(format_value(x), True)
+    if found is None:
+        decimal_fail("from_float", "cannot read the number {}".format(format_value(x)), position)
+    return native_decimal_quantize([decimal_make(found[0], found[1], position), p, mode], position)
+
+
+def native_decimal_is_decimal(args, position):
+    a = args[0]
+    if not isinstance(a, list) or len(a) != 2:
+        return False
+    unscaled, scale = decimal_whole(a[0]), decimal_whole(a[1])
+    return unscaled is not None and scale is not None and 0 <= scale <= DECIMAL_MAX_SCALE
+
+
+def native_decimal_scale(args, position):
+    return decimal_read("scale", "its argument", args[0], position)[1]
+
+
+def native_decimal_add(args, position):
+    x = decimal_read("add", "the first argument", args[0], position)
+    y = decimal_read("add", "the second argument", args[1], position)
+    a, b, scale = decimal_aligned(x, y)
+    return decimal_make(a + b, scale, position)
+
+
+def native_decimal_sub(args, position):
+    x = decimal_read("sub", "the first argument", args[0], position)
+    y = decimal_read("sub", "the second argument", args[1], position)
+    a, b, scale = decimal_aligned(x, y)
+    return decimal_make(a - b, scale, position)
+
+
+def native_decimal_mul(args, position):
+    x = decimal_read("mul", "the first argument", args[0], position)
+    y = decimal_read("mul", "the second argument", args[1], position)
+    if x[1] + y[1] > DECIMAL_MAX_SCALE:
+        decimal_fail("mul", "result would have more than {} digits after the point".format(DECIMAL_MAX_SCALE), position)
+    return decimal_make(x[0] * y[0], x[1] + y[1], position)
+
+
+def native_decimal_div(args, position):
+    a, b, places, mode = args
+    x = decimal_read("div", "the dividend", a, position)
+    y = decimal_read("div", "the divisor", b, position)
+    p = decimal_places("div", places, position)
+    decimal_mode("div", mode, position)
+    if y[0] == 0:
+        decimal_fail("div", "cannot divide by zero", position)
+    top = bounded_integer(x[0] * 10 ** (y[1] + p), position)
+    bottom = y[0] * 10 ** x[1]
+    if bottom < 0:
+        top, bottom = -top, -bottom
+    return decimal_make(decimal_round_div(top, bottom, mode), p, position)
+
+
+def native_decimal_quantize(args, position):
+    a, places, mode = args
+    x = decimal_read("quantize", "its first argument", a, position)
+    p = decimal_places("quantize", places, position)
+    decimal_mode("quantize", mode, position)
+    if p >= x[1]:
+        return decimal_make(x[0] * 10 ** (p - x[1]), p, position)
+    return decimal_make(decimal_round_div(x[0], 10 ** (x[1] - p), mode), p, position)
+
+
+def native_decimal_negate(args, position):
+    x = decimal_read("negate", "its argument", args[0], position)
+    return decimal_make(-x[0], x[1], position)
+
+
+def native_decimal_absolute(args, position):
+    x = decimal_read("absolute", "its argument", args[0], position)
+    return decimal_make(abs(x[0]), x[1], position)
+
+
+def native_decimal_sign(args, position):
+    x = decimal_read("sign", "its argument", args[0], position)
+    return (x[0] > 0) - (x[0] < 0)
+
+
+def native_decimal_cmp(args, position):
+    x = decimal_read("cmp", "the first argument", args[0], position)
+    y = decimal_read("cmp", "the second argument", args[1], position)
+    a, b, _ = decimal_aligned(x, y)
+    return (a > b) - (a < b)
+
+
+def decimal_text(unscaled, scale):
+    sign = "-" if unscaled < 0 else ""
+    digits = str(abs(unscaled))
+    if scale == 0:
+        return sign + digits
+    digits = digits.rjust(scale + 1, "0")
+    return "{}{}.{}".format(sign, digits[:len(digits) - scale], digits[len(digits) - scale:])
+
+
+def native_decimal_to_string(args, position):
+    x = decimal_read("to_string", "its argument", args[0], position)
+    return decimal_text(x[0], x[1])
+
+
+def native_decimal_to_int(args, position):
+    a, mode = args
+    x = decimal_read("to_int", "its first argument", a, position)
+    decimal_mode("to_int", mode, position)
+    return decimal_round_div(x[0], 10 ** x[1], mode)
+
+
+def native_decimal_to_float(args, position):
+    x = decimal_read("to_float", "its argument", args[0], position)
+    if x[1] <= 300 and abs(x[0]) < 10 ** 300:
+        return x[0] / 10 ** x[1]                # int / int is correctly rounded, as float() of the text is
+    return builtin_num([decimal_text(x[0], x[1])], position)
+
+
+def native_decimal_total(args, position):
+    items = args[0]
+    if not isinstance(items, list):
+        decimal_fail("total", "needs a list, but got {}".format(type_category(items)), position)
+    unscaled, scale = 0, 0
+    for item in items:
+        x = decimal_read("total", "an item", item, position)
+        a, b, scale = decimal_aligned((unscaled, scale), x)
+        unscaled = a + b
+    return decimal_make(unscaled, scale, position)
+
+
+def native_text_chr(args, position):
+    n = decimal_whole(args[0])
+    if n is None or not 0 <= n <= 0x10FFFF or 0xD800 <= n <= 0xDFFF:
+        raise native_error("the number for text.chr() needs a whole number from 0 to 1114111, "
+                           "other than 55296 to 57343 (the surrogates)", position)
+    return chr(n)
+
+
+def native_text_ord(args, position):
+    text = args[0]
+    if not isinstance(text, str):
+        raise native_error("the text for text.ord() needs a string, but got {}".format(type_category(text)), position)
+    if len(text) != 1:
+        raise native_error("the text for text.ord() needs exactly one character, but got {}".format(len(text)), position)
+    return ord(text)
+
+
+FILE_CHUNK_LIMIT = 16 * 1024 * 1024         # the longest line files.next_lines() will read
+
+
+def file_path_argument(value, who, position):
+    path = text_argument(value, who, position)
+    reject_null_byte(path, position)
+    return path
+
+
+def native_files_size(args, position):
+    path = file_path_argument(args[0], "files.size()", position)
+    if os.path.isdir(path):
+        raise NovaError("{} is a directory, not a file".format(path), position, label="FileError")
+    try:
+        return os.path.getsize(path)
+    except FileNotFoundError:
+        raise NovaError(path, position, label="FileNotFoundError")
+    except OSError as problem:
+        raise NovaError("{}: {}".format(path, problem.strerror or "cannot be read"), position, label="FileError")
+
+
+def native_files_is_dir(args, position):
+    return os.path.isdir(file_path_argument(args[0], "files.is_dir()", position))
+
+
+def native_files_is_link(args, position):
+    return os.path.islink(file_path_argument(args[0], "files.is_link()", position))
+
+
+def native_files_next_lines(args, position):
+    """[lines, next_offset, at_end]: the whole lines in the next chunk of `path` from byte `offset`.
+
+    The file is opened, read and closed in this one call (no handle outlives it), and the caller's
+    grant was checked for this very call. A chunk ends at its last line feed, so a "\\r\\n" is never
+    cut in two; a line longer than the chunk makes the chunk grow, up to FILE_CHUNK_LIMIT bytes."""
+    path = file_path_argument(args[0], "files.next_lines()", position)
+    offset, size = decimal_whole(args[1]), decimal_whole(args[2])
+    if offset is None or offset < 0 or size is None or size < 1:
+        raise native_error("files.next_lines() needs a path, a byte offset and a chunk size", position)
+    if os.path.isdir(path):
+        raise NovaError("{} is a directory, not a file".format(path), position, label="FileError")
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(offset)
+            data = handle.read(size)
+            at_end = len(data) < size
+            while not at_end and b"\n" not in data:
+                if len(data) >= FILE_CHUNK_LIMIT:
+                    raise NovaError("{}: a line is longer than {} bytes".format(path, FILE_CHUNK_LIMIT), position, label="FileError")
+                more = handle.read(size)
+                at_end = len(more) < size
+                data += more
+            if not at_end:
+                data = data[:data.rindex(b"\n") + 1]
+    except FileNotFoundError:
+        raise NovaError(path, position, label="FileNotFoundError")
+    except OSError as problem:
+        raise NovaError("{}: {}".format(path, problem.strerror or "cannot be read"), position, label="FileError")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as problem:
+        raise NovaError("{}: {}".format(path, problem), position, label="FileError")
+    lines = builtin_split_lines([text], position) if text else []
+    return [lines, offset + len(data), at_end]
+
+
+def native_check_size(result, limit, position):
+    """A native's result may not hold a string longer than the run's string limit ([sbx.limits]); the
+    generic check of a built-in's result looks only at the top level, and a native returns lists of
+    strings (the lines of a file). `limit` is 0 when no limit applies."""
+    if not limit:
+        return
+    pending = [result]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            if len(value) > limit:
+                raise NovaError("a string cannot grow beyond {} characters".format(limit), position)
+        elif isinstance(value, list):
+            pending.extend(value)
+
+
+def _natives(module, table):
+    def guarded(implementation):
+        def run(args, position, interpreter):
+            result = implementation(args, position)
+            native_check_size(result, interpreter.limits.string if interpreter.counting else 0, position)
+            return result
+        return run
+    return {name: BuiltinFunction("{}.{}".format(module, name), arity, guarded(implementation), needs_interpreter=True, paths=paths)
+            for name, (arity, implementation, paths) in table.items()}
+
+
+READ_PATH = ((0, "read"),)
+NATIVE_FUNCTIONS = {
+    "decimal": _natives("decimal", {
+        "parse": (1, native_decimal_parse, ()), "try_parse": (1, native_decimal_try_parse, ()),
+        "from_int": (1, native_decimal_from_int, ()), "from_float": (3, native_decimal_from_float, ()),
+        "is_decimal": (1, native_decimal_is_decimal, ()), "scale": (1, native_decimal_scale, ()),
+        "add": (2, native_decimal_add, ()), "sub": (2, native_decimal_sub, ()), "mul": (2, native_decimal_mul, ()),
+        "div": (4, native_decimal_div, ()), "quantize": (3, native_decimal_quantize, ()),
+        "negate": (1, native_decimal_negate, ()), "absolute": (1, native_decimal_absolute, ()),
+        "sign": (1, native_decimal_sign, ()), "cmp": (2, native_decimal_cmp, ()),
+        "to_string": (1, native_decimal_to_string, ()), "to_int": (2, native_decimal_to_int, ()),
+        "to_float": (1, native_decimal_to_float, ()), "total": (1, native_decimal_total, ()),
+    }),
+    "text": _natives("text", {"chr": (1, native_text_chr, ()), "ord": (1, native_text_ord, ())}),
+    "files": _natives("files", {
+        "size": (1, native_files_size, READ_PATH), "is_dir": (1, native_files_is_dir, READ_PATH),
+        "is_link": (1, native_files_is_link, READ_PATH), "next_lines": (3, native_files_next_lines, READ_PATH),
+    }),
+}
+
+
+def native_call(args, position):
+    """`native_call("module.name", [arguments], string_limit)`: how the self-hosted interpreter reaches a
+    native. It passes its own string limit (0 for none), which the host cannot see."""
+    qualified, call_args, limit = args
+    module, _, name = qualified.partition(".")
+    function = NATIVE_FUNCTIONS[module][name]
+    if function.arity is not None and len(call_args) != function.arity:
+        raise NovaError("{}() expects {} argument(s) but got {}".format(name, function.arity, len(call_args)), position)
+    result = function.implementation(call_args, position, _NO_LIMITS)
+    native_check_size(result, limit, position)
+    return result
+
+
+class _NoLimits:
+    """Stands in for the interpreter when the self-hosted engine calls a native: its limits are its own."""
+    counting = False
+
+
+_NO_LIMITS = _NoLimits()
 
 
 def resolve_package(name, start_dir, position):

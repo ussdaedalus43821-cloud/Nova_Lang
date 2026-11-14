@@ -1,0 +1,61 @@
+# std:files - reading files in pieces (docs/spec/09-library.md [lib.std-files]). Closes G-030,
+# G-032, G-036 and G-041.
+#
+#   import "std:files" as files
+#   files.each_line("access.log", handle)   # handle(line) for every line, 64 KiB at a time
+#   let rows = files.lines("access.log")    # every line, without ever making one big string
+#
+# It declares the files.read capability, so importing it needs that grant, and every read it makes
+# is checked against the granted folders like read() is. A file is opened, read and closed in each
+# piece: nothing stays open between steps, a file replaced between two steps is judged again, and
+# a loop left by an error or by the end of the program leaves nothing behind.
+
+let CHUNK = 65536
+
+# The size of the file in bytes.
+export def size(path) {
+    return native.size(path)
+}
+
+export def is_dir(path) {
+    return native.is_dir(path)
+}
+
+# true when the path is a symbolic link (the link itself, not what it points at).
+export def is_link(path) {
+    return native.is_link(path)
+}
+
+# Calls handle(line) for every line of the file, in order, reading it in pieces: no string of the
+# whole file is ever made, so a file larger than the string limit can be read. A line ends at a line
+# feed, a carriage return, or both (as split_lines() has it) and a last line end starts no new line.
+# A line longer than the string limit is that limit's error. Returns nothing.
+export def each_line(path, handle) {
+    let offset = 0
+    let done = false
+    while not done {
+        let piece = native.next_lines(path, offset, CHUNK)
+        for line in piece[0] {
+            handle(line)
+        }
+        offset = piece[1]
+        done = piece[2]
+    }
+}
+
+# Every line of the file as a list, built piece by piece the same way (so the 1,000,000 character
+# string limit of the restricted profile does not apply to the file, while the list limit does).
+export def lines(path) {
+    let out = []
+    let offset = 0
+    let done = false
+    while not done {
+        let piece = native.next_lines(path, offset, CHUNK)
+        for line in piece[0] {
+            append(out, line)
+        }
+        offset = piece[1]
+        done = piece[2]
+    }
+    return out
+}

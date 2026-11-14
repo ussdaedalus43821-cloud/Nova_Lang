@@ -457,11 +457,23 @@ reach (and marked unreviewed until the independent review); no merge without the
 | 6 | **Packages, part 2: the registry** | the archive format and the hardened extractor, the static index and its signatures (Ed25519 verifier and vectors), serial and expiry, revocation, `pack`, `publish`, `yank`, install from a directory or HTTPS registry (a hardened fetch core: HTTPS only, size and time limits, no proxy); the end-to-end test of the roadmap's exit criterion; the supply-chain table of 5.5 as tests | 5 | L |
 | 7 | **HTTP** (**moved to M14 by D6; not M13 scope**) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
 
+### Slice 3: progress (branch `m13/slice-3-native-tier`; a draft until the owner has read it)
+
+| Item of the slice | State |
+| --- | --- |
+| The native module tier | **Built on all three engines.** A standard module lists `native` names in `modules.json`; its file reaches the Python-implemented functions (`NATIVE_FUNCTIONS` in `novalang.py`) through a predefined global `native` that exists in that module's scope only (no global name is reserved). The self-hosted engine reaches the same functions through `native_call`, defined by `bootstrap.py` for it alone. Spec `[mod.std]` 6. File natives are held to the read grant like `read`; every native result is held to the string limit (the generic check looked only at the top level) |
+| `chr` and `ord` (G-004, G-005) | **Built** in `std:text` (`text.chr(27)` is the escape character); 2 cases |
+| `std:files` | **Built**: `size`, `is_dir`, `is_link`, `lines`, `each_line`; declares `files.read`; reads in 64 KiB pieces, nothing open between pieces, the grant judged for every piece. Spec `[lib.std-files]`, 8 conformance cases, `tests/std/test_files.py` (piece boundaries, random files, a 1.4 MB file the restricted profile cannot `read`, a link leading out of the grant) |
+| `std:decimal` made native | **Done, and not in the plan as written:** the pure-NovaLang version cost about 60 microseconds an operation and made Nova_Data's 10,000-row report four times slower, over the sandbox's 5 s limit. The plan named a native tier as the fallback; the API, the messages and the oracle tests are unchanged |
+| A lazy `for line in files.lines(path)` (the line source in `ITER_PREP`) | **Not built.** `each_line(path, handle)` gives constant memory on all three engines without a new kind of iterable, and `lines(path)` gives the list without the 1,000,000-character string. A lazy iterable stays an open question for a later slice |
+| The step-counted time limit (G-042, D5) | **Not built** (deferred by D5) |
+| Nova_Data replaced by the library (slice 2's done-when) | **Done** on branch `use-std-decimal` of the Nova_Data repository: 82 tests pass, the report is byte for byte the same; the cost is about 50% more time per row (10,000 rows 2.9 s, 15,000 rows 4.2 s, 20,000 over the limit) |
+
 ### Slice 2: progress (branch `m13/slice-2-decimal`; a draft until the owner has read it)
 
 | Item of the slice | State |
 | --- | --- |
-| `std:decimal` | **Built** (spec `[lib.std-decimal]`; 22 exports; every mode; pure NovaLang). Proved against Python's `decimal` on random inputs on all three engines (`tests/std/test_decimal.py`, 400 + 60 + 12 cases) and by 16 conformance cases. Deviations from the sketch above: `abs`, `sum` and `neg` cannot be exports (a built-in's name is reserved), so they are `absolute`, `total`, `negate`; scale is 0 to 1000 |
+| `std:decimal` | **Built** (spec `[lib.std-decimal]`; 22 exports; every mode; pure NovaLang at first, native since slice 3). Proved against Python's `decimal` on random inputs on all three engines (`tests/std/test_decimal.py`, 400 + 60 + 12 cases) and by 16 conformance cases. Deviations from the sketch above: `abs`, `sum` and `neg` cannot be exports (a built-in's name is reserved), so they are `absolute`, `total`, `negate`; scale is 0 to 1000 |
 | `std:math` | **Built** (`trunc`, `divmod`, `round_half`, `exp`; spec `[lib.std-math]`; 4 cases) |
 | `std:format` | **Built** (`fixed`, `grouped`, `pad_zero`; spec `[lib.std-format]`; 5 cases) |
 | The G-052 decision | **Decided: keep, documented** (`[lib.std-format]`) |
