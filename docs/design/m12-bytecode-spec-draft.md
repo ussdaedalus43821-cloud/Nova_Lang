@@ -379,7 +379,7 @@ same bytes, so a lost race loses nothing.
 5. **F5. Nesting depth leans on the host's recursion limit.** `novalang.py` sets `sys.setrecursionlimit(20000)` and relies on `RecursionError` for "recursion too
    deep". On PyPy 3.10 that setting crashes the interpreter with a segmentation fault on a long enough chain, and at 10,000 the same program runs instead of
    being refused (measured, [`docs/benchmarks.md`](../benchmarks.md)). The loader must therefore count depth itself (V1, `[bc.limits]` *depth*), and the same
-   explicit counter should be added to the parser, the compiler and the tree-walker (a proposed addition to slice 6 or 8).
+   explicit counter should be added to the parser, the compiler and the tree-walker (logged as G-051, [`docs/GAPS.md`](../GAPS.md), planned for slice 6 or earlier).
 6. **F6. Positions are offsets into a source the artifact does not contain,** and an error prints the offending line from the source text. A cached run has the source;
    a standalone artifact does not (`[bc.questions]` Q2).
 

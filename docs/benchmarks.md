@@ -170,7 +170,7 @@ So the speed is real and the output matches; what fails is **the resource-exhaus
 never a crash and never a silent success, and today that depends on CPython's recursion limit meaning what NovaLang assumes. On PyPy the same
 setting either overruns the C stack (20,000) or does not count the way the corpus expects (10,000). Making NovaLang's own nesting depth explicit in the
 parser, compiler and tree-walker, instead of leaning on `RecursionError`, would remove the dependence and is worth doing for CPython as well; it is
-not part of the plan yet. Until it is, **PyPy is a measurement, not a supported engine, and must not be offered with the `restricted` profile** (slice 8's rule).
+logged as [G-051](GAPS.md) and planned for slice 6 or earlier. Until it is done, **PyPy is a measurement, not a supported engine, and must not be offered with the `restricted` profile** (slice 8's rule).
 
 ## Real-World Baseline (Pre-M12)
 

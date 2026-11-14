@@ -63,7 +63,7 @@ All seven recommendations were accepted. **Two carry a change or a caveat**, mar
   [`docs/benchmarks.md`](../benchmarks.md), section "D7, first measurement". **The test suite does not pass on PyPy yet:** at NovaLang's recursion limit of 20,000 PyPy crashes (segmentation fault) on a deeply nested program
   where CPython gives the named nesting error, and with the limit capped at 10,000 two nesting cases of the conformance corpus fail because PyPy runs the
   program instead of refusing it (all other checks run pass). The nesting limit leans on CPython's `RecursionError`; making it explicit in the parser,
-  compiler and tree-walker is a prerequisite for any non-CPython engine and is proposed as an addition to slice 6 or 8. Until then PyPy is a measurement,
+  compiler and tree-walker is a prerequisite for any non-CPython engine, logged as [G-051](../GAPS.md), and decided on 2026-11-14 for slice 6 or earlier. Until then PyPy is a measurement,
   not a supported engine, and a new engine may not carry the `restricted` name until the 201 cells pass on it (section 4, slice 8).
 
 ## 3a. The decisions as proposed

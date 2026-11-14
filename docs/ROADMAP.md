@@ -486,7 +486,7 @@ fuller requirement.
    capability. *Done when:* a restricted program with no grants calls it.
 
 The other gaps (G-001 to G-050 in all) are in each app's `docs/GAPS.md`, with a
-probe test for each. Those marked **M13** there are candidates for this
+probe test for each; gaps found since, in NovaLang itself, start at G-051 in [`GAPS.md`](GAPS.md). Those marked **M13** there are candidates for this
 milestone after the five above.
 
 ## M14 — Product pilots
