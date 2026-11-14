@@ -76,7 +76,7 @@ In `restricted` a capability is absent unless granted.
 | `random` | `random`, `randint`, `choice`, `shuffle` | on or off | |
 | `stdin` | `input` | on or off | |
 | `process` | `exit`, `args`, `platform`, `cwd`, `abspath`, `realpath` | on or off | `exit` ends the run with that status and never ends the embedder's process; `cwd`, `abspath` and `realpath` reveal the layout of the machine |
-| `regex` | `regex`, `replace_all` | on or off | a pattern can run for ever on a small input and no engine can interrupt it, so this is off unless granted, and a host that grants it must be able to stop the run from outside (`[sbx.limits]`, `time`) |
+| `regex` | `regex` | on or off | a pattern can run for ever on a small input and no engine can interrupt it, so this is off unless granted, and a host that grants it must be able to stop the run from outside (`[sbx.limits]`, `time`) |
 | `python` | the `python` bridge | module names | `[py.off]`, `[py.registry]`; a granted module is the embedder's decision. **The grant replaces the default import list of `[py.import]`**: only the modules named in it can be imported, because `re`, `random` and `datetime` are on the default list and would give back `regex`, `random` and `clock` |
 
 There is **no network capability**: NovaLang has no network built-in, so nothing is defined

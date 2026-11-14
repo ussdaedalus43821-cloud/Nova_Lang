@@ -3800,7 +3800,7 @@ for _capability, _names in (
     ("random", ("random", "randint", "choice", "shuffle")),
     ("stdin", ("input",)),
     ("process", ("exit", "args", "platform", "cwd", "abspath", "realpath")),
-    ("regex", ("regex", "replace_all")),
+    ("regex", ("regex",)),   # replace_all left this group in M13 (G-050): a plain substring replacement, already bounded by the string limit
 ):
     for _name in _names:
         CAPABILITY_OF[_name] = _capability
@@ -4390,6 +4390,15 @@ class Interpreter:
 
     def import_module(self, raw_path, position):
         """Load (once) the module `raw_path` names; its exports dict."""
+        if is_std_import(raw_path):
+            # Part of the interpreter: no `import` grant and no folder grant is needed, but every
+            # capability the module declares must have been granted ([mod.std]).
+            found, descriptor = resolve_std(raw_path, position)
+            for capability in descriptor["capabilities"]:
+                if not self.caps.has(capability):
+                    raise NovaError("{} needs the '{}' capability, which this run did not grant".format(
+                        raw_path, capability), position, label="ImportError")
+            return self.load_module(found, raw_path, position)
         if self.caps.restricted and not self.caps.has("import"):
             raise NovaError("the 'import' capability is not granted", position, label="ImportError")
         resolved = self.resolve_import(raw_path, position)
@@ -4896,6 +4905,39 @@ def is_package_import(raw_path):
     return bool(PACKAGE_NAME.match(raw_path)) and not raw_path.endswith(".nova")
 
 
+# The standard modules (docs/spec/08-modules.md [mod.std]): `import "std:text"` loads
+# lib/std/text.nova, one of the files listed in lib/std/modules.json. The list is the only way
+# in: the name after `std:` is looked up, never joined to a path.
+STD_PREFIX = "std:"
+STD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib", "std")
+_std_registry = None
+
+
+def is_std_import(raw_path):
+    return raw_path.startswith(STD_PREFIX)
+
+
+def std_registry():
+    """{name: descriptor} read once from lib/std/modules.json."""
+    global _std_registry
+    if _std_registry is None:
+        with open(os.path.join(STD_DIR, "modules.json"), "r", encoding="utf-8") as handle:
+            _std_registry = json_module.load(handle)["modules"]
+    return _std_registry
+
+
+def resolve_std(raw_path, position):
+    """(file, descriptor) of the standard module `raw_path` names, or an ImportError."""
+    name = raw_path[len(STD_PREFIX):]
+    registry = std_registry()
+    if name not in registry:
+        raise NovaError(
+            'there is no standard module "{}" - the standard modules are: {}'.format(
+                raw_path, ", ".join(STD_PREFIX + known for known in sorted(registry))),
+            position, label="ImportError")
+    return os.path.join(STD_DIR, name + ".nova"), registry[name]
+
+
 def resolve_package(name, start_dir, position):
     """The entry file of package `name`, found the way Node finds
     node_modules: walk up from `start_dir` (the importing file's directory,
@@ -4995,7 +5037,9 @@ def default_module_name(raw_path, position):
     """The name a bare `import "path.nova"` binds, absent an alias. A
     package binds its name with '-' and '.' made '_': "math-utils" binds
     math_utils."""
-    if is_package_import(raw_path):
+    if is_std_import(raw_path):
+        stem = raw_path[len(STD_PREFIX):]
+    elif is_package_import(raw_path):
         stem = raw_path.replace("-", "_").replace(".", "_")
     else:
         stem = os.path.splitext(os.path.basename(raw_path))[0]

@@ -1413,7 +1413,7 @@ let CAPABILITY_OF = {
     "input": "stdin",
     "exit": "process", "args": "process", "platform": "process", "cwd": "process",
     "abspath": "process", "realpath": "process",
-    "regex": "regex", "replace_all": "regex"
+    "regex": "regex"
 }
 
 # What this engine's programs may reach. Set once, before the program runs, by
@@ -3199,6 +3199,39 @@ let MODULE_LOADING = []  # absolute paths currently being loaded
 let FILE_STACK = []      # directories of files currently executing
 let EXPORT_STACK = [{}]  # current module's {name: value} being built
 
+# The standard modules (docs/spec/08-modules.md [mod.std]): `import "std:text"` loads
+# lib/std/text.nova. `dir` is lib/std, set by bootstrap.py before the program runs; the list of
+# modules is lib/std/modules.json, read on first use, so the three engines share one list.
+let STD = {dir: "", loaded: false, registry: {}}
+
+def is_std_import(raw_path) {
+    return len(raw_path) >= 4 and raw_path[0:4] == "std:"
+}
+
+def resolve_std(raw_path, pos) {
+    if not STD["loaded"] {
+        if STD["dir"] == "" {
+            import_error("the standard modules are not available to this engine", pos)
+        }
+        STD["registry"] = json.loads(read(STD["dir"] + "/modules.json"))["modules"]
+        STD["loaded"] = true
+    }
+    let name = raw_path[4:]
+    if not (name in STD["registry"]) {
+        let known = []
+        for k in sorted(keys(STD["registry"])) {
+            append(known, "std:" + k)
+        }
+        import_error("there is no standard module \"" + raw_path + "\" - the standard modules are: " + join(known, ", "), pos)
+    }
+    for capability in STD["registry"][name]["capabilities"] {
+        if not cap_has(capability) {
+            import_error(raw_path + " needs the '" + capability + "' capability, which this run did not grant", pos)
+        }
+    }
+    return STD["dir"] + "/" + name + ".nova"
+}
+
 def current_dir() {
     if len(FILE_STACK) == 0 {
         return ""
@@ -3311,6 +3344,9 @@ def resolve_package(name, pos) {
 }
 
 def resolve_import(raw_path, pos) {
+    if is_std_import(raw_path) {
+        return resolve_std(raw_path, pos)
+    }
     if SANDBOX["restricted"] and not cap_has("import") {
         import_error("the 'import' capability is not granted", pos)
     }
@@ -3369,6 +3405,9 @@ def basename(path) {
 }
 
 def default_module_name(raw_path, pos) {
+    if is_std_import(raw_path) {
+        return raw_path[4:]
+    }
     if is_package_import(raw_path) {
         # "math-utils" binds math_utils, like the host.
         let bound = ""

@@ -687,6 +687,12 @@ class Program:
     def resolve(self, raw_path, base_dir):
         if "\0" in raw_path:
             return None             # never a path (Python 3.7 raises ValueError from os.path.isfile for one)
+        if nl.is_std_import(raw_path):
+            # A standard module ships with the interpreter: no import grant applies to it.
+            try:
+                return nl.resolve_std(raw_path, None)[0]
+            except NovaError:
+                return None
         if nl.is_package_import(raw_path):
             # The interpreter's own resolver, so the two cannot disagree.
             try:
@@ -844,7 +850,10 @@ def check_file_graph(path, allow=None):
 def display_path(path):
     """A module's path relative to the current directory when it is inside
     it, absolute otherwise."""
-    relative = os.path.relpath(path)
+    try:
+        relative = os.path.relpath(path)
+    except ValueError:
+        return path         # Windows: the module (a standard module, say) is on another drive than the current directory
     return path if relative.startswith("..") else relative
 
 

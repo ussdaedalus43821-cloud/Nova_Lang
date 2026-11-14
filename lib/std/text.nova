@@ -1,0 +1,140 @@
+# std:text - small text and path helpers (docs/spec/09-library.md [lib.std-text]).
+#
+#   import "std:text" as text
+#   text.find("hello", "ll")        # 2
+#   text.starts_with("hello", "he") # true
+#   text.is_number("12")            # true
+#
+# Plain NovaLang over the built-ins every profile has, so it runs on all three
+# engines and in `restricted` with no grant (it declares no capability).
+# Closes G-002, G-006, G-031, G-037 and G-039.
+
+def need_text(who, role, value) {
+    if type(value) != "string" {
+        throw("the " + role + " for text." + who + "() needs a string, but got " + type(value))
+    }
+}
+
+def need_whole(who, role, value) {
+    if type(value) != "number" or value != floor(value) {
+        throw("the " + role + " for text." + who + "() needs a whole number")
+    }
+}
+
+# The index of the first `target` in `s`, or -1. An empty target is found at 0.
+export def find(s, target) {
+    need_text("find", "text", s)
+    need_text("find", "target", target)
+    if target == "" {
+        return 0
+    }
+    if not (target in s) {
+        return -1
+    }
+    return len(split(s, target)[0])
+}
+
+# Like find(), looking from index `start` on (a start below 0 is 0, one past the
+# end is the end). The index returned is in `s`, not in the part searched.
+export def find_from(s, target, start) {
+    need_text("find_from", "text", s)
+    need_text("find_from", "target", target)
+    need_whole("find_from", "start", start)
+    if start < 0 {
+        start = 0
+    }
+    if start > len(s) {
+        start = len(s)
+    }
+    let at = find(s[start:], target)
+    if at < 0 {
+        return -1
+    }
+    return at + start
+}
+
+export def starts_with(s, prefix) {
+    need_text("starts_with", "text", s)
+    need_text("starts_with", "prefix", prefix)
+    return s[0:len(prefix)] == prefix
+}
+
+export def ends_with(s, suffix) {
+    need_text("ends_with", "text", s)
+    need_text("ends_with", "suffix", suffix)
+    if len(suffix) > len(s) {
+        return false
+    }
+    return s[len(s) - len(suffix):] == suffix
+}
+
+# true exactly when num(s) would succeed.
+export def is_number(s) {
+    need_text("is_number", "text", s)
+    let ok = true
+    try {
+        num(s)
+    } catch e {
+        ok = false
+    }
+    return ok
+}
+
+# num(s), or `fallback` when num(s) would fail.
+export def parse_number(s, fallback) {
+    need_text("parse_number", "text", s)
+    let result = fallback
+    try {
+        result = num(s)
+    } catch e {
+        result = fallback
+    }
+    return result
+}
+
+# The last part of a path. Both "/" and "\" end a part, on every platform, so
+# the result does not depend on where the program runs. "a/b/" has the last part "".
+export def basename(path) {
+    need_text("basename", "path", path)
+    let i = len(path) - 1
+    while i >= 0 {
+        let c = path[i:i + 1]
+        if c == "/" or c == "\\" {
+            return path[i + 1:]
+        }
+        i = i - 1
+    }
+    return path
+}
+
+# [root, extension]: the extension is the last "." of the last part of the path
+# and what follows it, provided a character other than "." comes before it in
+# that part. ".bashrc" and "a.b/c" have no extension.
+export def splitext(path) {
+    need_text("splitext", "path", path)
+    let last = basename(path)
+    let head = path[:len(path) - len(last)]
+    let dot = -1
+    let i = len(last) - 1
+    while i >= 0 {
+        if last[i:i + 1] == "." {
+            dot = i
+            break
+        }
+        i = i - 1
+    }
+    if dot <= 0 {
+        return [path, ""]
+    }
+    let lead = last[:dot]
+    let solid = false
+    for c in lead {
+        if c != "." {
+            solid = true
+        }
+    }
+    if not solid {
+        return [path, ""]
+    }
+    return [head + lead, last[dot:]]
+}

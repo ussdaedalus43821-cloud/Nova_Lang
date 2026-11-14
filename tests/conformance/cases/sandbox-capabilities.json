@@ -514,7 +514,7 @@
    "source": "try { print(regex(\"a+\", \"caat\")) } catch e { print(e) }\ntry { print(replace_all(\"aXb\", \"X\", \"-\")) } catch e { print(e) }",
    "output": [
     "undefined name 'regex'",
-    "undefined name 'replace_all'"
+    "a-b"
    ],
    "error": "",
    "error_line": null,
@@ -526,6 +526,30 @@
    "matrix": [
     "regex:deny"
    ]
+  },
+  {
+   "name": "sbx-replace-all-needs-no-grant",
+   "spec": [
+    "sbx.capabilities",
+    "sbx.profiles",
+    "lib.text"
+   ],
+   "profile": "sandbox",
+   "source": "print(replace_all(\"aXbXc\", \"X\", \"-\"))\nprint(replace_all(\"aaaa\", \"a+\", \"b\"))\nprint(replace_all(\"abc\", \"\", \"-\"))\nprint(type(replace_all))\ntry { print(regex(\"a\", \"a\")) } catch e { print(e) }",
+   "output": [
+    "a-b-c",
+    "aaaa",
+    "-a-b-c-",
+    "function",
+    "undefined name 'regex'"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
   },
   {
    "name": "sbx-regex-granted",

@@ -869,12 +869,29 @@ def station_bytecode(line):
     line.check(done.returncode == 0, "bytecode artifact tests pass", done.stdout + done.stderr)
 
 
+def station_std(line):
+    print("0h. standard modules (std:): the list against the files, the capability rule on every engine")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(HERE, "std")],
+                          cwd=ROOT, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
+    line.check(done.returncode == 0, "standard module tests pass", done.stdout + done.stderr)
+
+
+def station_api(line):
+    print("0i. the stable surface: the live public surface against tests/api/stable-surface.json")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(HERE, "api"), "-p", "test_*.py"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
+    line.check(done.returncode == 0, "stable-surface tests pass (a removal needs a new major version, any other change needs --update)",
+               done.stdout + done.stderr)
+
+
 STATIONS = [
     ("harness", station_harness),
     ("cli", station_cli),
     ("embedding", station_embedding),
     ("repl", station_repl),
     ("bytecode", station_bytecode),
+    ("std", station_std),
+    ("api", station_api),
     ("input-errors", station_input_errors),
     ("portability", station_portability),
     ("fmt-golden", station_fmt_golden),
