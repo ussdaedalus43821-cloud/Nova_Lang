@@ -43,6 +43,16 @@ of its own.
 | Making an implementation follow the specification where it did not (the specification wins, ADR 0001), a faster implementation, documentation | **patch** |
 | A fix that has to break stable behaviour to close a hole in the `restricted` profile's capability gating or resource limits | **patch or minor**, with a changelog entry marked `security` that names the break. This is the one exception, and it is written here so that it is not a secret |
 
+**One narrowing is declared here, not hidden.** In the release that adds `std:regex` the pattern language of `regex()` becomes the
+dialect of `[lib.regex]`. Before it the specification said that more of the host's dialect "may work but is not portable", and
+on the Python engines that meant everything `re` has; a program that used a back-reference, look-ahead, look-behind, an atomic
+group, a possessive quantifier, a conditional group, a flag other than a leading `(?i)`, or an octal escape in a pattern now gets
+`TypeError: regex(): bad pattern: <reason>`. By the table above that is a **major** change in the usual case; it is made in a
+minor release because the specification never promised those constructs, the old behaviour was the host's and not the language's,
+and the reason a pattern is refused names the construct and the way to write it. Every pattern in the dialect keeps its
+meaning, and `$` still matches before a final line feed. This is the owner-accepted cost of decision D3 of the M13 plan
+("the loss of backreferences and look-around"), and the changelog entry for the release must say it.
+
 Two consequences follow. **New library functions go in `std:` modules, never in the global namespace,** because a
 new global built-in is a major change; and **a program can rely on a stable name existing for the whole life of a major
 version.**

@@ -462,6 +462,36 @@
    "native": [],
    "tier": "provisional"
   },
+  "regex": {
+   "capabilities": [
+    "regex"
+   ],
+   "exports": [
+    "escape",
+    "find_all",
+    "find_n",
+    "match",
+    "match_from",
+    "pieces",
+    "pieces_n",
+    "sub",
+    "sub_n",
+    "test"
+   ],
+   "native": [
+    "escape",
+    "find_all",
+    "find_n",
+    "match",
+    "match_from",
+    "pieces",
+    "pieces_n",
+    "sub",
+    "sub_n",
+    "test"
+   ],
+   "tier": "provisional"
+  },
   "text": {
    "capabilities": [],
    "exports": [

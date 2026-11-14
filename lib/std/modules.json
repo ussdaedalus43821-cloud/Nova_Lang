@@ -92,6 +92,37 @@
     "trunc"
    ]
   },
+  "regex": {
+   "capabilities": [
+    "regex"
+   ],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": [
+    "escape",
+    "find_all",
+    "find_n",
+    "match",
+    "match_from",
+    "pieces",
+    "pieces_n",
+    "sub",
+    "sub_n",
+    "test"
+   ],
+   "native": [
+    "escape",
+    "find_all",
+    "find_n",
+    "match",
+    "match_from",
+    "pieces",
+    "pieces_n",
+    "sub",
+    "sub_n",
+    "test"
+   ]
+  },
   "text": {
    "capabilities": [],
    "tier": "provisional",

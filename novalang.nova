@@ -1825,6 +1825,18 @@ def charge(units) {
     }
 }
 
+# The work of a native (a regex over a large text): the host reports units of it, 128 to a step of the budget,
+# and the clock is read as for any long operation. Only the restricted profile counts.
+def native_work(units) {
+    if SANDBOX["restricted"] {
+        RUN["steps"] = RUN["steps"] + units // 128
+        if RUN["steps"] >= RUN["next_check"] {
+            step_slow()
+        }
+        charge(units)
+    }
+}
+
 def step_slow() {
     if RUN["steps"] > LIMITS["steps"] {
         limit_error("step budget of " + str(LIMITS["steps"]) + " steps exhausted - is there a loop that never ends?")
@@ -2199,7 +2211,7 @@ def call_builtin_raw(name, call_args, pos) {
         if SANDBOX["restricted"] {
             string_limit = LIMITS["string"]
         }
-        return native_call(name[7:], call_args, string_limit)
+        return native_call(name[7:], call_args, string_limit, native_work)
     }
     if DET["on"] and name in DET_NAMES {
         return det_builtin(name, call_args)
@@ -2448,7 +2460,7 @@ def call_builtin_raw(name, call_args, pos) {
         return copy(call_args[0], call_args[1])
     }
     if name == "regex" {
-        return regex(call_args[0], call_args[1])
+        return native_call("builtin.regex", call_args, 0, native_work)
     }
     if name == "replace_all" {
         return replace_all(call_args[0], call_args[1], call_args[2])

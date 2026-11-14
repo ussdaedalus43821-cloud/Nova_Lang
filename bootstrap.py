@@ -150,7 +150,7 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     interpreter = Interpreter(engine, allow_python=allow_python)
     # The one host function the engine needs for the native functions of the standard modules. It is a
     # name of this interpreter alone (the engine's own program), never of the program the engine runs.
-    interpreter.globals.define("native_call", novalang.BuiltinFunction("native_call", 3, novalang.native_call))
+    interpreter.globals.define("native_call", novalang.BuiltinFunction("native_call", 4, novalang.native_call, needs_interpreter=True))
     if restricted:
         interpreter.python_override = tuple(sandbox.get("python", ()))
     # novalang.nova tracks "the directory of whichever file is currently
