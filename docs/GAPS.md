@@ -11,7 +11,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 
 | # | Gap | Severity | Planned |
 | --- | --- | --- | --- |
-| G-052 | A float literal too large for a binary64 is silently infinity (a 400-digit `1000...0.0`), and `inf - inf` of two of them is `nan` | TRAP (minor) | M13, with the number work |
+| G-052 | A float literal too large for a binary64 is silently infinity (a 400-digit `1000...0.0`), and `inf - inf` of two of them is `nan` | TRAP (minor) | M13, with the number work: **decided 2026-11-14 (slice 2): keep and document** (`[lib.std-format]`); the lexer is not changed |
 | G-051 | On PyPy a deeply nested program crashes the interpreter (segmentation fault) instead of getting the named nesting error; the nesting limit depends on the host's `RecursionError` | PORTABILITY, and a TRAP: the same setting crashes at 20,000 and silently runs at 10,000 | M12 slice 6, or earlier |
 
 ## G-051 The nesting limit depends on the host's recursion limit, and PyPy breaks it - PORTABILITY

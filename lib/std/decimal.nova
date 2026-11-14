@@ -1,0 +1,431 @@
+# std:decimal - exact base-10 arithmetic (docs/spec/09-library.md [lib.std-decimal]).
+#
+#   import "std:decimal" as dec
+#   let price = dec.parse("19.99")
+#   let total = dec.mul(price, dec.from_int(3))          # 59.97, exactly
+#   print(dec.to_string(dec.div(total, dec.parse("7"), 2, "half_even")))   # 8.57
+#
+# A decimal is the list [unscaled, scale] and means unscaled / 10^scale: [1999, 2] is 19.99.
+# Both are whole numbers, scale is 0 to 1000. Make decimals with this module's functions and
+# read them with its functions; the layout is not part of the interface. Every function checks
+# its arguments, so a list that is not a decimal is an error and never a wrong answer.
+# There are no operators: `+` on two decimals is the list join of the language.
+#
+# Plain NovaLang over exact integers (G-001): the same on all three engines, in every profile,
+# no capability. Closes G-043, G-044 and G-045 (with std:math).
+
+let DIGITS = "0123456789"
+let MODES = ["half_even", "half_up", "half_down", "up", "down", "floor", "ceiling"]
+let MAX_SCALE = 1000
+
+def fail(who, what) {
+    throw("decimal." + who + "() " + what)
+}
+
+# [true, n] when x is an exact whole number (a float that prints with no point and no exponent
+# is one), [false, 0] for anything else.
+def whole(x) {
+    if type(x) != "number" {
+        return [false, 0]
+    }
+    let text = str(x)
+    if "." in text {
+        return [false, 0]
+    }
+    let ok = true
+    let n = 0
+    try {
+        n = num(text)
+    } catch e {
+        ok = false
+    }
+    return [ok, n]
+}
+
+# The pair [unscaled, scale] of a decimal, or an error naming the argument.
+def read_dec(who, role, a) {
+    if type(a) == "list" and len(a) == 2 {
+        let u = whole(a[0])
+        let s = whole(a[1])
+        if u[0] and s[0] and s[1] >= 0 and s[1] <= MAX_SCALE {
+            return [u[1], s[1]]
+        }
+    }
+    fail(who, "needs a decimal for " + role + ", but got " + str(a))
+}
+
+def need_places(who, places) {
+    let p = whole(places)
+    if not p[0] or p[1] < 0 or p[1] > MAX_SCALE {
+        fail(who, "needs places to be a whole number from 0 to " + str(MAX_SCALE))
+    }
+    return p[1]
+}
+
+def need_mode(who, mode) {
+    if type(mode) != "string" or not (mode in MODES) {
+        fail(who, "needs a rounding mode: " + join(MODES, ", "))
+    }
+    return mode
+}
+
+def make(who, u, s) {
+    if s > MAX_SCALE {
+        fail(who, "result would have more than " + str(MAX_SCALE) + " digits after the point")
+    }
+    return [u, s]
+}
+
+# n / d (d > 0) rounded to a whole number by `mode`.
+def round_div(n, d, mode) {
+    let q = n // d
+    let r = n - q * d
+    if r == 0 {
+        return q
+    }
+    let negative = n < 0
+    if mode == "floor" {
+        return q
+    }
+    if mode == "ceiling" {
+        return q + 1
+    }
+    if mode == "down" {
+        if negative {
+            return q + 1
+        }
+        return q
+    }
+    if mode == "up" {
+        if negative {
+            return q
+        }
+        return q + 1
+    }
+    let twice = 2 * r
+    if twice < d {
+        return q
+    }
+    if twice > d {
+        return q + 1
+    }
+    # exactly half way
+    if mode == "half_up" {
+        if negative {
+            return q
+        }
+        return q + 1
+    }
+    if mode == "half_down" {
+        if negative {
+            return q + 1
+        }
+        return q
+    }
+    if q % 2 == 0 {
+        return q
+    }
+    return q + 1
+}
+
+# [ok, unscaled, scale] for the text of a number: sign, digits, a point, digits, and (when
+# `allow_exponent`) an e and a whole exponent. At least one digit, nothing else.
+def scan(text, allow_exponent) {
+    let bad = [false, 0, 0]
+    let n = len(text)
+    let i = 0
+    let negative = false
+    if n > 0 and (text[0:1] == "-" or text[0:1] == "+") {
+        negative = text[0:1] == "-"
+        i = 1
+    }
+    let digits = ""
+    let scale = 0
+    let seen_point = false
+    while i < n {
+        let ch = text[i:i + 1]
+        if ch in DIGITS {
+            digits = digits + ch
+            if seen_point {
+                scale = scale + 1
+            }
+        } else if ch == "." and not seen_point {
+            seen_point = true
+        } else {
+            break
+        }
+        i = i + 1
+    }
+    if len(digits) == 0 or len(digits) > 4000 {
+        return bad
+    }
+    let exponent = 0
+    if i < n {
+        let mark = text[i:i + 1]
+        if not allow_exponent or (mark != "e" and mark != "E") {
+            return bad
+        }
+        i = i + 1
+        let exp_negative = false
+        if i < n and (text[i:i + 1] == "-" or text[i:i + 1] == "+") {
+            exp_negative = text[i:i + 1] == "-"
+            i = i + 1
+        }
+        let exp_digits = ""
+        while i < n and text[i:i + 1] in DIGITS {
+            exp_digits = exp_digits + text[i:i + 1]
+            i = i + 1
+        }
+        if len(exp_digits) == 0 or len(exp_digits) > 4 or i != n {
+            return bad
+        }
+        exponent = num(exp_digits)
+        if exp_negative {
+            exponent = 0 - exponent
+        }
+    }
+    let u = num(digits)
+    # value = u / 10^scale * 10^exponent
+    scale = scale - exponent
+    if scale < 0 {
+        if 0 - scale > 3900 {
+            return bad
+        }
+        u = u * pow(10, 0 - scale)
+        scale = 0
+    }
+    if scale > MAX_SCALE {
+        return bad
+    }
+    if negative {
+        u = 0 - u
+    }
+    return [true, u, scale]
+}
+
+# The decimal written in `text`: an optional + or -, digits, optionally a point and more digits
+# (".5" and "7." are fine), nothing else: no exponent, no spaces, no separators.
+export def parse(text) {
+    if type(text) != "string" {
+        fail("parse", "needs a string, but got " + type(text))
+    }
+    let found = scan(text, false)
+    if not found[0] {
+        fail("parse", "cannot read a decimal from \"" + text + "\"")
+    }
+    return [found[1], found[2]]
+}
+
+# Like parse(), or `nothing` when the text is not a decimal.
+export def try_parse(text) {
+    if type(text) != "string" {
+        fail("try_parse", "needs a string, but got " + type(text))
+    }
+    let found = scan(text, false)
+    if not found[0] {
+        return
+    }
+    return [found[1], found[2]]
+}
+
+export def from_int(n) {
+    let w = whole(n)
+    if not w[0] {
+        fail("from_int", "needs a whole number, but got " + str(n))
+    }
+    return [w[1], 0]
+}
+
+# A float as the number its text shows (what str() prints, so 0.1 is 0.1 and not the nearest
+# binary value), rounded to `places` digits after the point by `mode`. Infinity and NaN are errors.
+export def from_float(x, places, mode) {
+    if type(x) != "number" {
+        fail("from_float", "needs a number, but got " + type(x))
+    }
+    let p = need_places("from_float", places)
+    need_mode("from_float", mode)
+    let found = scan(str(x), true)
+    if not found[0] {
+        fail("from_float", "cannot read the number " + str(x))
+    }
+    return quantize([found[1], found[2]], p, mode)
+}
+
+# true when `a` is a decimal this module accepts.
+export def is_decimal(a) {
+    if type(a) != "list" or len(a) != 2 {
+        return false
+    }
+    let u = whole(a[0])
+    let s = whole(a[1])
+    return u[0] and s[0] and s[1] >= 0 and s[1] <= MAX_SCALE
+}
+
+# The number of digits after the point.
+export def scale(a) {
+    return read_dec("scale", "its argument", a)[1]
+}
+
+export def add(a, b) {
+    let x = read_dec("add", "the first argument", a)
+    let y = read_dec("add", "the second argument", b)
+    let s = x[1]
+    if y[1] > s {
+        s = y[1]
+    }
+    return [x[0] * pow(10, s - x[1]) + y[0] * pow(10, s - y[1]), s]
+}
+
+export def sub(a, b) {
+    let x = read_dec("sub", "the first argument", a)
+    let y = read_dec("sub", "the second argument", b)
+    let s = x[1]
+    if y[1] > s {
+        s = y[1]
+    }
+    return [x[0] * pow(10, s - x[1]) - y[0] * pow(10, s - y[1]), s]
+}
+
+export def mul(a, b) {
+    let x = read_dec("mul", "the first argument", a)
+    let y = read_dec("mul", "the second argument", b)
+    return make("mul", x[0] * y[0], x[1] + y[1])
+}
+
+# a / b rounded to `places` digits after the point by `mode`. Both are required: there is no
+# default, because a quotient is usually not exact.
+export def div(a, b, places, mode) {
+    let x = read_dec("div", "the dividend", a)
+    let y = read_dec("div", "the divisor", b)
+    let p = need_places("div", places)
+    need_mode("div", mode)
+    if y[0] == 0 {
+        fail("div", "cannot divide by zero")
+    }
+    let top = x[0] * pow(10, y[1] + p)
+    let bottom = y[0] * pow(10, x[1])
+    if bottom < 0 {
+        top = 0 - top
+        bottom = 0 - bottom
+    }
+    return [round_div(top, bottom, mode), p]
+}
+
+# `a` with exactly `places` digits after the point: rounded by `mode` when digits are dropped,
+# padded with zeros when they are added.
+export def quantize(a, places, mode) {
+    let x = read_dec("quantize", "its first argument", a)
+    let p = need_places("quantize", places)
+    need_mode("quantize", mode)
+    if p >= x[1] {
+        return [x[0] * pow(10, p - x[1]), p]
+    }
+    return [round_div(x[0], pow(10, x[1] - p), mode), p]
+}
+
+export def negate(a) {
+    let x = read_dec("negate", "its argument", a)
+    return [0 - x[0], x[1]]
+}
+
+export def absolute(a) {
+    let x = read_dec("absolute", "its argument", a)
+    if x[0] < 0 {
+        return [0 - x[0], x[1]]
+    }
+    return x
+}
+
+# -1, 0 or 1.
+export def sign(a) {
+    let x = read_dec("sign", "its argument", a)
+    if x[0] < 0 {
+        return -1
+    }
+    if x[0] > 0 {
+        return 1
+    }
+    return 0
+}
+
+# -1, 0 or 1: how a compares with b. 1.5 and 1.50 are equal.
+export def cmp(a, b) {
+    let x = read_dec("cmp", "the first argument", a)
+    let y = read_dec("cmp", "the second argument", b)
+    let s = x[1]
+    if y[1] > s {
+        s = y[1]
+    }
+    let left = x[0] * pow(10, s - x[1])
+    let right = y[0] * pow(10, s - y[1])
+    if left < right {
+        return -1
+    }
+    if left > right {
+        return 1
+    }
+    return 0
+}
+
+export def eq(a, b) {
+    return cmp(a, b) == 0
+}
+
+export def lt(a, b) {
+    return cmp(a, b) < 0
+}
+
+export def le(a, b) {
+    return cmp(a, b) <= 0
+}
+
+# The text of a decimal: no exponent, every digit after the point kept (1.50 stays 1.50), a
+# minus sign only when the value is below zero.
+export def to_string(a) {
+    let x = read_dec("to_string", "its argument", a)
+    let u = x[0]
+    let s = x[1]
+    let sign_text = ""
+    if u < 0 {
+        sign_text = "-"
+        u = 0 - u
+    }
+    let digits = str(u)
+    if s == 0 {
+        return sign_text + digits
+    }
+    while len(digits) <= s {
+        digits = "0" + digits
+    }
+    let cut = len(digits) - s
+    return sign_text + digits[:cut] + "." + digits[cut:]
+}
+
+# `a` rounded to a whole number by `mode`.
+export def to_int(a, mode) {
+    let x = read_dec("to_int", "its first argument", a)
+    need_mode("to_int", mode)
+    return round_div(x[0], pow(10, x[1]), mode)
+}
+
+# The nearest float.
+export def to_float(a) {
+    return num(to_string(a))
+}
+
+# The exact sum of a list of decimals (the empty list is 0).
+export def total(items) {
+    if type(items) != "list" {
+        fail("total", "needs a list, but got " + type(items))
+    }
+    let result = [0, 0]
+    for item in items {
+        let x = read_dec("total", "an item", item)
+        let s = result[1]
+        if x[1] > s {
+            s = x[1]
+        }
+        result = [result[0] * pow(10, s - result[1]) + x[0] * pow(10, s - x[1]), s]
+    }
+    return result
+}

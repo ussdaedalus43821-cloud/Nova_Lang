@@ -1,0 +1,100 @@
+# std:format - number to text (docs/spec/09-library.md [lib.std-format]). Closes G-007 and G-008
+# and gives G-048 a way out.
+#
+#   import "std:format" as fmt
+#   fmt.fixed(1234567.891, 2)                  # "1234567.89"
+#   fmt.grouped(fmt.fixed(1234567.891, 2), ",") # "1,234,567.89"
+#   fmt.pad_zero(7, 3)                          # "007"
+#
+# Plain NovaLang: every profile, no capability, the same on all three engines.
+
+import "std:decimal" as decimal
+
+let DIGITS = "0123456789"
+
+def is_whole(x) {
+    if type(x) != "number" {
+        return false
+    }
+    let text = str(x)
+    if "." in text {
+        return false
+    }
+    let ok = true
+    try {
+        num(text)
+    } catch e {
+        ok = false
+    }
+    return ok
+}
+
+# x (a whole or fractional number) as text with exactly `places` digits after the point, rounded
+# half to even on the number's own text (what str() would print, as in std:decimal's
+# from_float), never in exponent form: fixed(5, 2) is "5.00", fixed(0.0000001, 8) is "0.00000010"
+# (str prints 1e-07), fixed(2.5, 0) is "2" and fixed(3.5, 0) is "4". places is 0 to 1000.
+export def fixed(x, places) {
+    if type(x) != "number" {
+        throw("the number for format.fixed() needs a number, but got " + type(x))
+    }
+    return decimal.to_string(decimal.from_float(x, places, "half_even"))
+}
+
+# The text of a number (an optional sign, digits, an optional point and digits, as fixed()
+# makes it) with `sep` between groups of three digits of its whole part:
+# grouped("1234567.5", ",") is "1,234,567.5".
+export def grouped(text, sep) {
+    if type(text) != "string" or type(sep) != "string" {
+        throw("format.grouped() needs the text of a number and a separator string")
+    }
+    let found = decimal.try_parse(text)
+    if found == decimal.try_parse("x") {
+        throw("format.grouped() needs the text of a number such as \"1234.5\", but got \"" + text + "\"")
+    }
+    let sign_text = ""
+    let rest = text
+    if text[0:1] == "-" or text[0:1] == "+" {
+        sign_text = text[0:1]
+        rest = text[1:]
+    }
+    let whole_part = rest
+    let tail = ""
+    let at = 0
+    while at < len(rest) {
+        if rest[at:at + 1] == "." {
+            whole_part = rest[:at]
+            tail = rest[at:]
+            break
+        }
+        at = at + 1
+    }
+    let out = ""
+    let i = len(whole_part)
+    while i > 3 {
+        out = sep + whole_part[i - 3:i] + out
+        i = i - 3
+    }
+    return sign_text + whole_part[:i] + out + tail
+}
+
+# n as text, padded on the left with zeros to `width` characters; a minus sign counts towards the
+# width and stays in front: pad_zero(-5, 4) is "-005". A number already as wide as `width` is
+# returned as is.
+export def pad_zero(n, width) {
+    if not is_whole(n) {
+        throw("the number for format.pad_zero() needs a whole number, but got " + str(n))
+    }
+    if not is_whole(width) or width < 0 or width > 100000 {
+        throw("the width for format.pad_zero() needs a whole number from 0 to 100000")
+    }
+    let sign_text = ""
+    let digits = str(n)
+    if n < 0 {
+        sign_text = "-"
+        digits = str(0 - n)
+    }
+    while len(sign_text) + len(digits) < width {
+        digits = "0" + digits
+    }
+    return sign_text + digits
+}

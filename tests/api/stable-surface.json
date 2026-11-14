@@ -373,6 +373,53 @@
   "--seed"
  ],
  "std_modules": {
+  "decimal": {
+   "capabilities": [],
+   "exports": [
+    "absolute",
+    "add",
+    "cmp",
+    "div",
+    "eq",
+    "from_float",
+    "from_int",
+    "is_decimal",
+    "le",
+    "lt",
+    "mul",
+    "negate",
+    "parse",
+    "quantize",
+    "scale",
+    "sign",
+    "sub",
+    "to_float",
+    "to_int",
+    "to_string",
+    "total",
+    "try_parse"
+   ],
+   "tier": "provisional"
+  },
+  "format": {
+   "capabilities": [],
+   "exports": [
+    "fixed",
+    "grouped",
+    "pad_zero"
+   ],
+   "tier": "provisional"
+  },
+  "math": {
+   "capabilities": [],
+   "exports": [
+    "divmod",
+    "exp",
+    "round_half",
+    "trunc"
+   ],
+   "tier": "provisional"
+  },
   "text": {
    "capabilities": [],
    "exports": [

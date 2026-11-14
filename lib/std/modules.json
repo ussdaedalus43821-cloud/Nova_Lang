@@ -1,11 +1,70 @@
 {
  "_about": "The standard modules (docs/spec/08-modules.md [mod.std]). One entry per `import \"std:NAME\"`: the file lib/std/NAME.nova, the capabilities a run must have granted for the import to succeed, the tier (provisional or stable, docs/spec/STABLE.md), the release that added it, and the exports it promises. All three engines read this file, so there is one list.",
  "modules": {
+  "decimal": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": [
+    "absolute",
+    "add",
+    "cmp",
+    "div",
+    "eq",
+    "from_float",
+    "from_int",
+    "is_decimal",
+    "le",
+    "lt",
+    "mul",
+    "negate",
+    "parse",
+    "quantize",
+    "scale",
+    "sign",
+    "sub",
+    "to_float",
+    "to_int",
+    "to_string",
+    "total",
+    "try_parse"
+   ]
+  },
+  "format": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": [
+    "fixed",
+    "grouped",
+    "pad_zero"
+   ]
+  },
+  "math": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": [
+    "divmod",
+    "exp",
+    "round_half",
+    "trunc"
+   ]
+  },
   "text": {
    "capabilities": [],
    "tier": "provisional",
    "since": "2.3.0",
-   "exports": ["basename", "ends_with", "find", "find_from", "is_number", "parse_number", "splitext", "starts_with"]
+   "exports": [
+    "basename",
+    "ends_with",
+    "find",
+    "find_from",
+    "is_number",
+    "parse_number",
+    "splitext",
+    "starts_with"
+   ]
   }
  }
 }
