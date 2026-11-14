@@ -13,20 +13,7 @@ import "std:decimal" as decimal
 let DIGITS = "0123456789"
 
 def is_whole(x) {
-    if type(x) != "number" {
-        return false
-    }
-    let text = str(x)
-    if "." in text {
-        return false
-    }
-    let ok = true
-    try {
-        num(text)
-    } catch e {
-        ok = false
-    }
-    return ok
+    return type(x) == "number" and x - x == 0 and floor(x) == x
 }
 
 # x (a whole or fractional number) as text with exactly `places` digits after the point, rounded

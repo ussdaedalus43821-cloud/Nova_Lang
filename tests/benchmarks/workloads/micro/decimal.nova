@@ -1,0 +1,14 @@
+# micro: std:decimal - a ledger step: parse two prices, add, multiply by a quantity, divide, round, print (M13 slice 2).
+import "std:decimal" as dec
+let i = 0
+let acc = dec.parse("0.00")
+while i < 3000 {
+    let price = dec.parse("19.99")
+    let tax = dec.parse("0.0825")
+    let line = dec.mul(price, dec.from_int(3))
+    let taxed = dec.add(line, dec.quantize(dec.mul(line, tax), 2, "half_even"))
+    let each = dec.div(taxed, dec.from_int(7), 2, "half_even")
+    acc = dec.add(acc, each)
+    i = i + 1
+}
+print(dec.to_string(acc))

@@ -49,6 +49,7 @@ MICRO = [
     ("try / catch in a loop (40k)", "micro/try_catch.nova"),
     ("nested indexing: 36x36 matrix product", "micro/matrix.nova"),
     ("module-heavy start-up (2 library modules)", "micro/modules_startup.nova"),
+    ("std:decimal ledger step (3k x 11 operations)", "micro/decimal.nova"),
     ("older: closures (100k calls)", "../../../bench/closures.nova"),
     ("older: loops (200k iterations)", "../../../bench/loops.nova"),
     ("older: index assignment (550k stores)", "../../../bench/index_assign.nova"),

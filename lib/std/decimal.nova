@@ -22,33 +22,32 @@ def fail(who, what) {
     throw("decimal." + who + "() " + what)
 }
 
-# [true, n] when x is an exact whole number (a float that prints with no point and no exponent
-# is one), [false, 0] for anything else.
+# [true, n] when x is a whole number (n is the exact integer it stands for, even when x is a float
+# such as 5.0 or 1e30), [false, 0] for anything else: not a number, infinity, NaN, a fraction.
 def whole(x) {
-    if type(x) != "number" {
+    if type(x) != "number" or x - x != 0 {
         return [false, 0]
     }
-    let text = str(x)
-    if "." in text {
+    let n = floor(x)
+    if n != x {
         return [false, 0]
     }
-    let ok = true
-    let n = 0
-    try {
-        n = num(text)
-    } catch e {
-        ok = false
-    }
-    return [ok, n]
+    return [true, n]
 }
 
-# The pair [unscaled, scale] of a decimal, or an error naming the argument.
+# The pair [unscaled, scale] of a decimal, or an error naming the argument. (Written out in line,
+# without calling whole(), because every operation starts here and a function call is the cost
+# that shows.)
 def read_dec(who, role, a) {
     if type(a) == "list" and len(a) == 2 {
-        let u = whole(a[0])
-        let s = whole(a[1])
-        if u[0] and s[0] and s[1] >= 0 and s[1] <= MAX_SCALE {
-            return [u[1], s[1]]
+        let u = a[0]
+        let s = a[1]
+        if type(u) == "number" and type(s) == "number" and u - u == 0 and s >= 0 and s <= MAX_SCALE {
+            let n = floor(u)
+            let k = floor(s)
+            if n == u and k == s {
+                return [n, k]
+            }
         }
     }
     fail(who, "needs a decimal for " + role + ", but got " + str(a))
