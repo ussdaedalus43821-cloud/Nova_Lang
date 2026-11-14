@@ -1,8 +1,9 @@
 # M12 plan: runtime, bytecode format and performance
 
-Status: **Draft plan. Nothing is implemented.** Written 2026-11-09 for the owner to decide on. It follows
-[ROADMAP M12](../ROADMAP.md) (goal, deliverables, exit criteria) and takes the lessons of M11 as constraints. It is not
-reviewed; the decisions in section 3 are open.
+Status: **Plan with decisions made (2026-11-14). Slices 1 and 2 are started; nothing else is implemented.** Written
+2026-11-09. It follows [ROADMAP M12](../ROADMAP.md) (goal, deliverables, exit criteria) and takes the lessons of M11 as
+constraints. The plan itself is not independently reviewed. The owner decided D1 to D7 and the open questions of section 7
+on 2026-11-14; section 3 records each decision and where it changed the recommendation.
 
 ## 1. What M12 is for
 
@@ -42,11 +43,34 @@ native or alternative runtimes.
   * The 201-cell coverage matrix is per engine. A new engine is 67 new cells to cover, not a free addition.
 * D-045 (the self-hosted interpreter had no type gate in `restricted`) was deferred to M12 by ADR 0005 and **closed before M12 started** (2.2.0): the launcher's type-check walk takes the import grants. Slice 7 below is therefore withdrawn.
 
-## 3. Decisions the plan needs from the owner
+## 3. Decisions (made by the owner, 2026-11-14)
 
-| # | Decision | Recommendation | Why |
+All seven recommendations were accepted. **Two carry a change or a caveat**, marked below and in the table:
+
+* **D1 correction: no list or dictionary constants.** The first draft allowed "list/dict of those". On 2026-11-11 the owner
+  approved six design choices for the draft chapter 17, one of which is *no list or dictionary constants*. That approval
+  is later and safer (fewer shapes for the loader to read, no nesting of containers inside constants), so it wins: the closed
+  set of constant types is **nothing, boolean, number, string and a nested code object**. A program that needs a list builds it
+  with `BUILD_LIST`. Slice 3's `[bc.constants]` and slice 4's loader follow this.
+* **D4 caveat: the cache helps start-up, not execution throughput.** A cache removes lexing, parsing and compiling and nothing
+  else. The proof-of-concept apps spend their time executing: Nova_Data's 10,000 rows take about two seconds and compiling its
+  670 lines is a rounding error beside that. Slice 5 must therefore not be sold, or measured, as a speed-up of running
+  programs; its exit criterion is a warm start-up of a module-heavy program, and the throughput targets belong to slice 6.
+  The baseline of slice 1 reports start-up and execution separately for this reason.
+
+* **D7 first result (2026-11-14): PyPy runs the unmodified VM 9x to 14x faster on a warm run and 2.7x to 2.9x on a cold first run of a 0.5 to 0.7 s program
+  (8.7x on a 13 s one), but starts 3.4x slower.** Output is identical. Details and limits in
+  [`docs/benchmarks.md`](../benchmarks.md), section "D7, first measurement". **The test suite does not pass on PyPy yet:** at NovaLang's recursion limit of 20,000 PyPy crashes (segmentation fault) on a deeply nested program
+  where CPython gives the named nesting error, and with the limit capped at 10,000 two nesting cases of the conformance corpus fail because PyPy runs the
+  program instead of refusing it (all other checks run pass). The nesting limit leans on CPython's `RecursionError`; making it explicit in the parser,
+  compiler and tree-walker is a prerequisite for any non-CPython engine and is proposed as an addition to slice 6 or 8. Until then PyPy is a measurement,
+  not a supported engine, and a new engine may not carry the `restricted` name until the 201 cells pass on it (section 4, slice 8).
+
+## 3a. The decisions as proposed
+
+| # | Decision | Recommendation (accepted; D1 changed, see above) | Why |
 | --- | --- | --- | --- |
-| D1 | The serialized form | A **purpose-built, versioned, length-prefixed binary** format written and read by explicit code. Not `pickle`, not `marshal` | A loader that executes or reconstructs arbitrary objects turns a poisoned cache file into code execution outside every grant. Explicit reading of a closed set of constant types (nothing, boolean, number, string, list/dict of those, nested code object) cannot |
+| D1 | The serialized form | A **purpose-built, versioned, length-prefixed binary** format written and read by explicit code. Not `pickle`, not `marshal` | A loader that executes or reconstructs arbitrary objects turns a poisoned cache file into code execution outside every grant. Explicit reading of a closed set of constant types (nothing, boolean, number, string, nested code object; **no list or dict constants, per the owner's decision of 2026-11-14**) cannot |
 | D2 | Version policy | A format version (breaks the layout), an **opcode-set hash** (changes when any opcode's meaning or numbering does) and the compiler's version string in the header; a loader accepts only a format version it knows and an opcode hash it matches, and otherwise **rejects with a named error and recompiles** | The exit criterion is "accepted or cleanly rejected", never "misread" |
 | D3 | Is the bytecode format part of the M13 stable API? | **No.** It is versioned and specified so that it can be verified and cached, and the policy says the format may change in any minor release. Only "an artifact is accepted or rejected, never misread" is promised | Freezing an instruction set before the fast paths of slice 6 is premature |
 | D4 | Where the cache lives, and who may write it | Per-user cache directory (`$XDG_CACHE_HOME`, `%LOCALAPPDATA%`, `~/Library/Caches`), created with the user's permissions only; refuse a directory writable by others; `--no-cache` and `NOVALANG_CACHE=off`. **Off by default in `restricted`** unless the embedder passes a cache directory | A cache another account can write is a code-injection path. A restricted program must not choose where it is written |
@@ -60,6 +84,13 @@ Each slice is a branch and a PR, with the project's rules: a full local suite, o
 when green, no merge without the owner's go-ahead, documents labelled with their review state.
 
 ### Slice 1: a baseline and the benchmark suite
+
+**Status (2026-11-14): built; the baseline is in [`docs/benchmarks.md`](../benchmarks.md).** What exists now: `tests/benchmarks/run.py`
+gained a `workloads` group (`tests/benchmarks/suite.py`): 15 micro programs (11 new, the 4 older `tests/bench/` ones), and the
+real programs of three proof-of-concept apps (Nova_Data, Nova_Log, Nova_Stats), vendored under `tests/benchmarks/workloads/`
+with seeded generators; each runs in-process on the VM under `trusted` and under `restricted`, so the cost of M11 is a number
+per program; `--full` adds the 50 MB Nova_Log run; every row carries the compile share (decision D4's caveat). Not yet in:
+the reactor's policy-dialect tick loop, the CI job and the generated `docs/BENCHMARKS.md`.
 
 * Start from `tests/benchmarks/run.py`, which exists before M12 and already measures cold start-up, the front end by stage, a tight
   loop on the VM, the tree-walker and the `restricted` profile, and the embedding API, and records its baseline in
@@ -76,6 +107,9 @@ when green, no merge without the owner's go-ahead, documents labelled with their
 
 ### Slice 2: a profile of where VM time goes
 
+**Status (2026-11-14): done; the result is [`m12-vm-profile.md`](m12-vm-profile.md)** (`tests/benchmarks/profile_vm.py` and
+`op_costs.py` reproduce it).
+
 * An opcode histogram and a per-opcode time estimate (a counting build of the dispatch loop, not a sampling profile of Python,
   which reports the loop and nothing else), per benchmark; the top call sites in `call_value`, `binary_operation` and the
   frame set-up; allocation counts.
@@ -90,7 +124,7 @@ Normative text, in the style of the other chapters (ids, a table per concept, er
 * `[bc.overview]` what an artifact is and is not (not a security boundary; not an API, D3);
 * `[bc.header]` magic, format version, opcode-set hash, compiler version, flags, source hash, length;
 * `[bc.constants]` the closed set of constant types and their encoding (numbers: integers of any size up to the 4,000-digit limit,
-  floats as 64-bit IEEE; strings as UTF-8; lists and dictionaries only as constants of constants; nested code objects);
+  floats as 64-bit IEEE; strings as UTF-8; no list or dictionary constants, by decision D1; nested code objects);
 * `[bc.code]` a code object: the opcode list, arguments, source positions, slots and parameters, free variables, closure layout,
   exception table;
 * `[bc.ops]` the opcode table: number, name, argument, stack effect, what it does (generated from `OPCODES` and checked against it);
@@ -196,13 +230,14 @@ its review state.
 | The format works on 3.12 and breaks on 3.7 (integer, float or string encoding, `struct`, hashing) | The fixture corpus is loaded on every job of the 12-job matrix, including Windows 3.7 |
 | Time goes to speed and not to the decision | The milestone ends in slice 8's document; slice 6 stops when the profile's ranked list is exhausted or a candidate fails its evidence |
 
-## 7. Open questions for the owner
+## 7. Open questions, answered by the owner on 2026-11-14
 
-1. D1 to D7 above: accept the recommendations or change them?
-2. Is a regression alert allowed to **block** a merge, or only to warn? (Recommendation: warn first, block after a month of data.)
-3. Should the artifact cache be on by default for the command line? (Recommendation: yes for `trusted`, as described in D4, with `--no-cache`.)
-4. Which workloads matter most to the products on the roadmap (NovaSim's reactor loop, NovaAgent's start-up)? They decide the order of fast paths.
-5. Is the independent reviewer of M11 also asked to read the loader (slice 4), since it is a new parser of untrusted input?
+1. **D1 to D7:** accepted as recommended, with the D1 correction and the D4 caveat of section 3.
+2. **May a regression alert block a merge?** Warn first; block only after a month of data.
+3. **Cache on by default for the command line?** Yes for `trusted`, as D4 describes, with `--no-cache`; off in `restricted`.
+4. **Which workloads decide the order of fast paths?** The reactor loop and the proof-of-concept workloads (Nova_Data, Nova_Log,
+   Nova_Stats), which slice 1 now measures.
+5. **Does the independent reviewer of M11 also read the loader?** Yes: it is a new parser of untrusted input.
 
 ## 8. Order and size
 
