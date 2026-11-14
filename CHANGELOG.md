@@ -26,6 +26,24 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Added
+
+- **Bytecode artifacts (`.novac`), M12 slice 4.** `novalang.py --compile program.nova -o program.novac` writes the compiled program as a
+  self-contained file that **carries its source text**; `novalang.py program.novac` runs it (type gate, error lines and carets included, with no
+  `.nova` file beside it) on the bytecode VM, under whatever profile the command line gives; `--check-artifact FILE` recompiles the embedded
+  source and compares the bytes; `--dis` lists one. The format is a purpose-built, length-prefixed, little-endian binary (not `pickle` or
+  `marshal`): a closed set of constant types, built-ins named and never pointed at, a trailing SHA-256 checksum, and the same bytes for the same
+  source and compiler. The loader checks everything the VM trusts (14 checks, limits before allocation) and every fault is one of sixteen named
+  errors; a file that is accepted but wrong at run time ends as `InternalError`, exit status 70, never a traceback. **Development builds write
+  format version 0**; the cache that uses it is not in yet. Specified in `docs/design/m12-bytecode-spec-draft.md`; 51 tests in `tests/bytecode/`
+  (a station of `tests/run_all.py`): every opcode, 19 golden fixtures and 16 damaged ones, a seeded fuzzer, and the whole conformance corpus
+  (765 cases) run through an artifact with identical results.
+- **M12 benchmarks and profile.** `tests/benchmarks/run.py` gains a `workloads` group (15 micro programs and the Nova_Data, Nova_Log and Nova_Stats
+  programs, trusted and restricted, with the compile share of each); `tests/benchmarks/profile_vm.py` and `op_costs.py` show where the VM's time
+  goes. Results in `docs/benchmarks.md` and `docs/design/m12-vm-profile.md`.
+- `docs/GAPS.md`: the gap log for NovaLang itself, continuing the proof-of-concept numbering. G-051: on PyPy a deeply nested program crashes the
+  interpreter. G-052: a float literal that overflows is silently infinity.
+
 ### Changed
 
 - **`"\0"` followed by a digit is now an error**, `unknown escape '\03'`, on all three engines. `"\033"` used to be a

@@ -2,7 +2,7 @@
 
 The proof-of-concept apps keep their own logs: Nova_Stats G-001 to G-026, Nova_Sort G-027 to G-035, Nova_Log G-036 to G-042 and
 Nova_Data G-043 to G-050 (see [`ROADMAP.md`](ROADMAP.md), M13, "Requirements from the Proof-of-Concept Apps"). This file continues the same numbering
-for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-052**.
+for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-053**.
 
 **How to read an entry.** *Tried* is what was done and the exact result. *Why it matters* says what promise it touches. *Fix* says where it is planned.
 *Probe* is a check in `tests/` that passes while the gap exists and fails the day it is fixed, as in the proof-of-concept repositories.
@@ -11,6 +11,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 
 | # | Gap | Severity | Planned |
 | --- | --- | --- | --- |
+| G-052 | A float literal too large for a binary64 is silently infinity (a 400-digit `1000...0.0`), and `inf - inf` of two of them is `nan` | TRAP (minor) | M13, with the number work |
 | G-051 | On PyPy a deeply nested program crashes the interpreter (segmentation fault) instead of getting the named nesting error; the nesting limit depends on the host's `RecursionError` | PORTABILITY, and a TRAP: the same setting crashes at 20,000 and silently runs at 10,000 | M12 slice 6, or earlier |
 
 ## G-051 The nesting limit depends on the host's recursion limit, and PyPy breaks it - PORTABILITY
@@ -36,3 +37,14 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 - **Probe:** [`tests/portability/test_pypy_nesting.py`](../tests/portability/test_pypy_nesting.py) (`test_G051_*`). It needs a PyPy interpreter, which CI does not have, so it is skipped
   unless `NOVA_PYPY` names one: `NOVA_PYPY=$(uv python find pypy@3.10) python3 -m unittest tests.portability.test_pypy_nesting -v`. It passes while PyPy crashes and fails the day it gives the named
   error.
+
+## G-052 A float literal that overflows is silently infinity - TRAP (minor)
+- **Found:** 2026-11-14, writing the constants section of the bytecode specification ([`design/m12-bytecode-spec-draft.md`](design/m12-bytecode-spec-draft.md), F3):
+  a constant pool can hold `inf`, and no source can make a NaN constant, which led to asking what *can* make an infinite one.
+- **Tried:** `print(1` followed by 400 zeros and `.0)` prints `inf`; two such literals subtracted print `nan`. The same on the VM, the tree-walker and the self-hosted interpreter.
+- **Why it matters:** [`spec/06-portability.md`](spec/06-portability.md) `[port.floats]` says an overflowing float *result* is infinity, not an error, so a literal that overflows
+  follows the same rule; but integers that are too large are an error ("never a wrong answer ... or infinity"), so a long literal that is a whole number with a `.0` behaves
+  differently from the same digits without it. It is a literal nobody writes on purpose, and `inf` is not otherwise reachable from source.
+- **Decided (owner, 2026-11-14):** the bytecode format accepts positive infinity as a float constant so every program that compiles can be written; whether the lexer should refuse
+  such a literal is decided in M13 with the number-formatting and decimal work (G-008, G-044).
+- **Probe:** [`tests/portability/test_float_literal.py`](../tests/portability/test_float_literal.py): the three engines print `inf` and `nan`; it fails the day that changes.

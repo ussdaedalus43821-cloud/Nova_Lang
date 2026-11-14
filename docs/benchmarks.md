@@ -108,6 +108,20 @@ How to read these numbers: [`tests/benchmarks/run.py`](../tests/benchmarks/run.p
 are in `tests/benchmarks/suite.py` and `tests/benchmarks/workloads/`. Where the time goes inside the VM is in
 [`docs/design/m12-vm-profile.md`](design/m12-vm-profile.md).
 
+## Bytecode artifacts: what loading costs against compiling (slice 4, 2026-11-14)
+
+Median of five, CPython 3.9.6, the same machine: writing an artifact, and reading it back with all the checks of `[bc.verify]`, against `compile_source`.
+
+| Program | Source | Artifact | Compile | Write | **Read and verify** | Read vs compile |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `novalang.nova` (3,545 lines, the self-hosted interpreter) | 111,489 B | 270,878 B | 202.3 ms | 19.6 ms | **67.8 ms** | 3.0x faster |
+| Nova_Data (670 lines) | 22,545 B | 53,584 B | 40.1 ms | 3.8 ms | **16.2 ms** | 2.5x faster |
+| Nova_Stats `pipeline.nova` | 3,029 B | 7,727 B | 5.1 ms | 0.5 ms | **1.8 ms** | 2.8x faster |
+
+So a cache hit (slice 5) saves about two thirds of the front end, not all of it: **loading and verifying costs a third of compiling.** The artifact is about 2.4x the
+size of the source because it carries the source and the code. Nova_Stats loads 21 modules (7% of its 50-tick run in the profile): at about 2.8x that is a saving of
+roughly 4.5% of that run, the largest the cache can give any of the proof-of-concept programs (D4's caveat).
+
 ## D7, first measurement: the same suite on PyPy (2026-11-14)
 
 The plan's decision D7 lists PyPy first because it can be tried in a day with no code change. This is that try: the **unmodified**

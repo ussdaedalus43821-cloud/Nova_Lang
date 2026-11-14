@@ -54,8 +54,15 @@ def run(check):
     used = set(re.findall(r"`\[(bc\.[a-z]+)\]`", text))
     check(used <= defined, "bytecode draft: every section id the draft cites is a section it defines", str(sorted(used - defined)))
     questions = set(re.findall(r"`\[bc\.questions\]` (Q\d)", text))
-    listed = set(re.findall(r"^\d\. \*\*(Q\d)\.", text, flags=re.M))
+    listed = set(re.findall(r"^\| (Q\d) \|", text, flags=re.M))
     check(questions <= listed, "bytecode draft: every question the draft refers to (Q1..) is listed under [bc.questions]", str(sorted(questions - listed)))
+    # the table compiled into novalang.py is the table in the document, and its hash is the document's
+    check([(name, kind) for _, name, kind, _ in table] == [(name, (kind if kind != "-" else "-")) for name, kind, _ in nl.ARTIFACT_TABLE],
+          "bytecode draft: the opcode table in novalang.py (ARTIFACT_TABLE) lists the same opcodes and argument kinds as the document")
+    check([effect for _, _, _, effect in table] == [effect for _, _, effect in nl.ARTIFACT_TABLE],
+          "bytecode draft: the stack-effect text of ARTIFACT_TABLE is the document's")
+    check(bool(stated) and stated.group(1) == nl.artifact_opcode_hash().hex(),
+          "bytecode draft: the opcode-set hash the loader computes is the one printed in the document")
 
 
 if __name__ == "__main__":

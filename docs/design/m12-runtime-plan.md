@@ -148,6 +148,11 @@ Normative text, in the style of the other chapters (ids, a table per concept, er
 
 ### Slice 4: the serializer, the loader and the compatibility corpus
 
+**Status (2026-11-14): built** (`dump_artifact`, `load_artifact`, `--compile`, `--check-artifact`, running a `.novac`; `tests/bytecode/`, a station of `run_all.py`).
+It follows the owner's nine decisions (the format embeds its source; development builds write version 0; limits as proposed; no compression; no cache on Windows by default;
+`InternalError` exit 70). Measured: reading and verifying is 2.5x to 3.0x faster than compiling (`docs/benchmarks.md`). Not done: the chapter is still in `docs/design/`
+because no conformance case cites its sections yet (slice 4's remaining item: a conformance profile `bytecode`), and the cache is slice 5.
+
 * `dump(code) -> bytes` and `load(bytes) -> CodeObject` in `novalang.py`, plus `--compile file.nova -o file.novac` and running
   a `.novac` directly. `load` calls `verify()` and rejects with the errors of `[bc.reject]`.
 * **A corpus of artifacts**, like the conformance corpus: golden `.novac` files produced by this version, committed under

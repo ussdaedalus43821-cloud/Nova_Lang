@@ -856,11 +856,25 @@ def station_security_matrix(line):
     matrix.check_all(line.check, strict=True)           # M11's exit criterion: every cell is covered
 
 
+QUICK = False       # set by main() for --quick
+
+
+def station_bytecode(line):
+    print("0g. bytecode artifacts (.novac): format, rejection, corruption, the round trip over the conformance corpus, golden fixtures")
+    env = dict(os.environ)
+    if QUICK:
+        env["NOVA_BYTECODE_QUICK"] = "1"        # a tenth of the corpus in the round trip
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(HERE, "bytecode")],
+                          cwd=ROOT, capture_output=True, text=True, timeout=600, env=env, stdin=subprocess.DEVNULL)
+    line.check(done.returncode == 0, "bytecode artifact tests pass", done.stdout + done.stderr)
+
+
 STATIONS = [
     ("harness", station_harness),
     ("cli", station_cli),
     ("embedding", station_embedding),
     ("repl", station_repl),
+    ("bytecode", station_bytecode),
     ("input-errors", station_input_errors),
     ("portability", station_portability),
     ("fmt-golden", station_fmt_golden),
@@ -890,6 +904,8 @@ def main(argv):
     args = parser.parse_args(argv[1:])
     if args.quick and args.station and "parity" in args.station:
         parser.error("--quick cannot be combined with --station parity")
+    global QUICK
+    QUICK = args.quick
     line = Line()
     try:
         if args.report:

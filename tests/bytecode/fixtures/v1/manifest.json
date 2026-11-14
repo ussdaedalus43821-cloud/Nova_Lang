@@ -1,0 +1,225 @@
+{
+ "format": 0,
+ "compiler": "2.2.0",
+ "accepted": [
+  {
+   "name": "recursion",
+   "sha256": "a5453376d072f1931021766d51ed3ba4864c10ce773ab029a8b0b5c126ed37bf",
+   "bytes": 694,
+   "run": true,
+   "status": 0,
+   "stdout": "28657\n"
+  },
+  {
+   "name": "arithmetic",
+   "sha256": "8393ad1e38e2593079458d9ec7cdcdc6fba9cb6d604c19f50b2f15c43f4079a9",
+   "bytes": 1194,
+   "run": true,
+   "status": 0,
+   "stdout": "7150134674\n"
+  },
+  {
+   "name": "float_math",
+   "sha256": "1c1eddd490618c2daa1d054c724a5d3ba933abf9bdb1bc7d02650c38c9fb14c6",
+   "bytes": 1007,
+   "run": true,
+   "status": 0,
+   "stdout": "-595052761.762\n"
+  },
+  {
+   "name": "string_build",
+   "sha256": "7d8c86dbff6adb0f30a0d08ec83d61a549226f138eb2d68d6493e1d8f6ea241c",
+   "bytes": 1113,
+   "run": true,
+   "status": 0,
+   "stdout": "348894\n"
+  },
+  {
+   "name": "string_scan",
+   "sha256": "c2e1b8ebecf6bd27ee750daaa0c183cbb915fb6967b79471e9b3917eab8eb45f",
+   "bytes": 2328,
+   "run": true,
+   "status": 0,
+   "stdout": "26728440\n"
+  },
+  {
+   "name": "split_join",
+   "sha256": "2400b7b7db11a18b996e7b7167d4565de89839379e294ba6ba3874ba9e898891",
+   "bytes": 1575,
+   "run": true,
+   "status": 0,
+   "stdout": "864000\n"
+  },
+  {
+   "name": "list_dict",
+   "sha256": "6152fd06f8813702d653772153da856e77c98b992cba80693bfa60b60ea9e3f2",
+   "bytes": 1722,
+   "run": true,
+   "status": 0,
+   "stdout": "2448875\n"
+  },
+  {
+   "name": "higher_order",
+   "sha256": "0ea6c94181d80711600b026d1bacf9c9e2cd2dfc148007053d7084872bdd9d54",
+   "bytes": 1385,
+   "run": true,
+   "status": 0,
+   "stdout": "12317700\n"
+  },
+  {
+   "name": "try_catch",
+   "sha256": "e4a2dcd629cca59c27ea65a58523303c60b94f09c95acdfc3a5fb60ff683869b",
+   "bytes": 1281,
+   "run": true,
+   "status": 0,
+   "stdout": "400220000\n"
+  },
+  {
+   "name": "matrix",
+   "sha256": "f3b0f32e0b62bfd26ef2bec1caa06a344abeb558138331d9f5ee2b977b83a367",
+   "bytes": 2453,
+   "run": true,
+   "status": 0,
+   "stdout": "1600\n"
+  },
+  {
+   "name": "closures",
+   "sha256": "67b30532c956fb7d8ddd9f39b7ccd2069c07df792a81d2f33d527eff4e257e14",
+   "bytes": 2410,
+   "run": true,
+   "status": 0,
+   "stdout": ""
+  },
+  {
+   "name": "control",
+   "sha256": "198807c47f44207064124b4d87e1dc99fd9db10399c7e2fb020d5fc3a5d6bbc4",
+   "bytes": 1172,
+   "run": true,
+   "status": 0,
+   "stdout": "finished without break\n10\n5\n0\na 1\nb 2\n"
+  },
+  {
+   "name": "data",
+   "sha256": "772b9427bbefee3cc84cfe4e5800fb77013fb39f5eadb99817e9579967e13a83",
+   "bytes": 1362,
+   "run": true,
+   "status": 0,
+   "stdout": "el he llo hello has 5 letters -5 false\n"
+  },
+  {
+   "name": "scopes",
+   "sha256": "480083096ee1cdca4ddafd475fd3142a629b052d137d91bf05b2984ed2d38abe",
+   "bytes": 1605,
+   "run": true,
+   "status": 0,
+   "stdout": "1 2\n"
+  },
+  {
+   "name": "try_finally",
+   "sha256": "241534c24d3d60b5a380842ec3176985e6aca4b7b38958177a49d79a2830ba03",
+   "bytes": 3446,
+   "run": true,
+   "status": 1,
+   "stdout": "top level\n"
+  },
+  {
+   "name": "modules",
+   "sha256": "f222ccadcef66e651dc3db5ad026c578e8dbf50c2e7478e6211cfbfc1de58323",
+   "bytes": 1016,
+   "run": false,
+   "status": null,
+   "stdout": null
+  },
+  {
+   "name": "errors",
+   "sha256": "916c1b0180cb4a17914e723b85f6e844cfed5236178227ae75022351375d64e2",
+   "bytes": 9295,
+   "run": false,
+   "status": null,
+   "stdout": null
+  },
+  {
+   "name": "rich",
+   "sha256": "a6f96eb1058a2acb6a6df8ffea10c92e6761541652dc31722c94e37dd61ab7d8",
+   "bytes": 2938,
+   "run": true,
+   "status": 0,
+   "stdout": "total=174 a [\"b\", \"c\"] nova 37037036703703703670 1.5 true\ncaught boom\ndone\n74 3 1 true true -74 74\n"
+  },
+  {
+   "name": "typed",
+   "sha256": "bcb083c3e43cc044aec030dd9ca2ac01b8a71dfa1b5a68603ed29f176204964d",
+   "bytes": 398,
+   "run": true,
+   "status": 1,
+   "stdout": ""
+  }
+ ],
+ "rejected": [
+  {
+   "name": "bad_constant",
+   "error": "bad-constant"
+  },
+  {
+   "name": "bad_magic",
+   "error": "bad-magic"
+  },
+  {
+   "name": "bad_opcode",
+   "error": "bad-opcode"
+  },
+  {
+   "name": "bad_text",
+   "error": "bad-text"
+  },
+  {
+   "name": "checksum",
+   "error": "checksum-mismatch"
+  },
+  {
+   "name": "flags",
+   "error": "bad-flags"
+  },
+  {
+   "name": "format_version",
+   "error": "unknown-format-version"
+  },
+  {
+   "name": "instruction_set",
+   "error": "opcode-set-mismatch"
+  },
+  {
+   "name": "slot_out_of_range",
+   "error": "failed-verify"
+  },
+  {
+   "name": "source",
+   "error": "source-mismatch"
+  },
+  {
+   "name": "stack_underflow",
+   "error": "failed-verify"
+  },
+  {
+   "name": "too_large",
+   "error": "limit-exceeded"
+  },
+  {
+   "name": "too_short",
+   "error": "truncated"
+  },
+  {
+   "name": "trailing",
+   "error": "trailing-bytes"
+  },
+  {
+   "name": "truncated",
+   "error": "checksum-mismatch"
+  },
+  {
+   "name": "unknown_builtin",
+   "error": "unknown-builtin"
+  }
+ ],
+ "note": "Generated by tests/bytecode/make_fixtures.py; see its docstring before regenerating."
+}
