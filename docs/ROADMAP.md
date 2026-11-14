@@ -93,7 +93,7 @@ Not established:
 | M11 | Security model and sandbox | **Done (pending independent review)** (v2.2.0; slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
 | M12 | Runtime: bytecode format and performance | **Slices 1 to 5 implemented, shipped in v2.3.0** (2026-11-14: benchmark suite and VM profile, the bytecode format as [chapter 17](spec/17-bytecode.md), the artifact cache); PyPy evaluation documented; slice 6 (fast paths) deferred by the owner to the native-runtime phase; slices 8 and 9 and the CI benchmark job open ([status](#m12--runtime-bytecode-format-and-performance), [plan](design/m12-runtime-plan.md)) | M9 | L |
 | M13 | Platform libraries, registry and API stability | **Done** (v2.3.0, 2026-11-14; implemented and closed by the project owner; slices 1 to 6 of the [plan](design/m13-libraries-and-registry-plan.md), HTTP moved to M14 by decision D6). Carried to a patch release: `nova-pkg add` and `audit`, the deprecation warning, the step-counted time limit, the independent review. See [the deferred list](#m13-closed-what-was-deferred) | M9, M11 | L |
-| M14 | Product pilots | **Plan drafted** for NovaSteward ([`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md)); other products stay on the horizon until each has a charter | M10, M11, M13 | per product |
+| M14 | Product pilots | **Plan drafted** (revised 2026-11-14) for NovaLedger, for prosumers and small businesses, and NovaAudit, a log analyzer ([`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md)); other products stay on the horizon until each has a charter | M10, M11, M13 | per product |
 
 Sizes are relative effort (S, M, L, XL), not durations.
 
@@ -560,11 +560,14 @@ outcome. Entry also requires the prerequisites below.
 Products with no precedent stay on the horizon until a charter exists. Nothing
 in this roadmap commits to building them.
 
-**First charter, drafted 2026-11-14: NovaSteward Observe** (the read-only first release of NovaFinance), in
-[`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md). It is a draft for the owner: it names what NovaLang must still provide
-(`std:date`, `std:csv`, ordering by a key, a decision on missing values, and the 2.3.x patch list), builds the core on `std:decimal`, and keeps
-the first pilot to manual bills and a CSV import under the restricted profile. HTTP and the `net` capability (moved here by M13's decision D6) are a
-gated slice of that plan, not part of the first pilot. No product code exists.
+**First charters, drafted 2026-11-14 and revised the same day: NovaLedger and NovaAudit**, in
+[`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md), a draft for the owner. NovaLedger (first proposed as
+NovaSteward, renamed to avoid confusion with the game *Steward*) is for prosumers and small businesses, not a mass-market consumer
+app; NovaAudit is an enterprise log analyzer built on `std:regex`. Both are read-only command-line tools whose point is what M11 and M13 made
+possible: exact money, linear-time parsing, and a run whose permissions are on its command line and in its receipt. The plan names what
+NovaLang must still provide first (`std:date` with offsets, `std:csv`, ordering by a key, a decision on missing values, `std:hash`, and the
+2.3.x patch list), measures NovaAudit's throughput (about 5,000 lines a second, so tens of megabytes a run), and puts customer validation
+before any building. HTTP and the `net` capability (moved here by M13's decision D6) are a gated slice. No product code exists.
 
 ---
 

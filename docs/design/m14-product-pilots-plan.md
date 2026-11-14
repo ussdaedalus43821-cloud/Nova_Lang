@@ -1,252 +1,247 @@
-# M14: product pilots, starting with NovaSteward Observe
+# M14: product pilots: NovaLedger (prosumers and small businesses) and NovaAudit (a log analyzer)
 
 | | |
 | --- | --- |
-| Status | **Draft for the project owner. Nothing here is decided and nothing is built.** Written after M13 closed (v2.3.0, 2026-11-14) |
-| Scope | The one-page charter of the first product (NovaSteward, read-only), what NovaLang must still provide for it, how its core is built on `std:decimal`, and the slices that get it to a first pilot. **Not** the other M14 products, **not** the go-to-market plan |
-| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`vision/NOVA_EXPERIENCE.md`](../vision/NOVA_EXPERIENCE.md) section 3 (the product), [`vision/NOVA_FINANCE.md`](../vision/NOVA_FINANCE.md) (the design), [`vision/LAUNCH_ROADMAP.md`](../vision/LAUNCH_ROADMAP.md) (the gates), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md) |
-| Names | **NovaSteward** is the finance app. It is not *Steward*, the studio's existing game, and it is not *NovaFinance*, the larger design of which it is the read-only first release |
+| Status | **Draft for the project owner, revised 2026-11-14. Nothing here is decided and nothing is built.** Written after M13 closed (v2.3.0) |
+| Scope | The charters of two products that are built to use what M11 (the security model) and M13 (the libraries) made possible: **NovaLedger**, a financial tool for prosumers and small businesses, and **NovaAudit**, an enterprise log analyzer built on `std:regex`; what NovaLang must still provide for them; how their cores are built; the slices that get each to a first pilot. **Not** the other M14 products, **not** a go-to-market plan |
+| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md), and, for the original (consumer) proposal that this plan revises, [`vision/NOVA_EXPERIENCE.md`](../vision/NOVA_EXPERIENCE.md) section 3 and [`vision/NOVA_FINANCE.md`](../vision/NOVA_FINANCE.md) (see section 13: those files are not in git) |
+| Names | **NovaLedger** is the financial product, **NovaAudit** the log analyzer. NovaLedger was first proposed as *NovaSteward*; it was renamed because *Steward* is the studio's municipal simulator. **NovaLedger is also the name of a module in `NOVA_FINANCE.md`** (balances and transactions): see decision D-P4 |
 
-## 1. What M14 is for
+## 1. What changed from the first draft
 
-The roadmap says M14 "defines when each product may start, not what it contains": a product enters with a one-page charter
-(owner, the NovaLang capabilities it needs, the hosts it targets, its first measurable outcome) and the prerequisites. M13 is the last
-prerequisite for NovaFinance, and the vision documents choose NovaSteward as the first product. This plan is that charter, plus the work
-**on the language and libraries** that the charter needs, because that is the part this repository owns. The product itself lives in its own
-repository, as Nova_Stats, Nova_Sort, Nova_Log and Nova_Data do.
+The first draft of this plan was a charter for a read-only **consumer budgeting app** (NovaSteward). The owner has changed two things, and this version follows both:
 
-What this plan is careful about, from the vision documents themselves:
+1. **The name:** NovaSteward becomes NovaLedger everywhere.
+2. **The audience:** the mass-market consumer budgeting app is dropped. The judgment that the market is saturated and expensive to acquire users in is the **owner's**; this plan does not measure it and does not need to. In its place:
+   - **NovaLedger for prosumers and small businesses**, and
+   - **NovaAudit**, an enterprise log analyzer built with `std:regex`.
 
-- **It is read-only.** NovaSteward Observe shows, forecasts and warns. It moves no money, makes no payment and gives no investment advice.
-  *Coordinate* and *Act* (the vision's second and third releases) are not in this plan at all.
-- **The product numbers are hypotheses.** The launch roadmap's retention, conversion, interview and budget figures are planning targets
-  written by the product side. Nothing in this plan depends on them, and nothing here claims them.
-- **No bank connection is in the first pilot.** The launch roadmap's own order is "observe without accounts" first: manual bills, a CSV import,
-  a transparent forecast, local storage. That order is also what the language can support today, because the language has no network
-  capability (decision D6 moved it here) and the registry's fetch core is deliberately internal to `nova-pkg`.
+   The reasoning the owner gave is the organising idea of this version: **build tools that leverage the security model (M11) and the text-parsing power (M13), instead of competing with consumer apps on features.**
 
-## 2. Rules this plan inherits
+What carried over unchanged: the decimal core (money is never a float), the forecast with its three scenarios and its honesty rules, the worked example (it was run), the rule that a product's packages declare their capabilities, and the stop-the-line rules. What was dropped: the consumer launch gates and figures (retention, conversion, 40 interviews), the bank-connection beta, and the personal-finance framing. What is new: a second product, a shared foundation, performance and release facts that matter much more to a business buyer than to a consumer, and a validation slice that comes before any building.
 
-1. **One language, three engines.** Anything the product relies on runs the same on the VM, the tree-walker and the self-hosted engine, and has
-   conformance cases. A product does not get a private dialect.
-2. **Money is never a float.** NovaSteward's money path uses `std:decimal` end to end, with an explicit rounding mode at every division; a test
-   fails if a float can reach it (section 5.3).
-3. **The wording rule of `[sbx.claims]`.** The restricted profile is capability gating and limits, not isolation. NovaSteward's documents say
-   what its grants prevent and what they do not, and never "secure" or "safe" without the evidence.
-4. **A library is only done when the program that asked for it can delete its own helper.** The M13 rule, kept: the acceptance of each library
-   below is a program of the product (or of a proof of concept) with its hand-written version gone and its oracle comparison unchanged.
-5. **Stop the line.** The whole suite and the whole CI matrix, including Python 3.7 on Windows, are green on every slice before the next starts.
-6. **No unreviewed claim about security.** The independent review of M11 is still pending (the roadmap says so); a product that holds financial
-   records may not say more than the roadmap does until it has an outcome.
+## 2. What M14 is for
 
-## 3. Facts (checked on 2026-11-14)
+The roadmap says M14 "defines when each product may start, not what it contains": a product enters with a one-page charter (owner, the NovaLang capabilities it needs, the hosts it targets, its first measurable outcome). This plan is that charter for two products, plus the work **on the language and libraries** that they need, because that is the part this repository owns. Each product lives in its **own repository**, as Nova_Stats, Nova_Sort, Nova_Log and Nova_Data do.
 
-### 3.1 What a NovaSteward core would use, and whether it exists
+**The thesis, stated so that it can be tested.** A business that is asked to run a tool on its books or its logs wants to know what the tool can touch. NovaLang can now say so in a way that a reviewer can check: a program's packages **declare** the capabilities they use, the install and the import **refuse** one that uses more, and the program runs under the `restricted` profile with the grants on the command line and nothing else. A product built that way can print the grants it ran with, the version of NovaLang, a hash of its inputs and the version of its rules, and anyone can re-run it and get the same bytes (the deterministic mode exists). That is what is demonstrable today. What it is **not**, by the project's own wording rule (`[sbx.claims]`): isolation, or a security boundary, and the independent review of the sandbox is still pending (section 12). The products must not say more than that.
+
+## 3. Rules this plan inherits
+
+1. **One language, three engines.** Anything a product relies on runs the same on the VM, the tree-walker and the self-hosted engine and has conformance cases. A product does not get a private dialect.
+2. **Money is never a float** (NovaLedger). `std:decimal` end to end, an explicit rounding mode at every division, and a test that fails if a float can reach the money path.
+3. **The wording rule of `[sbx.claims]`.** Capability gating and limits, not isolation. No "secure", "safe" or "certified" without the evidence for it.
+4. **A library is done when the program that asked for it can delete its own helper** (the M13 rule), with its oracle comparison unchanged.
+5. **Stop the line.** The suite and the whole CI matrix, Python 3.7 on Windows included, are green on every slice before the next starts.
+6. **Analysis, not action.** Both first releases read and report. Neither moves money, changes a system, or deletes a file. That is inherited from the first draft's read-only stance; it is the owner's to change.
+7. **Market and customer claims are the owner's and are hypotheses.** Nothing here asserts who will buy, at what price, or that either product beats an existing one.
+
+## 4. Facts (checked on 2026-11-14)
+
+### 4.1 What the two products can use today
 
 | Need | What provides it | State |
 | --- | --- | --- |
-| Exact money, a rounding mode for every division | `std:decimal` (`parse`, `add`, `sub`, `mul`, `div(a, b, places, mode)`, `quantize`, `cmp`, `total`, `to_string`) | **Built (2.3.0)**, on the native tier; verified against Python's `decimal` on all three engines; Nova_Data's report is byte-identical to its hand-written version |
-| Amounts as text: thousands separators, fixed places | `std:format` (`fixed`, `grouped`, `pad_zero`) | Built |
-| Reading a bank export | **A CSV reader** | **Missing.** G-047, deferred in M13 ("`std:csv`, seeded by Nova_Data's parser"). Nova_Data hand-writes one and says so |
-| Reading a large file under the sandbox | `std:files.lines` / `each_line` | Built; the restricted profile reads a file over 1,000,000 characters |
-| Pulling a date, an amount or a name out of an email or a statement line | `std:regex` (captures, named groups, `sub`, `pieces`), linear time | Built; capability `regex` (kept until a release of fuzzing) |
-| **Dates**: what is due in the next 30 days, a monthly bill on the 31st, the end of a pay period, a weekday | **Nothing.** G-046 ("no date support"), deferred: "`std:date` in a later minor". The built-ins are `now`, `format_time` and `time` (a clock capability), and they work in seconds since the epoch | **Missing, and the largest gap.** A 30-day forecast is date arithmetic |
-| Time zones | Nothing (G-014, deferred: Python 3.7 has no `zoneinfo`) | Missing; avoidable in the first pilot by treating every date as a **civil date** with no time zone (section 5.2) |
-| Ordering rows by a key, grouping, "the largest per category" | `sorted` takes no key and cannot order a list of lists (checked today: `sorted([[2,"b"],[1,"z"]])` is a `TypeError`); Nova_Data packs two numbers into one to sort (G-038) | **Missing** |
-| A missing value that is not an error | `d.missing` is an error, `get(d, key, default)` does not exist, there is no `nothing` literal (`type(nothing)` is `undefined name`); callers use `key in d` (G-009) | **Missing**; a language decision, not only a library |
-| Local storage that is encrypted | NovaLang has `read`, `write`, `append`, `mkdir` behind `files.read` / `files.write`, and **no cryptography at all** | **Missing, by design.** See D-S3: encryption belongs to the host, not to the language |
-| An append-only record of what the program did (the "Daily Receipt") | `append(path, line)` under `files.write` | Possible today as a plain file; a tamper-evident log needs a hash (below) |
-| Scheduling, notifications, a user interface | None. NovaLang is a language with a CLI, an embedding API for Python and a port to GDScript | **Host work**; see section 6 |
-| Talking to a bank or an aggregator | No `net` capability, no HTTP (decision D6: M14) | Not needed for the first pilot; **prerequisites in section 7, slice 6** |
-| Packaging the product's own modules, with their capabilities checked | `nova-pkg` with declared capabilities, a signed registry on a folder or HTTPS | **Built (2.3.0)**; no public registry exists (D8), so the product's modules are local or git packages |
+| Exact money, a rounding mode for every division | `std:decimal`, `std:math`, `std:format` | **Built (2.3.0)**, on the native tier; checked against Python's `decimal`; Nova_Data's report is byte-identical to its hand-written version |
+| Pulling fields out of log lines and statements: captures, named groups, `sub`, `pieces` | `std:regex`, linear time whatever the pattern | **Built**; the capability `regex` is kept, so an analyzer must be **granted** it, which is visible on its command line |
+| Reading a file of any size without holding it | `std:files` (`lines`, `each_line`) in 64 KiB pieces, under the read grant | **Built**; a file over the 1,000,000-character string limit reads under `restricted` |
+| JSON lines | `json.loads` | Built |
+| Declared, checked capabilities per package; a signed registry | `nova-pkg` | **Built**; no public registry exists (D8), so a product's packages install from its own repository by path or git |
+| Reproducible output | the deterministic mode (a fixed clock and seed) | Built (M11) |
+| Reading a bank or a billing export | **A CSV reader** | **Missing.** G-047, deferred in M13 (`std:csv`, seeded by Nova_Data's parser) |
+| Dates: what is due in 30 days, a month end, an invoice's age, an interval between two log lines | **Nothing.** G-046 deferred (`std:date`); the built-ins work in seconds since the epoch | **Missing, and the largest gap for both products.** NovaAudit also needs a timestamp **with a numeric offset** (`[10/Oct/2026:13:55:36 +0000]`), so the library must carry an offset; named time zones (G-014) stay out |
+| Ordering by a key, grouping, "top N" | `sorted` takes no key and cannot order a list of lists (`sorted([[2,"b"],[1,"z"]])` is a `TypeError`) | **Missing** (G-038) |
+| A missing value that is not an error | `d.key` of an absent key is an error, there is no `get(d, k, default)` and no `nothing` literal | **Missing** (G-009); a language decision |
+| A hash of an input, as evidence of what was analyzed | **Nothing** in the language | **Missing.** The first draft made this optional; for NovaAudit it is central |
+| A step-counted time limit | the limit is wall-clock and differs by engine (G-042, deferred by D5) | **Missing**; matters more for a product that promises a repeatable run |
+| Scheduling, a UI, notifications, an installer | None. NovaLang is a language with a CLI, a Python embedding API and a GDScript port | Host work, section 8 |
+| A network | no `net` capability and no HTTP (decision D6 moved them here) | Not needed by either first pilot; section 9, P5 |
 
-### 3.2 What Nova_Data teaches about size
+### 4.2 Measured numbers that shape the plan
 
-Nova_Data is the nearest precedent: a spending report from a CSV, in NovaLang, under the restricted profile with the default limits
-(5 s of wall-clock time). Measured today, after moving to `std:decimal` and `std:files` (merged 2026-11-14): **10,000 rows in 3.1 s, 15,000 in 4.4 s,
-20,000 and up refused with `LimitError`**, about 3,600 records a second on the VM; on the self-hosted engine about 50 records a second. A household's
-year of transactions is a few thousand rows, so a *daily* recompute fits, with the headroom the table shows and no more. Two consequences:
+- **NovaLedger's ceiling is NovaData's.** Under `restricted` with the default 5 s limit, Nova_Data does **10,000 rows in 3.1 s and 15,000 in 4.4 s**; 20,000 and up are refused with `LimitError`. About 3,600 records a second on the VM and about 50 on the self-hosted engine. The embedder **can raise** the time limit (`--limit time=900000` was run and accepted today); the default is not a wall. A small business's year of bank rows is thousands to tens of thousands.
+- **NovaAudit's throughput is the hard fact.** A combined-log pattern with six captures, run with `std:regex` and `files.each_line` on the VM, measured today on Nova_Log's own files: **2,155 lines in 0.44 s, 10,000 in 1.98 s, 50,000 in 8.41 s and 51,462 in 9.02 s: about 4,900 to 5,900 lines a second, or 0.5 to 1.2 MB a second** (one run each, on the machine that built this plan, with the cache off; read them as an order of magnitude). At that rate a 50 MB log takes about 1 to 2 minutes and a gigabyte about 15 to 35 minutes, on one core. That is a real result for an "enterprise" tool: the matcher is a Pike machine written in Python, correct and linear in time, and **not fast**. Section 7 treats this as the central risk of NovaAudit, and the first pilot is sized by it.
+- Under `restricted`, importing `std:regex` **without** `--allow-regex` is refused (`ImportError: std:regex needs the 'regex' capability`), so what an analyzer was allowed to do is on its command line.
 
-- **Design the core to be incremental.** A ledger that is re-read in full every time is the ceiling that Nova_Data already hits. Store a normalized
-  ledger and recompute forecasts from it, not from the CSV.
-- **The time limit is wall-clock and engine-dependent** (G-042, deferred by decision D5). A product whose forecast must give the same answer in
-  the same budget on every engine needs the step-counted limit; section 6 lists it as a candidate, with the reason.
+## 5. The two charters (the one page the roadmap asks for, for each)
 
-## 4. The charter (the one page the roadmap asks for)
+Items marked **owner** are decisions only the owner can make; recommendations are in section 11.
 
-Items marked **owner** are decisions only the owner can make; the plan's recommendation is in section 9.
+### 5.1 NovaLedger (prosumers and small businesses)
 
 | | |
 | --- | --- |
-| Product | NovaSteward Observe: the read-only first release of the private financial foresight app. "Know what's coming. Stay in control." |
-| Owner | **owner** (the roadmap requires one named; not assumed here) |
-| What it does in the first pilot | From manual bills and a CSV import: a bill calendar, a transparent 30-day cash-flow forecast (expected, conservative, stress; every figure labelled verified, predicted or estimated, with its source and the date of its data), recurring-payment and price-change detection, and a **Daily Receipt** (a plain-language record of what the program did and with which permissions) |
-| What it never does | Move money; connect to an account in the first pilot; give investment or tax advice; hold a bank password; send data off the machine |
-| NovaLang capabilities it needs | `files.read` and `files.write`, **confined to one data folder**; `process` (arguments, exit); `clock` for "today" (and a way to fix "today" for tests: the deterministic mode exists). It needs **no** `env`, `stdin`, `random`, `python`, `net`, and `regex` only if email or statement text is parsed. Its pure core needs **none at all**, and the package capability check can say so (section 5.1) |
-| Hosts it targets | **Owner.** The launch roadmap says "mobile/desktop prototype" and names no host; NovaLang runs today as a Python program and, for the games, as a GDScript port. First pilot recommended: **a command-line host** like Nova_Data's, because it is the only host that exists and the core is the part worth proving first (D-S2) |
-| First measurable outcome (engineering side) | From a seeded ledger CSV (12 months, at least 3,000 rows) plus a bills file, the program prints the three 30-day forecasts and the Daily Receipt, **under the restricted profile with the default limits and on three engines' worth of agreement for the pure core**, and **every figure equals an independent Python `Decimal` oracle to the cent** on at least 20 generated datasets, including month ends, leap years and refunds |
-| First measurable outcome (product side) | The launch roadmap's alpha gate (80% of testers complete setup in 10 minutes; 70% name a correctly explained insight). **This plan does not measure it and does not vouch for it** |
+| Audience hypothesis | **Owner to confirm, and to test in P0.** Prosumers (freelancers, sole traders, people who run their own books) and small businesses (a shop, an agency, a clinic, a household business) who keep money records in bank exports and spreadsheets, and the bookkeepers or accountants who serve several of them. The plan does not know which of these is the customer; P0 is where that is learned |
+| What it does in the first pilot (hypothesis) | From a bank or billing export and a list of expected payments and invoices: **reconcile** the export against what was expected, **age** receivables and payables, a **cash-flow forecast** over the next 30 and 90 days in three scenarios (expected, conservative, stress), recurring-payment and price-change detection, and a **run receipt** (section 6). Every figure is labelled verified, predicted or estimated with its source and date |
+| What it never does | Move money; connect to an account in the first pilot; give tax, legal or investment advice; claim to be accounting software or to satisfy an accounting or tax rule; send data off the machine |
+| Why this audience, in terms of the platform | The product's selling point is not a feature list but a property: **per-client isolation by grant** (a bookkeeper runs it for client A with `--allow-read` on A's folder and nothing else), **exact money**, **reproducible reports** (the same inputs give the same bytes), and **what it can touch is on its command line**. Whether a buyer values that is a hypothesis for P0 |
+| NovaLang capabilities it needs | `files.read` and, if it writes a report, `files.write`, each **confined to one client folder**; `process`; `clock` for "today" (and the deterministic mode for tests). Its core packages need **none**; the static check can say so (section 6) |
+| Hosts | **Owner.** First pilot recommended: **a command-line host** (it is the only host that exists), run under `restricted` |
+| First measurable outcome (engineering) | From a seeded year of rows (at least 3,000) and an expected-payments file, print the reconciliation, the ageing and the three forecasts **under the restricted profile**, and **every figure equals an independent Python `Decimal` oracle to the cent** on at least 20 generated datasets, including month ends, leap years, refunds and partial payments |
+| First measurable outcome (product) | **Owner, from P0.** This plan does not adopt the consumer launch roadmap's figures (retention, conversion, interview counts): they were written for a mass-market app |
 
-## 5. How the core is built
+### 5.2 NovaAudit (an enterprise log analyzer built on `std:regex`)
 
-### 5.1 Modules, and what each may touch
+| | |
+| --- | --- |
+| Audience hypothesis | **Owner to confirm, and to test in P0.** A security, operations or compliance team that must analyze logs containing sensitive data and wants an analyzer it can read in an afternoon and run with a short, visible list of permissions. "Enterprise" is the owner's word; section 7 lists what an enterprise would ask that does not exist yet |
+| What it does in the first pilot (hypothesis) | Reads web-server access logs (combined format, Nova_Log's format) and authentication or system logs, and JSON lines, **by rule files** (a rule is a pattern with named captures, a window and a threshold, written as data, not code): error-rate spikes per window, bursts of failed logins per source, rare or newly seen paths and user agents, request-size outliers, a top-N by status, path and source. It prints a report with **evidence** (line numbers and the matched text), a summary, and an **exit status by severity** so that a pipeline can gate on it |
+| What it never does | Write to the log folder; make a network connection; modify or delete a log; claim a detection is complete (a rule finds what it is written to find, and the report says which rules ran) |
+| Why this product, in terms of the platform | It needs only the one thing M13 built best and M11 can gate best: **parsing text under a read-only grant**. A run needs `--allow-read LOGS` and `--allow-regex`, and **no write grant at all** if the report goes to standard output. Nova_Log is the precedent: it counts HTTP statuses with hand-written splits, and M13's "done when" for `std:regex` was its status extraction, which one pattern reproduces on all 113,617 non-blank lines of its four datasets |
+| NovaLang capabilities it needs | `files.read`, `regex`, `process` (arguments, exit status), `clock` only to print when the run happened. **No `files.write`, no `env`, no `stdin`, no `random`, no `python`, no `net`** |
+| Hosts | **Owner.** First pilot recommended: a command-line host, run by an operator or a pipeline |
+| First measurable outcome (engineering) | Over a seeded corpus of generated logs (at least 1 million lines in all, in three formats, with planted incidents), the report equals an **independent Python oracle** (an implementation with `re` and `collections`) on every finding, line number and count; the run receipt records the grants and the SHA-256 of each input; and the ceiling table says how many lines per second and per megabyte the analyzer does, on stated hardware (the million-line comparison is a separate, slower check, not part of the default suite) |
+| First measurable outcome (product) | **Owner, from P0** |
 
-NovaSteward's logic is a set of NovaLang packages in its own repository, installed by path into a thin root program (the static check applies to installed packages, not to the root program; a scoped name with a path dependency was tried and installs and imports). The point of splitting them is that **most of them need no capability, and the
-static check of slice 5 proves it**: a package that declares `"capabilities": []` and still uses `read` is refused at install and at import.
+## 6. How the cores are built (what they share)
 
-| Package (proposed names) | Does | Declares |
+### 6.1 Packages and what each may touch
+
+Each product's logic is a set of NovaLang packages in its own repository, **installed by path into a thin root program**. The static check applies to installed packages, not to the root program, which is why the split matters. (A scoped name with a path dependency was tried on 2026-11-14: it installs and imports, and a use of `read` in a package that declares `"capabilities": []` is refused at install.) The pure packages declare **nothing**, so the install proves that parsing, detection, arithmetic and the forecast cannot touch a file:
+
+| Package (proposed) | Does | Declares |
 | --- | --- | --- |
-| `novasteward/money` | Amount parsing and printing over `std:decimal`; rounding rules in one place; the rule that no float enters | none |
-| `novasteward/dates` | Civil-date arithmetic over `std:date` (section 6) | none |
-| `novasteward/ledger` | The normalized transaction list; categories; reconciliation | none |
-| `novasteward/bills` | The bill calendar; recurrence rules (weekly, monthly on day N or last day, every N days) | none |
-| `novasteward/recurring` | Detecting recurring payments and price changes from the ledger | none |
-| `novasteward/forecast` | The three forecasts and their explanations | none |
-| `novasteward/receipt` | Building the Daily Receipt lines from events (pure: it returns text) | none |
-| `novasteward/store` | Reading and writing the data folder: the ledger, the bills, the receipt | `files.read`, `files.write` |
-| `novasteward/import` | CSV and statement-text import into ledger records | `files.read` (and `regex` only if text is parsed) |
-| the program (`steward.nova`) | The host-facing entry: arguments, "today", wiring | `process`, `clock` |
+| `…/money`, `…/ledger`, `…/recon`, `…/ageing`, `…/forecast` (NovaLedger) | Amounts over `std:decimal`; the normalized transaction list; matching a payment to an expectation; receivable and payable ageing; the three forecasts | none |
+| `…/parse`, `…/rules`, `…/detect`, `…/report` (NovaAudit) | Log-line parsing with `std:regex`; rule files as data; the detectors (windowed counts, bursts, rarity); the report text | `regex` for the parsers only; the rest none |
+| `…/dates` (both) | Civil dates and timestamps with an offset over `std:date` | none |
+| `…/receipt` (both) | The run receipt (below) as text | none |
+| `…/import`, `…/store` | Reading the export or the logs; writing a report if one is asked for | `files.read`; `files.write` only where asked |
+| the program | Arguments, "today", wiring | `process`, `clock` |
 
-The run is then `--profile restricted --allow-read DATA --allow-write DATA --allow-process --allow-clock`, and nothing else. The Daily Receipt prints
-that exact list (a program cannot ask what it was granted: G-029, so the **host passes the grant in as an argument and the receipt says it**; a
-test checks the printed list equals the real flags).
+### 6.2 The run receipt (the one idea both products share)
 
-### 5.2 The data model
+At the end of a run the program prints, and optionally writes, a **receipt**: what it did, in plain text with a fixed order: the version of NovaLang, the product and rules versions, **the grants of the run exactly as given on the command line** (a program cannot ask what it was granted, G-029, so the host passes them in as an argument and a test checks the printed list equals the real flags), a **SHA-256 of every input**, counts of lines read and skipped, which rules ran, and the exit status. With the deterministic mode the whole report is reproducible, so a reviewer can re-run it and compare bytes. This is the project's wording rule applied: the receipt states what was configured and what was read, and **never** that the result is secure, complete or correct beyond the tests. The hash needs a language feature that does not exist yet (L5).
 
-Every value of money, date and label is plain text in files, so a record can be read, diffed and exported by a person:
+### 6.3 NovaLedger's data and forecast
 
-- **Amount:** a decimal string with a sign by the convention of Nova_Data (a charge is positive, a credit negative), never a number. `std:decimal` values are opaque, so the
-  store holds `dec.to_string(...)` and parses on load.
-- **Date:** an ISO civil date (`2027-01-31`) with **no time zone**. A bill is due on a date, not at an instant. This sidesteps G-014 for the pilot and is stated as a limit.
-- **Labelled figure:** `{value, kind: "verified" | "predicted" | "estimated", as_of, source}`. A forecast figure is never printed without its label; a stale source says so
-  (the launch roadmap asks for "precise sync-status labels"; in the pilot the only sources are the user's import and the user's own bills).
-- **Event:** one line of the Daily Receipt: when, what the program did, which data it read, which data it wrote, which permissions the run had.
+- **Amount:** a decimal string with a sign (a charge positive, a credit negative, as in Nova_Data), never a number; the store holds `dec.to_string(...)` and parses on load. **Currency** is carried beside the amount, with its minor-unit places (2 for most, 0 for some, 3 for a few); a result is never added across currencies, and a conversion is an explicit step with a stated rate and date, or it is not done. **Date:** a civil date, no time zone (a bill is due on a date, not at an instant). **Labelled figure:** `{value, kind: verified | predicted | estimated, as_of, source}`.
+- **The forecast**, three scenarios always, the conservative one for any decision that protects cash. Proposed definitions, for the owner (D-P9):
 
-### 5.3 The forecast, and a worked example that has been run
+  ```
+  capacity     = available balance - obligations due in the window - minimum cash reserve
+  expected     = obligations at their expected amounts, receipts that are due and have a record of paying on time
+  conservative = expected, with receipts counted at their observed delay (or not counted), variable costs raised by a stated margin
+  stress       = conservative, plus one shock in the first week (the largest payable again, or a stated amount)
+  ```
 
-The design asks for three forecasts, always: **expected**, **conservative** (income delayed, expenses higher) and **stress** (something important goes wrong), and
-that decisions protecting essential funds use the conservative one. This plan proposes these definitions for the owner to accept or change (D-S6); the arithmetic
-is the library's, not new:
+- **A worked example that has been run** (kept as [`m14-examples/forecast-example.nova`](m14-examples/forecast-example.nova); the same output on the VM, the tree-walker and the self-hosted engine). It is the arithmetic of the original personal-finance example, and it is the same shape as a small business's weekly cash: a balance, dated obligations, a reserve, a margin, a shock.
 
-```
-capacity = available balance - obligations due in the window - essentials reserve - protected reserve
-expected     = obligations at their expected amounts, essentials at their recent average
-conservative = expected, with variable essentials raised by a stated margin, each estimated bill raised by its observed
-               worst case, and income that is not yet in the account not counted
-stress       = conservative, plus one shock (the largest bill again, or a stated amount) in the first week
-```
+  ```
+  expected       $205.00
+  conservative   $129.00
+  after $80      $125.00
+  0.10 + 0.20    0.30 float equals 0.3: false
+  ```
 
-The worked example of `NOVA_FINANCE.md` section 7, written as a NovaLang program with `std:decimal` and `std:format`, and run on the VM, the tree-walker and the
-self-hosted engine with identical output (kept in this repository as [`m14-examples/forecast-example.nova`](m14-examples/forecast-example.nova)):
+  (Balance 1,200 less 500, 120 and 45, an essentials reserve of 180 and a protected reserve of 150 is 205. The conservative figure raises the 180 by 20% and adds a 40 overage: 1,200 − 705 − 216 − 150. The last line is rule 2: a float says `0.1 + 0.2` is not `0.3`.) It is a starting test, not product code.
+- **Honesty rules:** every figure carries its label; a forecast that cannot be computed (a missing balance, an unparseable invoice) says what is missing and prints no number; an estimate is never shown with more precision than its inputs; and the report never says that a payment is "safe", only the figures and how they were obtained. It is not accounting, and the report says so.
 
-```
-expected       $205.00
-conservative   $129.00
-after $80      $125.00
-0.10 + 0.20    0.30 float equals 0.3: false
-```
+### 6.4 NovaAudit's rules and detectors
 
-`$205.00` and `$125.00` are the vision document's own figures (balance 1,200 less rent 500, insurance 120, phone 45, an essentials reserve of 180 and a protected reserve
-of 150; then 80 spent). `$129.00` is the same example with essentials 20% higher and an electricity bill 40 over its forecast: 1,200 - 705 - 216 - 150. The last line is the
-reason for rule 2: a float says `0.1 + 0.2` is not `0.3`. Nothing in this example is NovaSteward code; it only shows that the library does what the product needs, and it
-is a starting test.
+A **rule** is data: an id, a format, a pattern with named captures, and a predicate over the captures (a status class, a path prefix), plus, for a detector, a window and a threshold. The engine is a small interpreter over rules, so a team changes what it looks for without changing code, and a rule file's hash goes into the receipt. Patterns are the author's, never built from log text without `re.escape`; the matcher is linear in time whatever the pattern, so **a rule cannot hang an analyzer** (the point of M13's matcher), and the work is charged to the run's limits. A detector keeps counts per key per window in bounded memory (the list and dictionary limits apply), and **says so when it drops** a key for lack of room instead of silently undercounting.
 
-**Honesty rules for a forecast** (from the design, made testable): every figure carries its label; a forecast that cannot be computed (missing balance, an unparseable
-bill) says what is missing and prints no number; an estimate is never shown with more precision than its inputs; and the forecast never says that spending something is
-"safe", only what the figures are and how they were obtained.
+## 7. NovaAudit: what an enterprise would ask, and what exists
 
-## 6. What NovaLang must provide first (a 2.4.0 library slice, and a patch list)
+The owner's word is "enterprise". The first pilot is not enterprise-ready, and the plan says what stands between it and that word, in order of how much each matters:
 
-These are the gaps of section 3.1 that block the first pilot, in the way M13 handled them: a library, a spec section, conformance cases, and a program that deletes
-its own helper.
+| An enterprise buyer asks for | State today | Plan |
+| --- | --- | --- |
+| **Speed at their volume** | About 4,900 to 5,900 lines a second on one core (section 4.2); a gigabyte takes roughly a quarter to half an hour | The first pilot is sized to **tens of megabytes per run**, states its ceiling table, and runs one file per process (the host parallelizes across files). **A faster matcher is a decision the owner takes with the measurement in hand** (D-P7): options are a literal and prefix filter in front of the matcher, a native-tier fast path for common patterns, or a compiled DFA. None of them is started |
+| **A signed, reproducible release** with a bill of materials and provenance | `v2.2.0` is an unsigned lightweight tag and 2.3.0 will be the same (the roadmap says so) | A **gate before any customer pilot** (P4): a signed tag, a checksummed archive, a build that can be reproduced, a bill of materials. Not started |
+| **An independent security review** | The M11 review of the sandbox is **pending**; the matcher and the registry client are marked not reviewed | The review is a gate before NovaAudit is shown to a customer (D-P10). The products say only what the wording rule allows until it has an outcome |
+| **Output that fits their pipeline** | Plain text and an exit status are easy; JSON lines and a SARIF or CSV export are not built | A JSON report and a CSV report in the first pilot; other formats on demand |
+| **A platform they already run** | Python 3.7 or later, on Linux, macOS and Windows (CI covers all three, Python 3.7 on Windows included) | Stated as a requirement; no installer in the first pilot |
+| **Support, a roadmap, compliance paperwork** | None | Not an engineering item; the owner's |
 
-| # | Item | Why the product needs it | Done when |
+## 8. What NovaLang must provide first (a 2.4.0 library slice, and a patch list)
+
+These are the gaps of section 4.1 that block a first pilot, handled as M13 handled its own: a library, a spec section, conformance cases on three engines, an oracle or differential test, and a program that deletes its own helper.
+
+| # | Item | Why | Done when |
 | --- | --- | --- | --- |
-| L1 | **`std:date`** (G-046): civil dates (`parse` ISO, `format`, `add_days`, `add_months` with the month-end rule stated, `diff_days`, `weekday`, `last_day_of_month`, comparison, `is_leap`), no time zone, a native tier if the pure version is too slow, specified in `[lib.std-date]` | Every bill, due date and window is date arithmetic; without it the product reimplements the calendar and gets month ends wrong | Nova_Data's hand-written `is_date` and its date validation are replaced by it and the report is byte-identical; a differential test against Python's `datetime.date` over every date from 1900 to 2100 for each operation |
-| L2 | **`std:csv`** (G-047): RFC 4180 reading (quoted fields, embedded newlines and quotes, BOM, CRLF, CR), by lines and by file, returns rows, with a row-length limit and an error that names the line | Every statement import | Nova_Data's `parse_fields` and its quote-gluing loop are deleted and its 83 tests pass unchanged; a seeded fuzzer against Python's `csv` module |
-| L3 | **Ordering by a key** (G-038): `sorted(list, key)` as an additive second argument, or `std:collections.sort_by`; stable | Per-category totals, "the largest charge", recurring-payment grouping | Nova_Data's packed-integer sort is deleted; ties are stable on all three engines |
-| L4 | **A missing value** (G-009): the owner decides between a `get(d, key, default)` built-in (a new reserved global name: a **major** change by `STABLE.md`), a `std:` function over dictionaries, and a `nothing` literal | Reading optional fields of a record without a `key in d` before every access | The decision (D-S5) recorded; the product uses whichever is chosen |
-| L5 | **The 2.3.x patch list** from the M13 close: the deprecation warning, the step-counted time limit (D5), the nesting counter (G-051), the embedding fixes (G-015, G-017), `nova-pkg add` and `audit` | The time limit, because a household forecast must answer the same on every engine in the same budget; the embedding fixes, because a host that is not the CLI needs `args()` and a documented set of files | Each as the M13 plan lists it; G-042 closed means the same program gets the same answer (it completes, or it hits the step limit at the same point) on every engine, however long the self-hosted engine takes on the clock |
-| L6 | **Hashing for a tamper-evident Daily Receipt**: a `std:hash` (SHA-256 of text) on the native tier, or the receipt stays a plain log and says so | A receipt that can be shown to have changed; optional for the first pilot | A decision (D-S4); if built, an RFC 6234 vector test and a hash-chained receipt whose edit is detected |
-| L7 | **`std:terminal`** (G-023): size and tty detection | A readable CLI report | Optional; Nova_Data and Nova_Stats print without it |
+| L1 | **`std:date`** (G-046): civil dates (`parse` ISO, `format`, `add_days`, `add_months` with the month-end rule written down, `diff_days`, `weekday`, `last_day_of_month`, `is_leap`, comparison) **and a timestamp with a numeric UTC offset** (parse the common log forms, convert to UTC, `diff_seconds`), no time-zone database; a native tier if the pure version is too slow | Every due date, ageing bucket and window in NovaLedger; every window and burst in NovaAudit | Nova_Data's `is_date` is deleted and its report is byte-identical; a differential test against Python's `datetime` over every date from 1900 to 2100 and a sample of offsets |
+| L2 | **`std:csv`** (G-047): RFC 4180 reading (quoted fields, embedded newlines and quotes, BOM, CRLF, CR), by lines and by file, a row-length limit, an error that names the line | NovaLedger's import; NovaAudit's CSV logs | Nova_Data's `parse_fields` and its quote-gluing loop are deleted and its 83 tests pass unchanged; a seeded fuzzer against Python's `csv` |
+| L3 | **Ordering by a key** (G-038): `sorted(list, key)` as an additive second argument, or `std:collections.sort_by`; stable | Top-N, ageing, per-key totals | Nova_Data's packed-integer sort is deleted; ties are stable on all three engines |
+| L4 | **A missing value** (G-009): owner decides between a `get(d, key, default)` built-in (a new reserved global name, a **major** change by `STABLE.md`), a `std:` function over dictionaries (a minor change), and a `nothing` literal | Optional captures and fields (a log line that lacks a field) are the normal case in NovaAudit | The decision recorded (D-P6); the products use it |
+| L5 | **`std:hash`**: SHA-256 of a string or of a file read in pieces, on the native tier, with the RFC 6234 vectors | The run receipt's hash of every input; the evidence a reviewer re-checks. **Recommended, not optional, for NovaAudit** | A vector test; a receipt whose recorded hash equals `sha256sum` of the file |
+| L6 | **The 2.3.x patch list** from the M13 close: the step-counted time limit (D5), the nesting counter (G-051), the embedding fixes (G-015, G-017), `nova-pkg add` and `audit`, the deprecation warning | The step-counted limit, so a run gives the same answer on every engine; the embedding fixes, so a host that is not the CLI can run a product | As the M13 plan lists each |
+| L7 | **`std:terminal`** (G-023): size and tty detection | Readable reports on a terminal | Optional |
 
-Not in the list on purpose: encryption (D-S3), a scheduler and notifications (host work), a UI toolkit, `net`/`std:http` (section 7), and time zones (G-014: a later minor, with a time-zone
-database decision).
+Not in the list on purpose: encryption (D-P8: the host's), a scheduler and notifications (host work), a UI toolkit, `net` and `std:http` (P5), named time zones (G-014: a later minor, with a time-zone database decision), and a faster matcher (D-P7).
 
-## 7. Slices
+## 9. Slices
 
-Relative sizes as in the other plans (S, M, L). The first three are what a pilot needs; the rest are gates, not commitments.
+Relative sizes as in the other plans (S, M, L, XL). P0 to P4 are what a first pilot of either product needs; the rest are gates, not commitments.
 
 | Slice | What | Depends on | Size |
 | --- | --- | --- | --- |
-| **P0** | **Charter and decisions** (this document, sections 4 and 9): the owner names the product owner, the first host, the storage rule and answers D-S1 to D-S10. The product repository is created (`NovaSteward`) with CI that includes Windows and Python 3.7 | the owner | S |
-| **P1** | **The 2.4.0 libraries** (L1 to L3, L4 as decided, L6 if wanted) and the **2.3.x patch** (L5). Each library with its spec section, conformance cases on three engines, an oracle test, and the proof-of-concept deletion of section 6 | P0 | L |
-| **P2** | **The core and its oracle**: `money`, `dates`, `ledger`, `bills`, `recurring`, `forecast`, `receipt` as packages with `"capabilities": []`, plus `import` and `store`; a seeded generator of ledgers and bills with an **independent Python oracle** (Nova_Data's pattern: every number against `Decimal`, three engines for the pure core); property tests on the forecast (adding a bill never raises capacity; conservative is never above expected; stress is never above conservative) | P1 | L |
-| **P3** | **The command-line host** (`steward.nova`): arguments, "today" (or a fixed one), the data folder, the report, the Daily Receipt with the real grant printed; run under `restricted` with the default limits; the **ceiling table** as in Nova_Data (rows against the 5 s budget); a benchmark row | P2 | M |
-| **P4** | **Alpha readiness of the language side**: the product's packages declared and checked; a registry-free install (local or git) with the lock pinned; a reproducible, checksummed release of the CLI host; the threat model of section 8 written, with what is *not* defended; a request that the independent reviewer read the data-handling code | P3 | M |
-| P5 | *Gate: not before the alpha and the independent security assessment the launch roadmap itself requires.* **Read-only connections**: a `net` capability and `std:http` (the slice 7 of the M13 plan, designed for the registry's fetch core: HTTPS only, no proxy, limits, no redirects off-host), the SSRF and redirect corpus, OAuth through the institution's own flow (no password ever in a NovaLang program), a provider-capability layer, token storage in a vault (NovaSecurity, which does not exist) | the alpha gate; NovaSecurity's vault and audit subsystems | XL |
-| P6+ | Coordinate and Act (the vision's second and third releases): **not planned here**. Action authority also needs NovaSecurity's identity, vault and audit subsystems (NS-1, NS-2, NS-5), and the launch roadmap's own gates | P5 and more | n/a |
+| **P0** | **Validation and decisions** (owner-led). Talk to the people in each audience (section 5) before building: what they keep, what they would want a tool to do, whether "you can see exactly what it can touch" matters to them, what scale they have. This plan **cannot** do this and does not pretend to. In parallel, the engineering spike that costs nothing to run: the throughput measurement of section 4.2 on the owner's real log shapes. Create the two repositories with CI that includes Windows and Python 3.7 | the owner | S, but long on the calendar |
+| **P1** | **The 2.4.0 libraries** (L1 to L5, L4 as decided) and the **2.3.x patch** (L6), each with its spec section, conformance cases, oracle test and the proof-of-concept deletion of section 8 | P0 decisions | L |
+| **P2** | **NovaAudit core and oracle**: `parse`, `rules`, `detect`, `report`, `receipt`; a **seeded generator of logs with planted incidents** and an independent Python oracle (Nova_Data's pattern); property tests (a rule's count never exceeds the lines read; a window never counts a line twice); the ceiling table; the receipt test | P1 (L1, L5, L4) | L |
+| **P3** | **NovaLedger core and oracle**: `money`, `ledger`, `recon`, `ageing`, `forecast`, `receipt`; a seeded generator of statements and invoices; every figure against Python `Decimal`; property tests (adding an obligation never raises capacity; conservative never exceeds expected; stress never exceeds conservative); the ceiling table | P1 (L1 to L3) | L |
+| **P4** | **Pilot readiness of the language side:** each product's packages declared and checked; the lock pinned; a **signed, checksummed, reproducible release** of the CLI host with a bill of materials; the threat models of section 10 written with their "not defended" lists; the independent reviewer asked to read the data-handling code | P2 or P3 | M |
+| P5 | *Gate: not before the owner's validation has an answer and the independent review has an outcome.* **Connections and scale:** a `net` capability and `std:http` (the M13 plan's slice 7: HTTPS only, no proxy, limits, no off-host redirects, an SSRF corpus), a provider layer for NovaLedger's bank or billing feeds, a faster matcher if D-P7 says so, JSON and SARIF integrations for NovaAudit | the gate | XL |
+| P6+ | Any action (payments, remediation): **not planned here**. It needs the vault, identity and audit subsystems the roadmap names (NovaSecurity) and the owner's gates | P5 and more | n/a |
 
-Slices P1 to P3 are about the size of M13 slices 2 to 4; P4 is small if P2 respects section 5.1.
+Order. **D-P2 recommends NovaAudit first.** It has the closest precedent (Nova_Log), the heaviest use of what M13 built, no money and so no accounting or regulatory exposure, and it needs the smaller part of the date work. NovaLedger second, once `std:date` and `std:csv` have been proved on NovaAudit's logs and on Nova_Data.
 
-## 8. A threat model for the first pilot (not reviewed)
+## 10. Threat models for the first pilots (not reviewed)
 
-Assets: the user's financial records on their machine; the correctness of the forecast (a wrong figure is harm, not only a bug); the Daily Receipt's honesty. Actors: a
-malicious file the user imports; a malicious or compromised dependency; a careless user; another program on the same machine; a person with the user's unlocked laptop.
-**Not defended (stated first, as the other models do):** malware on the machine; a user who grants more than the receipt says; anyone who can read the data folder (the language has no
-encryption: D-S3); the Python interpreter and the operating system; a forecast that is correct arithmetic over wrong inputs.
+Both follow the form of the M11 and M13 models: assets, actors, then **what is not defended, first**.
 
-| # | Threat | Defence in this plan | Proved by |
-| --- | --- | --- | --- |
-| S1 | A crafted CSV (huge, deeply quoted, a billion-line field, NUL bytes, invalid UTF-8) | `std:csv` has limits and names the line; `std:files` reads in pieces under the string limit; the restricted profile's limits end a run | fuzz against Python's `csv`; a corpus of hostile files; the ceiling table |
-| S2 | A hostile pattern in statement parsing | the linear-time matcher; the pattern is the product's, not the file's | the M13 time tests; the product never builds a pattern from file text without `escape` |
-| S3 | A dependency that reads the ledger or writes elsewhere | declared capabilities checked at install and import; the core declares none; the run's grants are one folder | a test that every core package declares `[]` and the install refuses a change; the Daily Receipt prints the grants |
-| S4 | Float contamination: a wrong cent | no float in the money path | a test that scans the core's syntax tree for float literals and `num()` on money, and the oracle |
-| S5 | A forecast that misleads (a stale source shown as current, a missing bill) | labels, `as_of`, "cannot compute" instead of a number | property tests; golden reports reviewed by the owner |
-| S6 | The Daily Receipt that lies, or is edited | it is written by the program from what it did, with the real grant; hash-chained if D-S4 says so | tests that the receipt matches an independent trace; an edit is detected (if built) |
-| S7 | Data leaves the machine | the run has no `net`, no `process` spawning, no `python`; the only writes are inside the data folder | the sandbox matrix cells for those capabilities (already covered on three engines) |
-| S8 | Data at rest read by another program or a thief | **not defended** by NovaLang; host or operating-system encryption (D-S3) | n/a |
+**Not defended, for both:** malware on the machine; a user who grants more than the receipt says; anyone who can read the data folder (the language has no encryption: D-P8); the Python interpreter and the operating system; a correct analysis of wrong or incomplete input; and, for NovaAudit, **an attacker who controls what is written to the logs and so what the analyzer sees** (it detects what its rules say; it does not authenticate the log's origin).
 
-## 9. Decisions needed from the owner
+| # | Threat | Product | Defence in this plan | Proved by |
+| --- | --- | --- | --- | --- |
+| A1 | A crafted log or CSV (a gigabyte line, NUL bytes, invalid UTF-8, a million fields) | both | `std:files` reads in pieces under the string limit; `std:csv` has limits and names the line; the restricted profile's limits end a run | fuzz against Python's `csv`; a hostile-file corpus; the ceiling table |
+| A2 | A hostile or pathological pattern (a rule file from a less trusted team) | NovaAudit | the matcher is linear in time whatever the pattern and charged to the run; pattern size and nesting are limited | the M13 time tests; a corpus of rule files |
+| A3 | A dependency that reads or writes more than it says | both | declared capabilities checked at install and at import; the core declares none; the run's grants are on its command line and in the receipt | a test that every core package declares `[]` and that adding a `read` makes the install fail |
+| A4 | A wrong cent | NovaLedger | no float in the money path | a scan of the syntax tree for float literals and `num()` on money; the oracle |
+| A5 | A report that misleads (a stale source shown as current, a missing input, a dropped key) | both | labels and `as_of` on every figure; "cannot compute" instead of a guess; a detector that says when it drops keys | property tests; golden reports the owner reads |
+| A6 | A receipt that lies | both | written by the program from what it did; the grants it prints are the real flags; the input hashes are `std:hash` of the files read | a test against an independent trace |
+| A7 | Data leaves the machine | both | no `net`, no `process` spawning, no `python`; NovaAudit has no write grant at all | the sandbox matrix cells for those capabilities (covered on three engines) |
+| A8 | One client's data reaches another's (a bookkeeper serving several) | NovaLedger | one run per client folder, the grant is that folder; no shared state between runs | a test that a run granted A's folder cannot read B's (the path checks of `[sbx.paths]`) |
+| A9 | A forged or tampered release of the product | both | the signed, reproducible release of P4 | the release checks of P4 |
+
+## 11. Decisions needed from the owner
 
 | # | Decision | Recommendation | Why |
 | --- | --- | --- | --- |
-| D-S1 | **Who owns the product and where does it live?** A named owner, and a repository (`NovaSteward`) with its own tests and CI, like the four proofs of concept | Yes, a new repository, CI on Windows 3.7 and 3.12 and Linux from the first commit | The roadmap requires a named owner; M13 showed that the rows nobody watched (Windows 3.7) are where failures appear |
-| D-S2 | **The first host** | A **command-line host** for the pilot, in NovaLang, run under the restricted profile; the UI host is chosen after the core has an oracle | It is the only host that exists, it keeps the product honest about capabilities, and a core proved on a CLI moves to any host that embeds the language; the vision's mobile and desktop hosts do not exist for NovaLang yet |
-| D-S3 | **Encryption at rest** | Not in the language. The host (or the operating system) encrypts the data folder, and the Daily Receipt says whether it is | NovaLang has no cryptography, and writing it is a larger security commitment than anything in M13; the launch roadmap asks for "local encrypted storage", which a host provides today (an encrypted volume) |
-| D-S4 | **A tamper-evident Daily Receipt** (L6) | A plain, honest log in the pilot; add `std:hash` and a hash chain at P4 if the owner wants the claim | A hash chain proves *an edit happened*, not that the log is complete; promising more than that is a claim the wording rule forbids |
-| D-S5 | **Missing values** (L4) | A `std:` function over dictionaries (additive, a minor change), not a new reserved global | A new global built-in is a **major** change by the policy of `STABLE.md`; the library route costs a name the importer chooses |
-| D-S6 | **The three forecasts** (section 5.3) | Accept the definitions as a first version, with each margin a named parameter in a file the user can read | The numbers behind "conservative" and "stress" are a product judgment; the engine must make them visible, not decide them |
-| D-S7 | **Are the user's rules written in NovaLang or in the policy dialect?** The design says the policy dialect is "the natural candidate" | NovaLang functions in the pilot (the core reads a rules file); revisit the policy dialect when action authority exists | In Observe there is nothing to authorize; the dialect earns its place when a rule allows or blocks an action |
-| D-S8 | **Does the product publish packages?** | Not to a registry (none exists, D8); the product's packages are installed from its own repository by path or git, with the lock | An operated registry is a business and security commitment that belongs to a later decision |
-| D-S9 | **Order of work: libraries first or product first?** | **Libraries first (P1), then the core (P2)** | M13's own lesson: Nova_Data's hand-written helpers and gaps were the cost of building the product before the library |
-| D-S10 | **The independent review** (M11's, still pending) | Make the review of the sandbox, the matcher and the registry client a gate before P5, and ask the reviewer to read the product's data-handling code at P4 | A product that holds financial records should not outrun its reviewer |
+| D-P1 | **Product owners and repositories** | One repository per product (`NovaLedger`, `NovaAudit`), each with its own tests and CI on Windows 3.7 and 3.12 and Linux from the first commit | The roadmap requires a named owner; M13 showed that the rows nobody watches are where failures appear |
+| D-P2 | **Which first** | **NovaAudit**, then NovaLedger | Section 9: the closest precedent, the heaviest use of M13, no regulatory exposure, the smaller date need. The owner may well have a customer conversation that changes this |
+| D-P3 | **The audiences** (section 5) | Treat both as hypotheses, and run P0 before P2 and P3 | The plan does not know the customer. Building a product for an audience that was assumed is the mistake the consumer draft was in danger of making |
+| D-P4 | **The name collision inside `NOVA_FINANCE.md`**: that document already has a module called NovaLedger | Rename the module (for example to "NovaBooks"), keep the product name | Two things with one name is the confusion this rename was meant to remove; I have not renamed the module because only the owner chooses names |
+| D-P5 | **Order of work: libraries first or product first** | **Libraries first (P1)**, then the products | M13's own lesson: Nova_Data's hand-written helpers were the cost of building the product before the library |
+| D-P6 | **Missing values** (L4) | A `std:` function over dictionaries (additive, a minor change), not a new reserved global | A new global built-in is a **major** change by `STABLE.md` |
+| D-P7 | **How much speed NovaAudit promises, and whether to build a faster matcher** | State the measured ceiling (tens of megabytes a run, one file per process) in the first pilot, and **decide on a faster matcher after P0 says what volume customers have** | A faster matcher is a large security-sensitive piece of code (the current one is unreviewed); building it on a guess about volume would be the wrong order |
+| D-P8 | **Encryption at rest** | Not in the language; the host or the operating system encrypts a data folder, and the receipt says whether it is | NovaLang has no cryptography, and writing it is a larger commitment than anything in M13 |
+| D-P9 | **NovaLedger's three forecasts** (section 6.3) | Accept the definitions as a first version, with each margin a named parameter in a file the user can read | "Conservative" and "stress" are a judgment; the engine must show them, not decide them |
+| D-P10 | **Gates before a customer sees either product** | The independent review of the sandbox, the matcher and the registry client has an outcome, and the release is signed and reproducible (P4) | An enterprise buyer will ask both; a product that holds financial records or reads sensitive logs should not outrun its reviewer |
+| D-P11 | **Do the products publish packages?** | Not to a registry (none exists, D8); install from the repositories by path or git, with the lock | Operating a registry is a business and security commitment that belongs to a later decision |
+| D-P12 | **Whether the vision documents are tracked in git** | Track them, or move what the plan links to into tracked files | Section 13 |
 
-## 10. Exit criteria for the NovaLang side of the pilot (testable)
+## 12. Exit criteria for the NovaLang side of the first pilots (testable)
 
-1. `std:date`, `std:csv` and ordered sorting exist, each with a spec section, conformance cases on all three engines, an oracle or differential test, and a proof-of-concept program whose hand-written
-   version is deleted with its tests unchanged (section 6).
-2. NovaSteward's core packages declare no capability, the install and import checks pass, and a test shows that adding a use of `read` to a core package makes the install fail.
-3. For 20 or more generated ledgers (month ends, leap years, refunds, ties), every figure of the three forecasts and the Daily Receipt equals the independent `Decimal` oracle to the cent, on the VM, and the pure
-   core agrees on the tree-walker and the self-hosted engine on a smaller sample.
-4. The CLI host runs the seeded 12-month ledger under `restricted` with the default limits, and a ceiling table says how many rows fit.
-5. A scan of the core finds no float literal and no `num()` on a money value.
-6. The Daily Receipt's printed permissions equal the flags of the run, in a test.
-7. The whole suite and the whole CI matrix are green on every slice, in the product repository and in this one.
+1. `std:date` (with offsets), `std:csv`, ordering by a key and `std:hash` exist, each with a spec section, conformance cases on all three engines, an oracle or differential test, and a proof-of-concept program whose hand-written version is deleted with its tests unchanged (section 8).
+2. Each product's core packages declare no capability except NovaAudit's parsers' `regex`, the install and import checks pass, and a test shows that adding a `read` to a core package makes the install fail.
+3. NovaAudit: over a seeded corpus of at least 1 million generated lines in three formats with planted incidents, every finding, line number and count equals the independent oracle, on the VM; the pure core agrees on the tree-walker and the self-hosted engine on a smaller sample; and the ceiling table is published.
+4. NovaLedger: for 20 or more generated datasets, every figure of the reconciliation, the ageing and the three forecasts equals the `Decimal` oracle to the cent on the VM, and the pure core agrees on the other engines on a smaller sample; no float literal and no `num()` on a money value anywhere in the core.
+5. The receipt's printed grants equal the flags of the run, and its input hashes equal `sha256sum`, in tests.
+6. A run granted one folder cannot read another (A8), and NovaAudit runs with no write grant.
+7. The whole suite and the whole CI matrix are green on every slice, in each product repository and in this one.
 
-## 11. Risks
+## 13. Risks, and what this plan does not decide
 
 | Risk | Mitigation |
 | --- | --- |
-| The date library is bigger than it looks (month ends, leap years, and the pull towards time zones) | Civil dates only, no time zone, in the first version; a differential test against Python's `datetime.date` for every day of two centuries; time zones stay a later decision |
-| The forecast looks authoritative and is wrong | Labels on every figure, "cannot compute" instead of a guess, property tests, golden reports the owner reads, and the wording rule: it states figures and sources, never that something is "safe" |
-| Performance: a household's data grows and the 5 s budget does not | A normalized ledger recomputed incrementally; the ceiling table in the repository; the step-counted limit (L5); native-tier functions for the hot paths, as `std:decimal` needed |
-| The product pulls the language towards its needs and breaks the stable surface | Every addition goes through `std:` and a minor release; L4 is the one place a major change is possible and is the owner's call |
-| Scope: the vision documents describe a whole ecosystem | This plan is **Observe, read-only, no connections, a CLI host**; P5 is gated and P6 is not planned |
-| A claim the evidence does not support (security, privacy, accuracy) | The wording rule, the threat model of section 8 with its "not defended" list, and the independent review as a gate (D-S10) |
+| **The audience was wrong again** (the first draft's was dropped; these two are hypotheses) | P0 comes first and its answer can change the plan; nothing in P2 or P3 starts on an assumption |
+| **NovaAudit is too slow for the volume enterprises have** | The measurement is in section 4.2; the first pilot is sized to it; D-P7 is a decision with the measurement in hand, not a surprise at a customer |
+| **A claim the evidence does not support** (security, completeness, accuracy) | The wording rule; the "not defended" lists; the receipt that states configuration, not results; the independent review as a gate |
+| **A financial product is read as accounting or advice** | The charter says it is neither; every report says so; a decision about what to call it is the owner's (and a lawyer's), not this plan's |
+| **The date library is bigger than it looks** | Civil dates and numeric offsets only, a differential test against Python's `datetime` over two centuries; named time zones are a later decision |
+| **A product pulls the language towards its needs and breaks the stable surface** | Every addition goes through `std:` and a minor release; L4 is the one place a major change is possible, and it is the owner's call |
+| **Scope: the vision documents describe a whole ecosystem** | This plan is two read-only products with a CLI host; P5 is gated and P6 is not planned |
 
-## 12. What this plan does not decide
+**What this plan does not decide.** Market, pricing, positioning against existing products, legal and regulatory review, partnerships, hiring and budget are the owner's and are not verified here. Whether either product helps its users is a question for the pilot's users: the tests of this repository can show that the arithmetic is exact, the parsing is linear, the labels are honest and the permissions are what the receipt says, and nothing more.
 
-The product's persona, interviews, usability gates, pricing, legal and provider review, partnerships, hiring and budget belong to the launch roadmap and to the product side; **none of it is
-verified here**. Whether the forecast, as a product, helps people is a question for the pilot's users, not for the tests of this repository: the tests can show the arithmetic is exact and the
-labels are honest, and nothing more.
+**A note on the files this plan links to.** `docs/vision/` is listed in `.gitignore`, so `NOVA_EXPERIENCE.md`, `NOVA_FINANCE.md`, `LAUNCH_ROADMAP.md` and the rest of that folder are **not in git**: they exist on the owner's machine and are not in any pull request. Links to them from this plan work only there. The renames of this revision were made in those local files and cannot be pushed with the plan (D-P12).
