@@ -461,6 +461,114 @@
     ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"main\": \"gone.nova\"}",
     ".nova_modules/lib/main.nova": "export let x = 1\n"
    }
+  },
+  {
+   "name": "pkg-owner-slash-name-is-a-package-and-binds-the-part-after-the-slash",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "import \"acme/ledger-core\"\nprint(ledger_core.twice(4))\nimport \"acme/ledger-core\" as lc\nprint(lc.twice(5))",
+   "output": [
+    "8",
+    "10"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"acme/ledger-core\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger-core\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger-core\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger-core\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger-core\": \"*\"\n  }\n}\n",
+    ".nova_modules/acme/ledger-core/nova.json": "{\"name\": \"acme/ledger-core\", \"version\": \"1.0.0\"}",
+    ".nova_modules/acme/ledger-core/main.nova": "export def twice(x) {\n  return x * 2\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-scoped-package-is-held-to-its-declared-capabilities",
+   "spec": [
+    "pkg.capabilities",
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "import \"acme/ledger\"",
+   "output": [],
+   "error": "ImportError: package \"acme/ledger\": main.nova uses read, which needs the files.read capability, and its nova.json does not declare it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"acme/ledger\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/acme/ledger/nova.json": "{\"name\": \"acme/ledger\", \"version\": \"1.0.0\"}",
+    ".nova_modules/acme/ledger/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-scoped-package-needs-its-capabilities-granted",
+   "spec": [
+    "pkg.capabilities",
+    "pkg.layout"
+   ],
+   "profile": "sandbox",
+   "source": "import \"acme/ledger\"",
+   "output": [],
+   "error": "ImportError: package \"acme/ledger\" needs the 'files.read' capability, which this run did not grant",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "."
+    ]
+   },
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"acme/ledger\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/acme/ledger/nova.json": "{\"name\": \"acme/ledger\", \"version\": \"1.0.0\", \"capabilities\": [\"files.read\"]}",
+    ".nova_modules/acme/ledger/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-the-owner-folder-is-not-a-package",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"acme\"\n} catch e {\n  print(e[0:48])\n}",
+   "output": [
+    "ImportError: cannot find package \"acme\" - looked"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"acme/ledger\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"acme/ledger\": {\n      \"archive\": \"sha256-y\",\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"resolved\": \"archive/x.tar\",\n      \"signedBy\": [\n        \"0000000000000000\"\n      ],\n      \"source\": {\n        \"registry\": \"../registry\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"acme/ledger\": \"*\"\n  }\n}\n",
+    ".nova_modules/acme/ledger/nova.json": "{\"name\": \"acme/ledger\", \"version\": \"1.0.0\"}",
+    ".nova_modules/acme/ledger/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-a-name-with-more_than_one_slash-or-a-nova-suffix-is-a-file",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"a/b/c\"\n} catch e {\n  print(e[0:44])\n}",
+   "output": [
+    "ImportError: cannot find module \"a/b/c\" - lo"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

@@ -8,6 +8,10 @@ nova-pkg - NovaLang's package manager (just-in-time: resolve, lock, install).
     python3 tools/nova-pkg.py init [NAME]        write a nova.json (version 2) here
     python3 tools/nova-pkg.py capabilities [PACKAGE]
                                                  what each installed package declares and uses
+    python3 tools/nova-pkg.py keygen --out FILE     make a signing key for a registry
+    python3 tools/nova-pkg.py pack [--out DIR]      build this package's deterministic archive
+    python3 tools/nova-pkg.py publish --registry DIR --key FILE   sign and write it into a registry folder
+    python3 tools/nova-pkg.py yank VERSION | unyank VERSION | revoke ...   (docs/spec/18-packages.md)
     python3 tools/nova-pkg.py install --accept-capabilities LIST
                                                  allow a locked package to move to a version that
                                                  declares more capabilities (LIST: names, comma-separated)
@@ -72,6 +76,10 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import nova_registry as registry_protocol      # noqa: E402  (the registry protocol: signatures, archives, the fetch core)
+from nova_registry import RegistryError         # noqa: E402
+
 MANIFEST = "nova.json"
 LOCKFILE = "nova.lock"
 MODULES = ".nova_modules"
@@ -83,7 +91,7 @@ SCOPED_NAME = re.compile(r"([a-z0-9][a-z0-9._-]*)/([a-z0-9][a-z0-9._-]*)\Z")
 RESERVED_OWNERS = ("std", "nova")
 CAPABILITIES = ("files.read", "files.write", "env", "clock", "random", "stdin", "process", "regex", "python", "net")
 MANIFEST_KEYS = ("name", "version", "description", "license", "authors", "repository", "nova", "main", "files",
-                 "capabilities", "dependencies", "policy", "registry")
+                 "capabilities", "dependencies", "policy", "registry", "registryKeys", "registryThreshold")
 FILE_PATTERN = re.compile(r"[A-Za-z0-9._*/-]+\Z")
 VERSION = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\Z")
 
@@ -206,15 +214,21 @@ def read_manifest(directory, what, root=False):
     if scoped:
         if scoped.group(1) in RESERVED_OWNERS:
             raise PkgError('{}: "{}" is a reserved owner'.format(path, scoped.group(1)))
-        if not root:
-            raise PkgError('{}: scoped names ("owner/name") can be installed only from a registry, which a later '
-                           "version of nova-pkg adds; this package cannot be a dependency yet".format(path))
     manifest["_version"] = parse_version(manifest.get("version"), path + ' "version"')
     for field in ("description", "license", "repository", "registry"):
         if field in manifest and not isinstance(manifest[field], str):
             raise PkgError('{}: "{}" must be text'.format(path, field))
     if "authors" in manifest:
         string_list(manifest["authors"], path, "authors")
+    if "registryKeys" in manifest:
+        keys = string_list(manifest["registryKeys"], path, "registryKeys")
+        if not keys or not all(re.fullmatch(r"[0-9a-f]{64}", key) for key in keys):
+            raise PkgError('{}: "registryKeys" lists the public keys the registry is signed with, each 64 lower-case '
+                           'hexadecimal digits, as "nova-pkg keygen" prints them'.format(path))
+    if "registryThreshold" in manifest:
+        threshold = manifest["registryThreshold"]
+        if not isinstance(threshold, int) or isinstance(threshold, bool) or not 1 <= threshold <= len(manifest.get("registryKeys", [])):
+            raise PkgError('{}: "registryThreshold" is how many of "registryKeys" must sign, from 1 to their number'.format(path))
     if "nova" in manifest:
         if not isinstance(manifest["nova"], str):
             raise PkgError('{}: "nova" must be a version range such as "^2.2.0"'.format(path))
@@ -240,10 +254,10 @@ def read_manifest(directory, what, root=False):
     if not isinstance(dependencies, dict):
         raise PkgError('{}: "dependencies" must be an object'.format(path))
     for dep_name, spec in dependencies.items():
-        if SCOPED_NAME.match(dep_name):
-            raise PkgError("{}: {!r} is a scoped name, which can be installed only from a registry that a later "
-                           "version of nova-pkg adds".format(path, dep_name))
-        if not NAME.match(dep_name):
+        scoped_dep = SCOPED_NAME.match(dep_name)
+        if scoped_dep and scoped_dep.group(1) in RESERVED_OWNERS:
+            raise PkgError('{}: "{}" is a reserved owner'.format(path, scoped_dep.group(1)))
+        if not NAME.match(dep_name) and not scoped_dep:
             raise PkgError("{}: {!r} is not a valid package name".format(path, dep_name))
         check_spec(spec, "{} dependency {!r}".format(path, dep_name))
     manifest["dependencies"] = dependencies
@@ -330,12 +344,13 @@ def git(args, cwd=None):
 class Candidate:
     """One concrete version of a package that could be installed."""
 
-    def __init__(self, name, version, directory, source, manifest):
+    def __init__(self, name, version, directory, source, manifest, lock_extra=None):
         self.name = name
         self.version = version
         self.directory = directory      # where its files are, right now
         self.source = source            # what nova.lock records
         self.manifest = manifest
+        self.lock_extra = lock_extra or {}      # more of its nova.lock entry: resolved, archive, signedBy
 
 
 class Sources:
@@ -345,15 +360,58 @@ class Sources:
         self.registry = None
         self.registry_text = registry
         if registry:
-            self.registry = os.path.normpath(os.path.join(project_dir, registry))
+            self.registry = registry if registry_protocol.is_url(registry) and not registry.lower().startswith("file://") \
+                else os.path.normpath(os.path.join(project_dir, registry[len("file://"):] if registry.lower().startswith("file://") else registry))
+        self.keys = manifest.get("registryKeys", [])
+        self.threshold = manifest.get("registryThreshold", 1)
+        self._signed = None
+        self._candidates = {}
         self.scratch = tempfile.mkdtemp(prefix="nova-pkg-")
         self.git_cache = {}
 
     def close(self):
         shutil.rmtree(self.scratch, ignore_errors=True)
 
+    def is_signed(self):
+        """A signed registry has a registry.json (an https registry must: only a local folder may be the older, unsigned layout)."""
+        if self.registry is None:
+            return False
+        if registry_protocol.is_url(self.registry):
+            return True
+        return os.path.isfile(os.path.join(self.registry, registry_protocol.REGISTRY_FILE))
+
+    def signed(self, wanted_by):
+        if self._signed is None:
+            if self.registry is None:
+                raise PkgError('{} needs a package from a registry, but none is set - add "registry" to {} or set '
+                               "$NOVA_REGISTRY".format(wanted_by, MANIFEST))
+            try:
+                self._signed = registry_protocol.Registry(self.registry, self.keys, self.threshold).load()
+            except RegistryError as problem:
+                raise PkgError(str(problem))
+        return self._signed
+
+    def signed_index(self, name, wanted_by):
+        registry = self.signed(wanted_by)
+        try:
+            versions, signers = registry.index(name)
+        except RegistryError as problem:
+            raise PkgError(str(problem))
+        if versions is None:
+            raise PkgError('package "{}" (needed by {}) is not in the registry {}'.format(name, wanted_by, self.registry))
+        return versions, signers
+
     def available(self, name, wanted_by):
         """Every registry version of `name`, newest first."""
+        if SCOPED_NAME.match(name):
+            versions, _ = self.signed_index(name, wanted_by)
+            usable = [parse_version(v, name) for v, entry in versions.items() if not entry["yanked"]]
+            if not usable:
+                raise PkgError('every version of "{}" (needed by {}) is yanked'.format(name, wanted_by))
+            return sorted(usable, reverse=True)
+        if self.is_signed():
+            raise PkgError('"{}" (needed by {}) has no owner: a signed registry holds only "owner/name" packages'.format(
+                name, wanted_by))
         if self.registry is None:
             raise PkgError('{} needs "{}" from a registry, but none is set - add "registry" to '
                            "{} or set $NOVA_REGISTRY".format(wanted_by, name, MANIFEST))
@@ -368,7 +426,39 @@ class Sources:
                 name, wanted_by, self.registry))
         return sorted(versions, reverse=True)
 
+    def from_signed(self, name, version, pin=None):
+        """One version from a signed registry: the archive is checked against the hash its signed index records (and
+        against `pin`, the hash nova.lock recorded), unpacked by the hardened reader into a scratch folder, and read."""
+        key = (name, show(version), pin)
+        if key in self._candidates:
+            return self._candidates[key]
+        versions, signers = self.signed_index(name, "the project")
+        entry = versions.get(show(version))
+        if entry is None:
+            raise PkgError("{} has no version {} in the registry {}".format(name, show(version), self.registry))
+        if pin is not None and pin != "sha256-" + entry["sha256"]:
+            raise PkgError('{} {} is not the archive {} recorded (the registry now holds {}) - it changed after it was locked'.format(
+                name, show(version), LOCKFILE, "sha256-" + entry["sha256"]))
+        try:
+            data = self.signed("the project").archive(name, show(version), entry)
+            directory = os.path.join(self.scratch, "reg-{}-{}".format(name.replace("/", "--"), show(version)))
+            registry_protocol.extract_archive(data, directory)
+        except RegistryError as problem:
+            raise PkgError("{} {}: {}".format(name, show(version), problem))
+        manifest = read_manifest(directory, "registry package {}@{}".format(name, show(version)))
+        self.check_identity(manifest, name, version, directory)
+        if manifest["capabilities"] != sorted(entry.get("capabilities", [])):
+            raise PkgError("{} {}: the index says it declares {} and its nova.json declares {} - the registry is inconsistent".format(
+                name, show(version), entry.get("capabilities") or "nothing", manifest["capabilities"] or "nothing"))
+        candidate = Candidate(name, version, directory, {"registry": self.registry_text}, manifest, {
+            "resolved": registry_protocol.archive_path(name, show(version)), "archive": "sha256-" + entry["sha256"],
+            "signedBy": signers})
+        self._candidates[key] = candidate
+        return candidate
+
     def from_registry(self, name, version):
+        if SCOPED_NAME.match(name):
+            return self.from_signed(name, version)
         directory = os.path.join(self.registry, name, show(version))
         manifest = read_manifest(directory, "registry package {}@{}".format(name, show(version)))
         self.check_identity(manifest, name, version, directory)
@@ -416,6 +506,8 @@ class Sources:
             if self.registry is None:
                 raise PkgError("{} installs {!r} from a registry, but no registry is "
                                "set".format(LOCKFILE, name))
+            if SCOPED_NAME.match(name):
+                return self.from_signed(name, version, pin=entry.get("archive"))
             return self.from_registry(name, version)
         if "path" in source:
             return self.from_path(name, source["path"], self.project_dir)
@@ -598,6 +690,7 @@ def lock_text(manifest, resolved):
             "capabilities": candidate.manifest["capabilities"],
             "dependencies": candidate.manifest["dependencies"],
         }
+        packages[name].update(candidate.lock_extra)
     lock = {
         "lockfile_version": LOCK_VERSION,
         "requires": manifest["dependencies"],
@@ -627,7 +720,7 @@ def read_lock(project_dir):
     if not isinstance(packages, dict):
         raise PkgError('{}: "packages" must be an object'.format(LOCKFILE))
     for name, entry in packages.items():
-        if not NAME.fullmatch(name):
+        if not NAME.fullmatch(name) and not SCOPED_NAME.fullmatch(name):
             raise PkgError("{}: invalid package name {!r}".format(LOCKFILE, name))
         where = "{} entry {!r}".format(LOCKFILE, name)
         if not isinstance(entry, dict):
@@ -727,7 +820,7 @@ def place(project_dir, resolved, text):
     with open(os.path.join(modules, ".gitignore"), "w", encoding="utf-8") as handle:
         handle.write("# Installed by nova-pkg from nova.lock - never commit these.\n*\n")
     for name, candidate in sorted(resolved.items()):
-        copy_package(candidate.directory, os.path.join(modules, name))
+        copy_package(candidate.directory, os.path.join(modules, *name.split("/")))
 
 
 def verify(project_dir, out=print):
@@ -750,16 +843,25 @@ def verify(project_dir, out=print):
                 problems.append("{} changed since the last install - run install".format(
                     LOCKFILE))
     for name, entry in sorted(lock.get("packages", {}).items()):
-        directory = os.path.join(modules, name)
+        directory = os.path.join(modules, *name.split("/"))
         if not os.path.isdir(directory):
             problems.append('package "{}" is missing from {}'.format(name, MODULES))
         elif integrity(directory) != entry.get("integrity"):
             problems.append('package "{}" was changed after it was installed - run install '
                             "to restore it".format(name))
-    expected = set(lock.get("packages", {})) | {INSTALLED, ".gitignore"}
+    expected = {name.split("/")[0] for name in lock.get("packages", {})} | {INSTALLED, ".gitignore"}
     if os.path.isdir(modules):
         for extra in sorted(set(os.listdir(modules)) - expected):
             problems.append("{}/{} is not in {}".format(MODULES, extra, LOCKFILE))
+        owners = {}
+        for name in lock.get("packages", {}):
+            if "/" in name:
+                owners.setdefault(name.split("/")[0], set()).add(name.split("/")[1])
+        for owner, names in sorted(owners.items()):
+            folder = os.path.join(modules, owner)
+            if os.path.isdir(folder):
+                for extra in sorted(set(os.listdir(folder)) - names):
+                    problems.append("{}/{}/{} is not in {}".format(MODULES, owner, extra, LOCKFILE))
     return problems
 
 
@@ -795,7 +897,7 @@ def capabilities(project_dir, only, out=print):
         names = [only]
     needed = set()
     for name in names:
-        directory = os.path.join(project_dir, MODULES, name)
+        directory = os.path.join(project_dir, MODULES, *name.split("/"))
         if not os.path.isdir(directory):
             raise PkgError('package "{}" is not installed - run install'.format(name))
         package = read_manifest(directory, 'package "{}"'.format(name))
@@ -816,8 +918,215 @@ def capabilities(project_dir, only, out=print):
     out("policy: {}".format("no limit" if policy is None else ", ".join(policy) or "nothing is allowed"))
 
 
-USAGE = ("usage: nova-pkg.py [--project DIR] (install [--frozen] [--accept-capabilities LIST] | verify | init [NAME] "
-         "| capabilities [PACKAGE])")
+# ---------------------------------------------------------------------------
+# Packing and publishing ([pkg.registry])
+# ---------------------------------------------------------------------------
+
+def glob_regex(pattern):
+    """A `files` pattern as a regular expression: `*` is within one folder level, `**` is any depth."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def package_members(directory, manifest):
+    """{path: bytes} of the files a package is made of: those the manifest's "files" list names (every .nova, .json and
+    .md file, LICENSE and NOTICE if it has none), nova.json always, and its entry file; nothing else is in the package."""
+    patterns = [glob_regex(entry) for entry in manifest.get("files", [])]
+    members = {}
+    for relative in package_files(directory):
+        if registry_protocol.safe_member_name(relative) is not None:
+            continue                                     # not a kind of file a package holds
+        if relative != MANIFEST and patterns and not any(pattern.match(relative) for pattern in patterns):
+            continue
+        if registry_protocol.SECRET_NAMES.match(relative.split("/")[-1]):
+            raise PkgError("{} looks like a secret (a key, a credential or an .env file) and would be packed - remove it, "
+                           "or leave it out of \"files\"".format(relative))
+        with open(os.path.join(directory, relative), "rb") as handle:
+            members[relative] = handle.read(registry_protocol.MAX_FILE_BYTES + 1)
+    members[MANIFEST] = open(os.path.join(directory, MANIFEST), "rb").read()
+    main = manifest.get("main", "main.nova")
+    if main not in members:
+        raise PkgError('the entry file "{}" ("main" in {}) is not among the files to pack'.format(main, MANIFEST))
+    return members
+
+
+def pack(project_dir, out=print, scan=True):
+    """(archive bytes, manifest, files): the deterministic archive of this package, after the checks of publishing: the
+    manifest is valid, and the capability check of [pkg.capabilities] passes on the very files that are packed."""
+    manifest = read_manifest(project_dir, "the package " + project_dir, root=True)
+    members = package_members(project_dir, manifest)
+    try:
+        archive = registry_protocol.build_archive(members)
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+    if scan:
+        scratch = tempfile.mkdtemp(prefix="nova-pack-")
+        try:
+            target = os.path.join(scratch, "package")
+            registry_protocol.extract_archive(archive, target)
+            check_capabilities(manifest["name"], target, manifest, out)
+        except RegistryError as problem:
+            raise PkgError(str(problem))
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+    return archive, manifest, members
+
+
+def archive_file_name(manifest):
+    return "{}-{}.tar".format(manifest["name"].replace("/", "-"), show(manifest["_version"]))
+
+
+def read_keys(paths):
+    if not paths:
+        raise PkgError("this needs a signing key: --key FILE (make one with: nova-pkg keygen --out FILE)")
+    try:
+        return [registry_protocol.read_key_file(path) for path in paths]
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+
+
+def command_pack(project_dir, options, out=print):
+    archive, manifest, members = pack(project_dir, out=out)
+    folder = options.get("out") or os.getcwd()
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, archive_file_name(manifest))
+    with open(path, "wb") as handle:
+        handle.write(archive)
+    out("packed {} files into {}".format(len(members), path))
+    out("sha256-" + registry_protocol.sha256_hex(archive))
+
+
+def command_publish(project_dir, options, out=print):
+    registry_dir = options.get("registry")
+    if not registry_dir or registry_protocol.is_url(registry_dir):
+        raise PkgError("publish writes to a registry folder: --registry DIR (an https registry is written by whoever runs it)")
+    archive, manifest, members = pack(project_dir, out=out)
+    if not SCOPED_NAME.match(manifest["name"]):
+        raise PkgError('a published package needs a name with an owner, "owner/name" (it is "{}")'.format(manifest["name"]))
+    if "license" not in manifest:
+        out('nova-pkg: warning: {} has no "license" - say how it may be used'.format(MANIFEST))
+    keys = read_keys(options.get("key", []))
+    try:
+        publisher = registry_protocol.Publisher(registry_dir, keys, name=options.get("registry-name"),
+                                                expires_days=int(options.get("expires-days", 365)))
+        publisher.add_version(manifest["name"], show(manifest["_version"]), archive, manifest)
+        files = publisher.files() if options.get("dry-run") else publisher.write()
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+    verb = "would write" if options.get("dry-run") else "wrote"
+    out("{} {} {}".format("publishing" if not options.get("dry-run") else "dry run:", manifest["name"], show(manifest["_version"])))
+    for relative in sorted(files):
+        out("  {} {} ({} bytes)".format(verb, relative, len(files[relative])))
+    out("sha256-" + registry_protocol.sha256_hex(archive))
+    out("files packed: " + ", ".join(sorted(members)))
+
+
+def command_yank(project_dir, version, options, out=print, restore=False):
+    manifest = read_manifest(project_dir, "the package " + project_dir, root=True)
+    if not options.get("registry"):
+        raise PkgError("--registry DIR is needed")
+    parse_version(version, "the version to yank")
+    keys = read_keys(options.get("key", []))
+    try:
+        publisher = registry_protocol.Publisher(options["registry"], keys)
+        publisher.yank(manifest["name"], version, yanked=not restore)
+        publisher.write()
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+    out("{} {} {}: ranges no longer choose it; a lockfile that names it still installs it".format(
+        "restored" if restore else "yanked", manifest["name"], version))
+
+
+def command_revoke(options, out=print):
+    if not options.get("registry"):
+        raise PkgError("--registry DIR is needed")
+    if not options.get("archive") and not options.get("keyid"):
+        raise PkgError("name what to revoke: --archive SHA256 or --keyid ID")
+    keys = read_keys(options.get("key", []))
+    archive_hash = (options.get("archive") or "").replace("sha256-", "") or None
+    if archive_hash and not registry_protocol.SHA.match(archive_hash):
+        raise PkgError("--archive is the 64-digit SHA-256 of the archive (as pack and publish print it)")
+    try:
+        publisher = registry_protocol.Publisher(options["registry"], keys)
+        publisher.revoke(archive_hash=archive_hash, keyid=options.get("keyid"), reason=options.get("reason", ""))
+        publisher.write()
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+    out("revoked: nothing signed or packed as that is installed from this registry any more")
+
+
+def command_keygen(options, out=print):
+    path = options.get("out")
+    if not path:
+        raise PkgError("--out FILE says where to write the key (it is secret: keep it off the registry and out of git)")
+    key = registry_protocol.generate_key()
+    try:
+        registry_protocol.write_key_file(path, key)
+    except RegistryError as problem:
+        raise PkgError(str(problem))
+    out("wrote {} (keep it secret)".format(path))
+    out('public key, for "registryKeys" in nova.json: {}'.format(key["public"]))
+    out("key id: {}".format(registry_protocol.key_id(key["public"])))
+
+
+USAGE = """usage: nova-pkg.py [--project DIR] COMMAND
+  install [--frozen] [--accept-capabilities LIST]      resolve, lock and install
+  verify                                               check .nova_modules against nova.lock
+  init [NAME]                                          write a nova.json here
+  capabilities [PACKAGE]                               what installed packages declare and use
+  keygen --out FILE                                    make a signing key for a registry
+  pack [--out DIR]                                     build this package's deterministic archive
+  publish --registry DIR --key FILE [--key FILE ...] [--dry-run] [--expires-days N] [--registry-name NAME]
+  yank VERSION --registry DIR --key FILE               ranges stop choosing a version
+  revoke --registry DIR --key FILE (--archive SHA256 | --keyid ID) [--reason TEXT]"""
+
+VALUE_OPTIONS = {"--registry": "registry", "--key": "key", "--out": "out", "--expires-days": "expires-days",
+                 "--registry-name": "registry-name", "--archive": "archive", "--keyid": "keyid", "--reason": "reason",
+                 "--accept-capabilities": "accept"}
+FLAG_OPTIONS = {"--dry-run": "dry-run", "--frozen": "frozen"}
+COMMANDS = ("install", "verify", "init", "capabilities", "keygen", "pack", "publish", "yank", "unyank", "revoke")
+
+
+def parse_options(args):
+    """(positional arguments, options): `--key` may repeat; an unknown option or a missing value is None."""
+    positional, options, i = [], {}, 0
+    while i < len(args):
+        arg = args[i]
+        if arg in FLAG_OPTIONS:
+            options[FLAG_OPTIONS[arg]] = True
+        elif arg in VALUE_OPTIONS and i + 1 < len(args):
+            name = VALUE_OPTIONS[arg]
+            if name == "key":
+                options.setdefault("key", []).append(args[i + 1])
+            else:
+                options[name] = args[i + 1]
+            i += 1
+        elif arg.startswith("--"):
+            return None, None
+        else:
+            positional.append(arg)
+        i += 1
+    return positional, options
+
+
+ALLOWED = {"install": {"frozen", "accept"}, "verify": set(), "init": set(), "capabilities": set(), "keygen": {"out"},
+           "pack": {"out"}, "publish": {"registry", "key", "dry-run", "expires-days", "registry-name"},
+           "yank": {"registry", "key"}, "unyank": {"registry", "key"}, "revoke": {"registry", "key", "archive", "keyid", "reason"}}
+POSITIONAL = {"install": 0, "verify": 0, "init": 1, "capabilities": 1, "keygen": 0, "pack": 0, "publish": 0, "yank": 1,
+              "unyank": 1, "revoke": 0}
 
 
 def main(argv, out=print):
@@ -826,33 +1135,41 @@ def main(argv, out=print):
     if args[:1] == ["--project"] and len(args) >= 2:
         project, args = args[1], args[2:]
     command, rest = (args[0], args[1:]) if args else (None, [])
-    frozen, accepted = False, []
-    if command == "install":
-        while rest:
-            if rest[0] == "--frozen":
-                frozen, rest = True, rest[1:]
-            elif rest[0] == "--accept-capabilities" and len(rest) >= 2:
-                accepted, rest = [c for c in rest[1].split(",") if c], rest[2:]
-            else:
-                break
-    if command not in ("install", "verify", "init", "capabilities") or (
-            command in ("install", "verify") and rest) or (command in ("init", "capabilities") and len(rest) > 1):
+    positional, options = parse_options(rest) if command in COMMANDS else (None, None)
+    if (positional is None or set(options) - ALLOWED[command]
+            or len(positional) > POSITIONAL[command] or (command in ("yank", "unyank") and not positional)):
         print(USAGE, file=sys.stderr)
         return 2
     try:
         if command == "init":
-            init(os.path.abspath(project or os.getcwd()), rest[0] if rest else None, out=out)
+            init(os.path.abspath(project or os.getcwd()), positional[0] if positional else None, out=out)
+            return 0
+        if command == "keygen":
+            command_keygen(options, out=out)
+            return 0
+        if command == "revoke":
+            command_revoke(options, out=out)
             return 0
         project_dir = find_project(project or os.getcwd())
         if command == "install":
+            accepted = [c for c in options.get("accept", "").split(",") if c]
             for name in accepted:
                 if name not in CAPABILITIES:
                     raise PkgError('--accept-capabilities names "{}", which is not a capability (the capabilities '
                                    "are: {})".format(name, ", ".join(CAPABILITIES)))
-            install(project_dir, frozen=frozen, out=out, accepted=accepted)
+            install(project_dir, frozen=bool(options.get("frozen")), out=out, accepted=accepted)
             return 0
         if command == "capabilities":
-            capabilities(project_dir, rest[0] if rest else None, out=out)
+            capabilities(project_dir, positional[0] if positional else None, out=out)
+            return 0
+        if command == "pack":
+            command_pack(project_dir, options, out=out)
+            return 0
+        if command == "publish":
+            command_publish(project_dir, options, out=out)
+            return 0
+        if command in ("yank", "unyank"):
+            command_yank(project_dir, positional[0], options, out=out, restore=command == "unyank")
             return 0
         problems = verify(project_dir)
         for problem in problems:

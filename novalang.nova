@@ -3273,19 +3273,28 @@ def current_exports() {
 let PACKAGE_FIRST = "abcdefghijklmnopqrstuvwxyz0123456789"
 let PACKAGE_REST = PACKAGE_FIRST + "._-"
 
-def is_package_import(raw_path) {
-    if len(raw_path) == 0 or not (raw_path[0:1] in PACKAGE_FIRST) {
+def is_package_part(part) {
+    if len(part) == 0 or not (part[0:1] in PACKAGE_FIRST) {
         return false
     }
-    if len(raw_path) >= 5 and raw_path[len(raw_path) - 5:] == ".nova" {
-        return false
-    }
-    for ch in raw_path {
+    for ch in part {
         if not (ch in PACKAGE_REST) {
             return false
         }
     }
     return true
+}
+
+# "name", or "owner/name" ([pkg.layout]).
+def is_package_import(raw_path) {
+    if len(raw_path) >= 5 and raw_path[len(raw_path) - 5:] == ".nova" {
+        return false
+    }
+    let pieces = split(raw_path, "/")
+    if len(pieces) == 1 {
+        return is_package_part(pieces[0])
+    }
+    return len(pieces) == 2 and is_package_part(pieces[0]) and is_package_part(pieces[1])
 }
 
 # Stop the line if a project's installed packages are not exactly what its
@@ -3432,9 +3441,10 @@ def default_module_name(raw_path, pos) {
         return raw_path[4:]
     }
     if is_package_import(raw_path) {
-        # "math-utils" binds math_utils, like the host.
+        # "math-utils" binds math_utils, like the host; "owner/name" binds the name after the slash.
         let bound = ""
-        for ch in raw_path {
+        let stem = split(raw_path, "/")
+        for ch in stem[len(stem) - 1] {
             if ch == "-" or ch == "." {
                 bound = bound + "_"
             } else {
@@ -3556,7 +3566,11 @@ def package_of(path) {
         return []
     }
     let rest = path[at + len(marker):]
-    let name = split(rest, sep)[0]
+    let parts = split(rest, sep)
+    let name = parts[0]
+    if not exists(path[:at + len(marker)] + name + "/nova.json") and len(parts) > 1 {
+        name = parts[0] + "/" + parts[1]               # "owner/name": the first folder is the owner
+    }
     return [path[:at + len(marker)] + name, name]
 }
 

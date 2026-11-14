@@ -126,6 +126,38 @@ case("pkg-a-missing-entry-file-is-an-import-error", ["pkg.manifest"],
      ['ImportError: package "lib" has no entry file gone.nova'],
      extra={"files": project({"main": "gone.nova"}, "export let x = 1\n")})
 
+def scoped_project(name, package_manifest, main):
+    lock = {"lockfile_version": 2, "requires": {name: "*"}, "packages": {name: {
+        "version": "1.0.0", "source": {"registry": "../registry"}, "integrity": "sha256-x", "resolved": "archive/x.tar",
+        "archive": "sha256-y", "signedBy": ["0000000000000000"], "capabilities": package_manifest.get("capabilities", []),
+        "dependencies": {}}}}
+    text = json.dumps(lock, indent=2, sort_keys=True) + "\n"
+    return {
+        "nova.json": json.dumps({"name": "app", "version": "1.0.0", "dependencies": {name: "*"}}),
+        "nova.lock": text, ".nova_modules/.installed.lock": text,
+        ".nova_modules/" + name + "/nova.json": json.dumps(dict({"name": name, "version": "1.0.0"}, **package_manifest)),
+        ".nova_modules/" + name + "/main.nova": main,
+    }
+
+
+case("pkg-owner-slash-name-is-a-package-and-binds-the-part-after-the-slash", ["pkg.layout"],
+     'import "acme/ledger-core"\nprint(ledger_core.twice(4))\nimport "acme/ledger-core" as lc\nprint(lc.twice(5))',
+     ["8", "10"], extra={"files": scoped_project("acme/ledger-core", {}, "export def twice(x) {\n  return x * 2\n}\n")})
+case("pkg-a-scoped-package-is-held-to-its-declared-capabilities", ["pkg.capabilities", "pkg.layout"],
+     'import "acme/ledger"',
+     [], error='ImportError: package "acme/ledger": main.nova uses read, which needs the files.read capability, and its nova.json does not declare it',
+     error_line=1, exit=1, extra={"files": scoped_project("acme/ledger", {}, READER)})
+case("pkg-a-scoped-package-needs-its-capabilities-granted", ["pkg.capabilities", "pkg.layout"],
+     'import "acme/ledger"',
+     [], error="ImportError: package \"acme/ledger\" needs the 'files.read' capability, which this run did not grant", error_line=1, exit=1,
+     profile="sandbox", sandbox=IMPORT_ALL, extra={"files": scoped_project("acme/ledger", {"capabilities": ["files.read"]}, READER)})
+case("pkg-the-owner-folder-is-not-a-package", ["pkg.layout"],
+     'try {\n  import "acme"\n} catch e {\n  print(e[0:48])\n}',
+     ['ImportError: cannot find package "acme" - looked'], extra={"files": scoped_project("acme/ledger", {}, "export let x = 1\n")})
+case("pkg-a-name-with-more_than_one_slash-or-a-nova-suffix-is-a-file", ["pkg.layout"],
+     'try {\n  import "a/b/c"\n} catch e {\n  print(e[0:44])\n}',
+     ['ImportError: cannot find module "a/b/c" - lo'])
+
 doc = {"area": "packages", "version": 1, "cases": cases}
 open(ROOT + "tests/conformance/cases/packages.json", "w", encoding="utf-8").write(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
 print(len(cases), "cases")
