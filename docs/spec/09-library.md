@@ -71,6 +71,20 @@ bare message for the second (`[err.try-catch]`).
   booleans). A second argument that is not a boolean is `TypeError: sorted()'s
   second argument must be true or false`, and a first that is not a list is
   `TypeError: sorted() needs a list, but got a number`.
+- `sorted(list, key)` and `sorted(list, key, descending)` (2.4.0) order the items
+  by a **key**: `key` is a function, called once for each item, in the order of
+  the list, and the items are ordered by what it returns, with the rules above
+  (numbers and booleans together, or strings, no NaN). The sort is **stable** in
+  both directions: items whose keys are equal keep the order they had, so sorting
+  by a second key and then by a first orders by the first and then the second.
+  `sorted(rows, f)` orders a list of lists or of dictionaries, which the one-argument
+  form refuses. Keys that cannot be compared are `TypeError: sorted()'s key
+  function must return values that can be compared with each other`; a third
+  argument that is not a boolean is `TypeError: sorted()'s third argument must be
+  true or false`; an error the key function raises is not caught. A second argument
+  that is neither a boolean nor a function keeps the message above, and three
+  arguments whose second is not a function, or four, keep `sorted() takes a list
+  and an optional true or false` (`STABLE.md`: the old messages do not change).
 
 ## [lib.text] Strings
 
@@ -579,3 +593,54 @@ The module's exports are exactly `add_days`, `add_months`, `add_seconds`, `add_y
 `format`, `from_epoch`, `is_date`, `is_leap`, `is_timestamp`, `last_day_of_month`, `make`, `make_timestamp`, `month`, `offset_of`, `parse_date`, `parse_timestamp`,
 `parse_timestamp_at`, `to_epoch`, `to_utc`, `weekday`, `with_offset`, `year`. Every function is a native of the module (`[mod.std]` 6).
 
+## [lib.std-csv] `std:csv`
+
+```
+import "std:csv" as csv
+```
+
+Records in the form of RFC 4180, read into lists of strings and written back. A **field** is either unquoted, with no delimiter, quote, CR or LF in it, or
+**quoted**: it starts with `"`, a quote inside is written twice (`""`), and a delimiter or a line end inside is part of the field and is kept exactly as written
+(`\r\n` stays `\r\n`). A **record** is fields separated by the delimiter (`,` unless an option says otherwise) and ends at CRLF, LF, CR or the end of the text; the last
+record needs no line end. **A line with nothing on it is not a record** (a record of one empty field is written `""`). A byte order mark (U+FEFF) at the very start of
+the text is dropped; anywhere else it is a character. Spaces are part of a field. Every field is a **string**: the module converts nothing, so `"007"` stays `"007"`
+and a program reads numbers, money and dates with `std:decimal` and `std:date`. Lines are counted from 1, CRLF counting once, including the lines inside quoted
+fields.
+
+These are errors, and each names the line: a quoted field that is never closed (`csv.parse() found a quoted field that is never closed; it starts on line 2`); text
+after the closing quote of a field (`found text after the closing quote of a field on line 2; a quoted field must end at the delimiter or the end of the line`); a quote
+inside a field that does not start with one (`found a quote inside a field that does not start with one on line 2; quote the whole field and write the quote twice`;
+Python's `csv` module, which accepts it, reads the same records in every other case); and a record with more fields than the limit (`found more than 10000 fields in the
+record on line 2 (the max_fields limit)`). The result is bounded like any list and its strings like any string (`[sbx.limits]`), and reading is charged to the run.
+
+| Function | Meaning |
+| --- | --- |
+| `parse(text)` | the records of `text`, a list of lists of strings; the delimiter is `,` and a record may have up to 10000 fields |
+| `parse_with(text, options)` | the same with a dictionary of options: `delimiter`, one character that is not `"`, CR or LF; `max_fields`, a whole number of at least 1. Another key is `does not know the option '<key>' (the options are delimiter and max_fields)` |
+| `parse_lines(lines)` | the records of a list of strings read as one text with a line end between them, so that a quoted field may span lines; errors name the place in the list, from 1. With `files.lines(path)` (`[lib.std-files]`) it reads a file under the read grant |
+| `records(rows)` | a dictionary for each row after the first, keyed by the names in the first; `[]` for no rows or a header alone. A row of another length is `found 1 field(s) in row 3, but the header has 2`; a name twice in the header is `found the column name 'a' twice in the header` |
+| `format_row(fields)` | one record as text with no line end: each field a string or a number (written as `str` writes it), quoted when it holds a `,`, `"`, CR or LF, with its quotes doubled; `[""]` is `""`; `[]` is an error |
+| `format(rows)` | the records as text, each ended by CRLF; `parse(format(rows))` is `rows` for rows of strings |
+
+A value of the wrong kind is `csv.<function>() needs a string for the text, but got a number` and the like. The module reads no file and declares no capability. Its
+exports are exactly `format`, `format_row`, `parse`, `parse_lines`, `parse_with`, `records`, and every function is a native of the module (`[mod.std]` 6).
+
+## [lib.std-dict] `std:dict`
+
+```
+import "std:dict" as dict
+```
+
+A **missing value** (decision D-P6). Reading a key that a dictionary does not have is an error (`[expr.index]`), there is no `nothing` literal, and no global
+built-in is added for it (a new global name would be a major change, `STABLE.md`); these two functions are how a program says what it wants instead.
+
+| Function | Meaning |
+| --- | --- |
+| `get(d, key, fallback)` | `d[key]` if `d` has the key, else `fallback`. A key that is present gives its value whatever it is (`0`, `""`, `false`, `[]`) |
+| `get_path(d, path, fallback)` | the value reached from `d` by each key of the list `path` in turn, or `fallback` as soon as a key is absent or the value reached is not a dictionary (only dictionaries are walked); `get_path(d, [], x)` is `d` |
+
+`d` that is not a dictionary is `TypeError: dict.get() needs a dictionary, but got a list`; a key that is not a string is `TypeError: dict.get() needs a string for the
+key, but got a number`; a path that is not a list of strings is `TypeError: dict.get_path() needs a list of keys for the path, but got a string` or `... needs the keys of
+the path to be strings, and key 2 is a number`. The fallback is returned as it is and is evaluated by the caller, so it may be any value. Importing the module binds the
+name `dict` only where the program imports it; `get` stays an ordinary name. The module declares no capability. Its exports are exactly `get` and `get_path`, and both
+are natives of the module (`[mod.std]` 6).

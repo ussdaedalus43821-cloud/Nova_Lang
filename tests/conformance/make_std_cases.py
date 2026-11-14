@@ -522,6 +522,49 @@ try { date.format("2026-10-10", "%H") } catch e { print(e) }""",
       "date.format() has %H but the value is a date, which has no time of day; give it a timestamp"],
      profile="sandbox", sandbox=RG)
 
+# ---- std:csv and std:dict, ordering by a key (M14 slice P1: L2, L4, L3) ------------------------------------------
+
+CSVI = 'import "std:csv" as csv\n'
+case("std-csv-reads-rfc-4180-records", ["lib.std-csv"],
+     CSVI + 'let rows = csv.parse("\ufeffname,memo\\r\\n\\"Smith, J\\",\\"said \\"\\"hi\\"\\"\\"\\r\\n\\r\\nLee,\\"two\\nlines\\"\\nlast,")\n'
+     'print(len(rows), rows[0][0], rows[1][0], rows[1][1])\nprint(rows[2][1] == "two\\nlines", rows[3])\n'
+     'print(csv.parse("a\\rb"), csv.parse(""), csv.parse("\\"\\""), csv.parse(" a , b "))',
+     ["4 name Smith, J said \"hi\"", 'true ["last", ""]', '[["a"], ["b"]] [] [[""]] [[" a ", " b "]]'])
+case("std-csv-errors-name-the-line", ["lib.std-csv"],
+     CSVI + 'def t(text) { try { csv.parse(text) } catch e { print(e) } }\nt("a\\nb,\\"open\\nstill")\nt("ok\\n\\"a\\"b")\nt("a\\r\\nb\\"c")\n'
+     'try { csv.parse_with("a,b,c", {max_fields: 2}) } catch e { print(e) }\ntry { csv.parse(5) } catch e { print(e) }',
+     ["csv.parse() found a quoted field that is never closed; it starts on line 2",
+      "csv.parse() found text after the closing quote of a field on line 2; a quoted field must end at the delimiter or the end of the line",
+      "csv.parse() found a quote inside a field that does not start with one on line 2; quote the whole field and write the quote twice",
+      "csv.parse_with() found more than 2 fields in the record on line 1 (the max_fields limit)",
+      "csv.parse() needs a string for the text, but got a number"])
+case("std-csv-options-lines-and-records", ["lib.std-csv"],
+     CSVI + 'print(csv.parse_with("a;b\\n1;\\"2;3\\"", {delimiter: ";"}))\n'
+     'let recs = csv.records(csv.parse_lines(["id,amount", "1,\\"1,000\\"", "", "2,5"]))\nprint(len(recs), recs[0]["amount"], recs[1]["id"])\n'
+     'try { csv.records([["a", "b"], ["1"]]) } catch e { print(e) }\ntry { csv.records([["a", "a"]]) } catch e { print(e) }\n'
+     'try { csv.parse_with("a", {sep: ";"}) } catch e { print(e) }',
+     ['[["a", "b"], ["1", "2;3"]]', "2 1,000 2", "csv.records() found 1 field(s) in row 2, but the header has 2",
+      "csv.records() found the column name 'a' twice in the header",
+      "csv.parse_with() does not know the option 'sep' (the options are delimiter and max_fields)"])
+case("std-csv-writes-what-it-reads", ["lib.std-csv"],
+     CSVI + 'print(csv.format_row(["a", "b c", "d,e", "f\\"g", 12, 2.5]))\nprint(csv.format_row([""]))\n'
+     'let rows = [["x", "l1\\r\\nl2"], [""], ["q\\"", ""]]\nprint(csv.parse(csv.format(rows)) == rows, len(csv.format([["a"], ["b"]])))\n'
+     'try { csv.format_row([true]) } catch e { print(e) }',
+     ['a,b c,"d,e","f""g",12,2.5', '""', "true 6", "csv.format_row() needs strings or numbers, and field 1 is a boolean"])
+case("std-csv-needs-no-grant-in-restricted", ["lib.std-csv", "sbx.profiles"],
+     CSVI + 'print(csv.parse("a,b"))', ['[["a", "b"]]'], profile="sandbox", sandbox={"profile": "restricted"})
+
+DICTI = 'import "std:dict" as dict\n'
+case("std-dict-get-and-get-path", ["lib.std-dict"],
+     DICTI + 'let line = {ip: "10.0.0.1", n: 0, user: {name: "ana"}}\n'
+     'print(dict.get(line, "ip", "-"), dict.get(line, "status", "-"), dict.get(line, "n", 9))\n'
+     'print(dict.get_path(line, ["user", "name"], "?"), dict.get_path(line, ["user", "id"], "?"), dict.get_path(line, ["ip", "x"], "?"))\n'
+     'try { dict.get([], "a", 0) } catch e { print(e) }\ntry { dict.get({}, 1, 0) } catch e { print(e) }\n'
+     'try { dict.get_path({}, "a", 0) } catch e { print(e) }\nlet get = 1\nprint(get, sorted(keys(dict)))',
+     ["10.0.0.1 - 0", "ana ? ?", "TypeError: dict.get() needs a dictionary, but got a list",
+      "TypeError: dict.get() needs a string for the key, but got a number",
+      "TypeError: dict.get_path() needs a list of keys for the path, but got a string", '1 ["get", "get_path"]'])
+
 json.dump  # (kept for clarity)
 doc = {"area": "std", "version": 1, "cases": cases}
 open(ROOT + "tests/conformance/cases/std.json", "w", encoding="utf-8").write(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")

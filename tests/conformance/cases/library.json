@@ -1277,6 +1277,44 @@
    "error_line": null,
    "exit": 0,
    "host_calls": []
+  },
+  {
+   "name": "lib-sorted-by-a-key-is-stable",
+   "spec": [
+    "lib.collections"
+   ],
+   "profile": "core",
+   "source": "def age(p) { return p.age }\ndef name(p) { return p.n }\nlet people = [{n: \"b\", age: 30}, {n: \"a\", age: 25}, {n: \"c\", age: 30}, {n: \"d\", age: 25}]\nprint(map(name, sorted(people, age)), map(name, sorted(people, age, true)), map(name, sorted(people, age, false)))\ndef head(r) { return r[0] }\nprint(sorted([[2, \"b\"], [1, \"z\"], [2, \"a\"]], head), sorted([\"bb\", \"a\", \"ccc\"], len), sorted([], len))\ndef big(x) { return x > 1 }\nprint(sorted([3, 2, 1, 0], big), people[0].n)",
+   "output": [
+    "[\"a\", \"d\", \"b\", \"c\"] [\"b\", \"c\", \"a\", \"d\"] [\"a\", \"d\", \"b\", \"c\"]",
+    "[[1, \"z\"], [2, \"b\"], [2, \"a\"]] [\"a\", \"bb\", \"ccc\"] []",
+    "[1, 0, 3, 2] b"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "lib-sorted-by-a-key-errors",
+   "spec": [
+    "lib.collections",
+    "err.type"
+   ],
+   "profile": "core",
+   "source": "def same(x) { return x }\ndef t1() { return sorted([1, \"a\"], same) }\ndef t2() { return sorted([[1], [2]], same) }\ndef t3() { return sorted([1], len, \"x\") }\ndef t4() { return sorted([1], true, false) }\ndef t5() { return sorted([1], len, true, 4) }\ndef t6() { return sorted(5, len) }\nfor f in [t1, t2, t3, t4, t5, t6] {\n  try { f() } catch e { print(e) }\n}",
+   "output": [
+    "TypeError: sorted()'s key function must return values that can be compared with each other",
+    "TypeError: sorted()'s key function must return values that can be compared with each other",
+    "TypeError: sorted()'s third argument must be true or false",
+    "sorted() takes a list and an optional true or false",
+    "sorted() takes a list and an optional true or false",
+    "TypeError: sorted() needs a list, but got a number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
   }
  ]
 }

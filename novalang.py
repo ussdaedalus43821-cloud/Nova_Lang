@@ -3637,22 +3637,39 @@ def builtin_reverse(args, position):
     )
 
 
-def builtin_sorted(args, position):
-    if not 1 <= len(args) <= 2:
+def sorted_comparable(items):
+    """Can these be ordered by sorted() ([lib.collections]): all numbers and booleans (a boolean counts as 0 or 1), or all
+    strings, and no NaN (D-019)."""
+    numbers = [is_number(item) or isinstance(item, bool) for item in items]
+    texts = [isinstance(item, str) for item in items]
+    return (all(numbers) or all(texts)) and not any(isinstance(item, float) and item != item for item in items)
+
+
+def builtin_sorted(args, position, interpreter):
+    # sorted(list), sorted(list, descending), and since 2.4.0 sorted(list, key) and sorted(list, key, descending) (G-038): the key
+    # function is called once for each item, in order, and the items are ordered by what it returns, stably (items whose keys are
+    # equal keep the order they had, in either direction). The messages of the old forms are unchanged (STABLE.md).
+    keyed = len(args) >= 2 and isinstance(args[1], (NovaFunction, BuiltinFunction))
+    if not 1 <= len(args) <= (3 if keyed else 2):
         raise NovaError("sorted() takes a list and an optional true or false", position)
     items = list(list_argument(args[0], "sorted()", position))
     descending = False
+    if keyed:
+        if len(args) > 2:
+            if not isinstance(args[2], bool):
+                raise NovaError("sorted()'s third argument must be true or false", position, label="TypeError")
+            descending = args[2]
+        keys = [interpreter.call_value(args[1], [item], position) for item in items]
+        if not sorted_comparable(keys):
+            raise NovaError("sorted()'s key function must return values that can be compared with each other", position,
+                            label="TypeError")
+        order = sorted(range(len(items)), key=keys.__getitem__, reverse=descending)      # Python's sort is stable both ways
+        return [items[i] for i in order]
     if len(args) > 1:
         if not isinstance(args[1], bool):
             raise NovaError("sorted()'s second argument must be true or false", position, label="TypeError")
         descending = args[1]
-    # Numbers (a boolean counts as 0 or 1) sort among themselves and strings
-    # among themselves; any other item, a NaN, or a mixture, cannot be ordered
-    # (D-019).
-    numbers = [is_number(item) or isinstance(item, bool) for item in items]
-    texts = [isinstance(item, str) for item in items]
-    if not (all(numbers) or all(texts)) or any(
-            isinstance(item, float) and item != item for item in items):
+    if not sorted_comparable(items):
         raise NovaError("sorted() needs items that can be compared with each other", position, label="TypeError")
     items.sort(reverse=descending)
     return items
@@ -3803,7 +3820,7 @@ BUILTINS = {
     "pad": BuiltinFunction("pad", 2, builtin_pad),
     "pad_left": BuiltinFunction("pad_left", 2, builtin_pad_left),
     "reverse": BuiltinFunction("reverse", 1, builtin_reverse),
-    "sorted": BuiltinFunction("sorted", None, builtin_sorted),
+    "sorted": BuiltinFunction("sorted", None, builtin_sorted, needs_interpreter=True),
     "assert": BuiltinFunction("assert", None, builtin_assert),
     "log": BuiltinFunction("log", None, builtin_log, needs_interpreter=True),
     "map": BuiltinFunction("map", 2, builtin_map, needs_interpreter=True),
@@ -6823,6 +6840,230 @@ def native_date_parse_timestamp_at(args, position):
     return timestamp_from("parse_timestamp_at", args, position, offset_value("parse_timestamp_at", "offset", args[2], position))
 
 
+# -- std:csv ---------------------------------------------------------------------------------
+#
+# RFC 4180 records ([lib.std-csv]): a field is either unquoted (no delimiter, quote or line end in it) or quoted ("...", a quote
+# inside written twice, line ends inside kept as they are). A record ends at CRLF, LF or CR; a line with nothing on it is not a
+# record; a byte order mark at the very start of the text is dropped. Anything else is an error that names the line. The work is
+# charged to the run like the matcher's: one unit for every character read or written.
+
+CSV_MAX_FIELDS = 10000
+CSV_OPTIONS = ("delimiter", "max_fields")
+_CSV_UNQUOTED = {}
+
+
+def csv_fail(who, what, position):
+    raise native_error("csv.{}() {}".format(who, what), position)
+
+
+def csv_text(who, value, position):
+    if not isinstance(value, str):
+        csv_fail(who, "needs a string for the text, but got {}".format(type_name(value)), position)
+    return value
+
+
+def csv_options(who, value, position):
+    if not isinstance(value, dict):
+        csv_fail(who, "needs a dictionary for the options, but got {}".format(type_name(value)), position)
+    for key in value:
+        if key not in CSV_OPTIONS:
+            csv_fail(who, "does not know the option '{}' (the options are delimiter and max_fields)".format(key[:40]), position)
+    delimiter, max_fields = ",", CSV_MAX_FIELDS
+    if "delimiter" in value:
+        delimiter = value["delimiter"]
+        if not isinstance(delimiter, str) or len(delimiter) != 1 or delimiter in '"\r\n':
+            csv_fail(who, "needs the delimiter to be one character that is not a quote or a line end", position)
+    if "max_fields" in value:
+        max_fields = decimal_whole(value["max_fields"])
+        if max_fields is None or max_fields < 1:
+            csv_fail(who, "needs max_fields to be a whole number of at least 1", position)
+    return delimiter, max_fields
+
+
+def _line_ends(piece):
+    """How many line ends (CRLF counts once) are in `piece`."""
+    return piece.count("\n") + piece.count("\r") - piece.count("\r\n")
+
+
+def csv_read(who, text, delimiter, max_fields, interpreter, position):
+    longest_list, _ = regex_limits(interpreter)
+    meter = regex_meter(interpreter, position)
+    unquoted = _CSV_UNQUOTED.get(delimiter)
+    if unquoted is None:
+        unquoted = _CSV_UNQUOTED[delimiter] = re.compile('[^"\r\n' + re.escape(delimiter) + "]*")
+    if text.startswith("﻿"):
+        text = text[1:]
+    rows, i, n, line = [], 0, len(text), 1
+    while i < n:
+        if text[i] in "\r\n":                                        # a line with nothing on it is not a record
+            i += 2 if text.startswith("\r\n", i) else 1
+            line += 1
+            continue
+        start, record_line, row = i, line, []
+        while True:
+            if i < n and text[i] == '"':
+                opened_on, i, parts = line, i + 1, []
+                while True:
+                    close = text.find('"', i)
+                    if close < 0:
+                        csv_fail(who, "found a quoted field that is never closed; it starts on line {}".format(opened_on), position)
+                    piece = text[i:close]
+                    line += _line_ends(piece)
+                    parts.append(piece)
+                    if text.startswith('""', close):
+                        parts.append('"')
+                        i = close + 2
+                        continue
+                    i = close + 1
+                    break
+                if i < n and text[i] != delimiter and text[i] not in "\r\n":
+                    csv_fail(who, "found text after the closing quote of a field on line {}; a quoted field must end at the delimiter or the end "
+                                  "of the line".format(line), position)
+                field = "".join(parts)
+            else:
+                end = unquoted.match(text, i).end()
+                if end < n and text[end] == '"':
+                    csv_fail(who, "found a quote inside a field that does not start with one on line {}; quote the whole field and write the "
+                                  "quote twice".format(line), position)
+                field, i = text[i:end], end
+            row.append(field)
+            if len(row) > max_fields:
+                csv_fail(who, "found more than {} fields in the record on line {} (the max_fields limit)".format(max_fields, record_line), position)
+            if i < n and text[i] == delimiter:
+                i += 1
+                continue
+            break
+        if i < n:                                                    # the line end that ends the record
+            i += 2 if text.startswith("\r\n", i) else 1
+            line += 1
+        rows.append(row)
+        if len(rows) > longest_list:
+            raise NovaError("a list cannot grow beyond {} items".format(longest_list), position)
+        meter.tick(i - start)
+    return rows
+
+
+def native_csv_parse(args, position, interpreter):
+    return csv_read("parse", csv_text("parse", args[0], position), ",", CSV_MAX_FIELDS, interpreter, position)
+
+
+def native_csv_parse_with(args, position, interpreter):
+    text = csv_text("parse_with", args[0], position)
+    delimiter, max_fields = csv_options("parse_with", args[1], position)
+    return csv_read("parse_with", text, delimiter, max_fields, interpreter, position)
+
+
+def native_csv_parse_lines(args, position, interpreter):
+    lines = args[0]
+    if not isinstance(lines, list):
+        csv_fail("parse_lines", "needs a list of strings, but got {}".format(type_name(lines)), position)
+    for number, item in enumerate(lines, 1):
+        if not isinstance(item, str):
+            csv_fail("parse_lines", "needs a list of strings, and item {} is {}".format(number, type_name(item)), position)
+    return csv_read("parse_lines", "\n".join(lines), ",", CSV_MAX_FIELDS, interpreter, position)
+
+
+def native_csv_records(args, position):
+    rows = args[0]
+    if not isinstance(rows, list):
+        csv_fail("records", "needs a list of rows, but got {}".format(type_name(rows)), position)
+    for number, row in enumerate(rows, 1):
+        if not isinstance(row, list):
+            csv_fail("records", "needs a list of rows, and row {} is {}".format(number, type_name(row)), position)
+        for place, field in enumerate(row, 1):
+            if not isinstance(field, str):
+                csv_fail("records", "needs the fields to be strings, and row {} field {} is {}".format(number, place, type_name(field)), position)
+    if not rows:
+        return []
+    header = rows[0]
+    if len(set(header)) != len(header):
+        seen = set()
+        for name in header:
+            if name in seen:
+                csv_fail("records", "found the column name '{}' twice in the header".format(name[:40]), position)
+            seen.add(name)
+    out = []
+    for number, row in enumerate(rows[1:], 2):
+        if len(row) != len(header):
+            csv_fail("records", "found {} field(s) in row {}, but the header has {}".format(len(row), number, len(header)), position)
+        out.append(dict(zip(header, row)))
+    return out
+
+
+def csv_field(who, where, value, position):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        csv_fail(who, "needs strings or numbers, and {} is {}".format(where, type_name(value)), position)
+    text = value if isinstance(value, str) else format_value(value)
+    if '"' in text or "," in text or "\r" in text or "\n" in text:
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def csv_row(who, row, label, position):
+    if len(row) == 1 and row[0] == "":
+        return '""'                     # a record of one empty field; written bare it would be a blank line, which is no record
+    return ",".join(csv_field(who, label + "field {}".format(place), value, position) for place, value in enumerate(row, 1))
+
+
+def native_csv_format_row(args, position):
+    row = args[0]
+    if not isinstance(row, list):
+        csv_fail("format_row", "needs a list of fields, but got {}".format(type_name(row)), position)
+    if not row:
+        csv_fail("format_row", "needs at least one field", position)
+    return csv_row("format_row", row, "", position)
+
+
+def native_csv_format(args, position, interpreter):
+    rows = args[0]
+    if not isinstance(rows, list):
+        csv_fail("format", "needs a list of rows, but got {}".format(type_name(rows)), position)
+    meter = regex_meter(interpreter, position)
+    out = []
+    for number, row in enumerate(rows, 1):
+        if not isinstance(row, list):
+            csv_fail("format", "needs a list of rows, and row {} is {}".format(number, type_name(row)), position)
+        if not row:
+            csv_fail("format", "needs at least one field in row {}".format(number), position)
+        out.append(csv_row("format", row, "row {} ".format(number), position) + "\r\n")
+        meter.tick(len(out[-1]))
+    return "".join(out)
+
+
+# -- std:dict --------------------------------------------------------------------------------
+#
+# A missing value without a new global name (D-P6, [lib.std-dict]): the program says what it wants when a key is absent.
+
+def std_dict_argument(who, value, position):
+    if not isinstance(value, dict):
+        raise NovaError("dict.{}() needs a dictionary, but got {}".format(who, type_name(value)), position, label="TypeError")
+    return value
+
+
+def native_dict_get(args, position):
+    d = std_dict_argument("get", args[0], position)
+    key = args[1]
+    if not isinstance(key, str):
+        raise NovaError("dict.get() needs a string for the key, but got {}".format(type_name(key)), position, label="TypeError")
+    return d[key] if key in d else args[2]
+
+
+def native_dict_get_path(args, position):
+    value = std_dict_argument("get_path", args[0], position)
+    path = args[1]
+    if not isinstance(path, list):
+        raise NovaError("dict.get_path() needs a list of keys for the path, but got {}".format(type_name(path)), position, label="TypeError")
+    for number, key in enumerate(path, 1):
+        if not isinstance(key, str):
+            raise NovaError("dict.get_path() needs the keys of the path to be strings, and key {} is {}".format(number, type_name(key)),
+                            position, label="TypeError")
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return args[2]
+        value = value[key]
+    return value
+
+
 def _natives(module, table, metered=()):
     """The BuiltinFunctions of a module's natives. A function named in `metered` is also given the interpreter
     (or, for the self-hosted engine, a view of its host), to charge its work to the run."""
@@ -6855,6 +7096,12 @@ NATIVE_FUNCTIONS = {
     }),
     "text": _natives("text", {"chr": (1, native_text_chr, ()), "ord": (1, native_text_ord, ())}),
     "hash": _natives("hash", {"sha256": (1, native_hash_sha256, ())}),
+    "csv": _natives("csv", {
+        "parse": (1, native_csv_parse, ()), "parse_with": (2, native_csv_parse_with, ()),
+        "parse_lines": (1, native_csv_parse_lines, ()), "records": (1, native_csv_records, ()),
+        "format_row": (1, native_csv_format_row, ()), "format": (1, native_csv_format, ()),
+    }, metered=("parse", "parse_with", "parse_lines", "format")),
+    "dict": _natives("dict", {"get": (3, native_dict_get, ()), "get_path": (3, native_dict_get_path, ())}),
     "date": _natives("date", {
         "is_date": (1, native_date_is_date, ()),
         "is_timestamp": (1, native_date_is_timestamp, ()),
