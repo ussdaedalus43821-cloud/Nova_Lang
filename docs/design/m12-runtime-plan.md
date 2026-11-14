@@ -127,7 +127,7 @@ it found six facts the plan did not have (draft section `[bc.findings]`): the co
 instruction arguments and a built-in-by-name tag; ungated built-ins are constants, so the loader must refuse gated names (an artifact could otherwise carry `read` into an
 engine without the grant); `verify()` does not check what the VM trusts (pool indexes, slots inside chains and loop state, closure indexes); a cache hit would skip the type
 gate unless the artifact records whether the source has annotations or imports; a 400-digit float literal compiles to infinity; and nesting depth leans on
-CPython's recursion limit, which PyPy breaks. Seven questions for the owner are listed there.
+CPython's recursion limit, which PyPy breaks. Nine questions for the owner are listed there; on 2026-11-14 the owner answered two: **an artifact embeds its source text and is self-contained (Q2), and the cache is off by default on Windows (Q5)**. Seven are open.
 
 Normative text, in the style of the other chapters (ids, a table per concept, error texts). Sections:
 
