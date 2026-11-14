@@ -424,7 +424,9 @@ NovaLang.
   and `nova-pkg publish`, building on the existing lockfile and SHA-256
   integrity checks. Packages declare the capabilities they require (M11).
 - Standard-library additions that need the outside world (HTTP, richer time
-  zones, structured data validation), each gated by a capability.
+  zones, structured data validation), each gated by a capability. *Owner
+  decision D6 (2026-11-13): HTTP and the `net` capability move to M14; see
+  `docs/design/m13-libraries-and-registry-plan.md`.*
 - A conformance and compatibility test for packages across NovaLang versions.
 - Carried in from the Nova_Stats proof of concept (full list in its
   `docs/GAPS.md`; the five that cost the most):

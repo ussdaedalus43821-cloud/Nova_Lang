@@ -1,8 +1,9 @@
 # M13 plan: libraries, registry and API stability
 
-Status: **Draft plan. Nothing is implemented.** Written 2026-11-13 for the owner to decide on. It follows [ROADMAP M13](../ROADMAP.md) (goal, deliverables,
-exit criteria, and "Requirements from the Proof-of-Concept Apps") and takes the lessons of M11 and M12 as constraints. It is not reviewed; the decisions in
-section 9 are open, and no M13 code is written before they are answered.
+Status: **Plan, decisions D1 to D12 accepted by the owner on 2026-11-13 (recorded in section 9). Nothing is implemented.** Written 2026-11-13. It follows
+[ROADMAP M13](../ROADMAP.md) (goal, deliverables, exit criteria, and "Requirements from the Proof-of-Concept Apps") and takes the lessons of M11 and M12 as
+constraints. It is not independently reviewed. **One change from the draft: D6 is decided as "defer", and the HTTP slice (slice 7, sections 4.7 and the `net`
+capability) moves to M14.** M13 is therefore six slices; sections 4.7 and slice 7 stay in this document as the design M14 starts from, not as M13 scope.
 
 ## 1. What M13 is for
 
@@ -234,7 +235,7 @@ finish in a bounded number of steps); the Nova_Log done-when.
 **Risk.** Speed: a Python Pike VM will be slower than `re` by a large factor; the benchmark suite measures it (a row on the 5 MB log) and the owner decides whether a fast path through `re` for patterns proven free of nested
 quantifiers is worth its complexity. The risk accepted by this plan is that a slow safe matcher is better than a fast one that can hang.
 
-### 4.7 `std:http` (Tier 3, slice 7; decision D6)
+### 4.7 `std:http` (Tier 3, slice 7; decision D6: deferred to M14, kept here as the design M14 starts from)
 
 Specified here because the brief asks for it; **recommended last and conditional** (D6): no recorded demand, the largest new attack surface of M13, and it shares its hardened fetch core with the registry client of
 slice 6, so it costs least after that slice.
@@ -454,9 +455,9 @@ reach (and marked unreviewed until the independent review); no merge without the
 | 4 | **Regular expressions** | the dialect in `[lib.regex]`, the Pike VM with step accounting, `std:regex`, the `regex` builtin on the new matcher, the differential fuzzer, the time tests | 1 | L |
 | 5 | **Packages, part 1: manifest and capabilities** | manifest 2 and the lockfile 2 (reading 1), the scan and the enforcement of 5.6, escalation protection, the first-import re-hash (R12), `init`, `add`, `audit`, `capabilities`; chapter `18-packages.md` with its cases; threat rows R3, R11, R12, R15 | 1 | M |
 | 6 | **Packages, part 2: the registry** | the archive format and the hardened extractor, the static index and its signatures (Ed25519 verifier and vectors), serial and expiry, revocation, `pack`, `publish`, `yank`, install from a directory or HTTPS registry (a hardened fetch core: HTTPS only, size and time limits, no proxy); the end-to-end test of the roadmap's exit criterion; the supply-chain table of 5.5 as tests | 5 | L |
-| 7 | **HTTP** (only if D6 says yes) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
+| 7 | **HTTP** (**moved to M14 by D6; not M13 scope**) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
 
-Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different people; **slice 4 and slice 6 carry the security weight of the milestone** and each ends with a request that the independent reviewer (D-review of M11) read them. The close of the milestone (a version number, the README's numbers, the changelog) follows slice 7, or slice 6 if D6 is no.
+Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different people; **slice 4 and slice 6 carry the security weight of the milestone** and each ends with a request that the independent reviewer (D-review of M11) read them. The close of the milestone (a version number, the README's numbers, the changelog) follows slice 6 (slice 7 is M14's, by D6).
 
 ## 8. Risks
 
@@ -490,6 +491,23 @@ Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different 
 | D11 | **Versioning of the surface:** which release declares the stable surface (**2.3.0**, additively, with the first breaking removal possible only at 3.0.0); no pre-release suffixes in the registry's first protocol | **2.3.0 declares it** | declaring it early makes every later slice prove it is additive; removing nothing needs no major |
 | D12 | **Tool name and entry:** keep `tools/nova-pkg.py` and add `novalang.py pkg ...` as a front door, or rename | **Add the front door, keep the file** | existing documentation and tests name the file |
 
+### Decisions recorded (owner, 2026-11-13)
+
+The owner accepted the recommendation of every row above (D1 to D12) as written, and named these explicitly: our own linear-time regex engine (D3), owner-scoped
+package names (D4), static capability checks at install and import (D9), declaring the stable surface in 2.3.0 (D11), keeping `nova-pkg.py` with a front door (D12),
+and not operating a public registry in M13 (D8). The owner also confirmed that `Nova_Git` was discussed but never built.
+
+**D6 as decided:** defer HTTP to M14, where it gets a proper `net` capability. The recommendation said "build the hardened fetch core in slice 6 and decide slice 7
+later"; the owner's wording defers the whole of `std:http` and the `net` capability to M14. This plan reads that as: slice 6 still needs a fetch core for the registry
+client (a registry served over HTTPS cannot be installed from without one), and it is **internal to `nova-pkg`**, not exposed to NovaLang programs, and not a capability. If
+that reading is wrong, say so before slice 6.
+
+Consequences, applied throughout: M13 has six slices (1 to 6); the `net` capability, `std:http` and the `[sbx.capabilities]` amendment are not touched in M13, so the
+reviewed M11 text stays as it is; `net` remains in the manifest's closed capability list **as reserved and rejected** until M14 (a package that declares it is refused,
+so nothing can depend on a capability that cannot be granted); the roadmap's "outside world" deliverable is carried to M14 for HTTP.
+
+The five follow-up questions below were not answered; until the owner says otherwise the plan proceeds on the recommendation given with each.
+
 ### Questions that follow from the decisions
 
 1. **Deprecation windows (6.3):** two minor releases and six months, whichever is longer. Longer? Shorter?
@@ -510,7 +528,7 @@ Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different 
 
 ## 11. Order and size
 
-Slice 1 first (it decides the mechanism and the promise); then 2, 3 and 4 in any order or in parallel; 5 before 6; 7 last and only if D6 says so. Relative size, as in the roadmap: **L** (about as large as M12). The longest single items are the matcher (4.6), the line source on three engines (4.5) and the registry with
+Slice 1 first (it decides the mechanism and the promise); then 2, 3 and 4 in any order or in parallel; 5 before 6; slice 7 is not part of M13 (D6). Relative size, as in the roadmap: **L** (about as large as M12). The longest single items are the matcher (4.6), the line source on three engines (4.5) and the registry with
 its signatures (slice 6).
 
 ---
