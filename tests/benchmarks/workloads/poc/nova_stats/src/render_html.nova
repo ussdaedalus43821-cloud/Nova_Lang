@@ -1,0 +1,121 @@
+# render_html.nova - the HTML view, built as one string from the same snapshot.
+# There is no template engine or HTML escaping in the library (G-010), so both are here.
+import "kit.nova" as kit
+
+def esc_html(text) {
+    return replace_all(replace_all(replace_all(str(text), "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+}
+
+def card(title, rows) {
+    let body = ""
+    for r in rows {
+        body = body + "<tr><th>" + esc_html(r[0]) + "</th><td>" + esc_html(r[1]) + "</td></tr>\n"
+    }
+    return "<section><h2>" + esc_html(title) + "</h2><table>\n" + body + "</table></section>\n"
+}
+
+def meter(pct) {
+    return "<div class=\"meter\"><div style=\"width:" + kit.fixed(kit.clamp(pct, 0, 100), 1) + "%\"></div></div>"
+}
+
+def down(title, m) {
+    return "<section><h2>" + esc_html(title) + "</h2><p class=\"bad\">unavailable: " + esc_html(m.error) + "</p></section>\n"
+}
+
+def cpu_card(m) {
+    if not m.ok {
+        return down("CPU", m)
+    }
+    let rows = [["usage", kit.fixed(m.total, 1) + "% (user " + kit.fixed(m.user, 1) + "%, system " + kit.fixed(m.system, 1) + "%)"],
+        ["load", join(map(def_load, m.load), ", ")], ["cores", str(m.cores)]]
+    for p in m.top {
+        rows = rows + [[p.name, kit.fixed(p.cpu, 1) + "%"]]
+    }
+    return "<section><h2>CPU</h2>" + meter(m.total) + "<table>\n" + join(map(def_row, rows), "") + "</table></section>\n"
+}
+
+def def_load(x) {
+    return kit.fixed(x, 2)
+}
+
+def def_row(r) {
+    return "<tr><th>" + esc_html(r[0]) + "</th><td>" + esc_html(r[1]) + "</td></tr>\n"
+}
+
+def ram_card(m) {
+    if not m.ok {
+        return down("Memory", m)
+    }
+    return "<section><h2>Memory</h2>" + meter(m.used_pct) + "<table>\n" + join(map(def_row, [
+        ["used", kit.human_bytes(m.used) + " of " + kit.human_bytes(m.total)],
+        ["pressure", m.pressure], ["swap", kit.human_bytes(m.swap_used)]]), "") + "</table></section>\n"
+}
+
+def disk_card(m) {
+    if not m.ok {
+        return down("Disk", m)
+    }
+    return "<section><h2>Disk</h2>" + meter(m.used_pct) + "<table>\n" + join(map(def_row, [
+        ["used", kit.human_bytes(m.used) + " of " + kit.human_bytes(m.total)], ["free", kit.human_bytes(m.free)]]), "") + "</table></section>\n"
+}
+
+def net_card(m) {
+    if not m.ok {
+        return down("Network", m)
+    }
+    let rate = "n/a (first sample)"
+    if m.have_rate {
+        rate = kit.human_rate(m.down) + " down, " + kit.human_rate(m.up) + " up"
+    }
+    return card("Network", [["rate", rate], ["interfaces", join(m.interfaces, ", ")]])
+}
+
+def battery_card(m) {
+    if not m.ok {
+        return down("Battery", m)
+    }
+    if not m.present {
+        return card("Battery", [["state", "no battery"]])
+    }
+    let rows = [["state", m.state + " (" + m.source + ")"],
+        ["power", kit.fixed(m.power_w, 2) + " W"],
+        ["runtime now / smoothed / macOS", kit.duration(m.runtime_h) + " / " + kit.duration(m.runtime_smoothed_h) + " / " + kit.minutes_text(m.macos_minutes)],
+        ["to full model / macOS", kit.duration(m.charge_h) + " / " + kit.minutes_text(m.gauge_to_full_minutes)],
+        ["health", kit.fixed(m.health_pct, 1) + "%"],
+        ["cycles", str(m.cycles) + " of " + str(m.design_cycles)]]
+    return "<section><h2>Battery</h2>" + meter(m.percent) + "<table>\n" + join(map(def_row, rows), "") + "</table></section>\n"
+}
+
+def clock_card(m) {
+    if not m.ok {
+        return down("Clock", m)
+    }
+    let rows = [["local", m.date + " " + m.time]]
+    for z in m.world {
+        rows = rows + [[z.name, z.time]]
+    }
+    return card("Clock", rows)
+}
+
+def benchmark_card(rows) {
+    if len(rows) == 0 {
+        return ""
+    }
+    let body = ""
+    for r in rows {
+        body = body + "<tr><th>" + esc_html(r.source) + "</th><td>" + kit.fixed(r.published_h, 1) + " h published, " + kit.fixed(r.implied_w, 2) + " W implied, " + kit.fixed(r.health_adjusted_h, 1) + " h at this battery's health</td></tr>\n"
+    }
+    return "<section><h2>Benchmark</h2><table>\n" + body + "</table></section>\n"
+}
+
+export def render(snapshot, refresh_seconds) {
+    let m = snapshot.modules
+    let css = "body{font:14px system-ui;margin:16px;background:#111;color:#ddd}section{display:inline-block;vertical-align:top;margin:8px;padding:12px;background:#1c1c1e;border-radius:10px;min-width:300px}h2{margin:0 0 8px;font-size:15px}table{border-collapse:collapse}th{text-align:left;padding-right:12px;color:#999;font-weight:normal}.meter{height:8px;background:#333;border-radius:4px;margin-bottom:8px}.meter div{height:8px;background:#34c759;border-radius:4px}.bad{color:#ff453a}"
+    let page = "<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"" + str(refresh_seconds) + "\"><title>novalang_stats</title><style>" + css + "</style></head><body>\n"
+    # A line that starts with "+" is a new statement, not a continuation, and after a `return` it is
+    # silently dead code (G-011), so the page is built up one statement at a time.
+    page = page + "<h1>novalang_stats <small>" + esc_html(snapshot.time) + "</small></h1>\n"
+    page = page + cpu_card(m.cpu) + ram_card(m.ram) + disk_card(m.disk) + net_card(m.net)
+    page = page + battery_card(m.battery) + clock_card(m.clock) + benchmark_card(snapshot.benchmark)
+    return page + "</body></html>\n"
+}

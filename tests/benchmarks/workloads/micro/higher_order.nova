@@ -1,0 +1,10 @@
+# micro: map, filter, reduce with NovaLang functions called back from the library.
+def square(x) { return x * x % 1009 }
+def even(x) { return x % 2 == 0 }
+def add(a, b) { return a + b }
+let data = range(1, 2000)
+let total = 0
+for pass = 1 to 25 {
+    total = total + reduce(add, filter(even, map(square, data)))
+}
+print(total)

@@ -48,6 +48,7 @@ python3 tests/conformance/record.py --check              the VM still does what 
 | `error_like` | optional regular expression the error must match instead of equalling `error`, for a message that contains a host-defined limit (the call depth) |
 | `deep` | optional; the program recurses until the host's call-depth limit, so it is not run on the tree-walker where that would crash the process (Windows before Python 3.11; a `SKIPPED:` line says so) |
 | `sandbox` | `sandbox` profile cases only: the engine's configuration (`docs/spec/16-sandbox.md`, `[sbx.profiles]`): `profile` (`trusted` or `restricted`), grants `read`, `write`, `import_from` (folders relative to the case's folder), `env` (names), `clock`, `random`, `stdin`, `process`, `regex` (booleans), `python` (module names) and `limits` (`steps`, `time`, `output`, `list`, `string`, `dict`, `depth`). The engines do not enforce it yet, so every case records the divergence (D-040 to D-044) until the engine follows the spec; a grant of Python modules turns the bridge on |
+| `artifact`, `deterministic` | `bytecode` profile cases only (`docs/spec/17-bytecode.md`). `artifact` is the bytes of a bytecode file in hexadecimal: the host reads it, and the result is what running it gives, or, for a refused file, `name: message` (the `[bc.reject]` name and message), exit 1, no output; such a case has `source` empty. Without `artifact`, `source` is a program the host writes an artifact from, reads back and runs (the result must be the program's own). `deterministic` (true) asks the host to check `[bc.determinism]` for that source. A `sandbox` object sets the engine's grants, as in the `sandbox` profile. A `cache` object (with `source`; for POSIX hosts, so `platforms` is required) is a case about `[bc.cache]`: `entry` (hex bytes of the file named for the source, planted before the run), `link` (the same bytes, planted as a symbolic link to a file outside the directory), `mode` (the directory's mode, octal, 0700 if absent), `dir` (`explicit`: the embedder names the directory; `default`: the host finds the per-user one, through XDG_CACHE_HOME) and `runs` (every run must give the same result); `cache_after` is what the directory holds afterwards, for the program and for each module of `files`: `absent`, `valid`, `unchanged`, `invalid` or `link`. These cases run on the bytecode VM only |
 | `matrix` | optional; the coverage-matrix cells the case proves, `"files.read:deny"`, `"list.plus:trip"` (`tests/security/matrix.py`); each must be a cell the specification asks for |
 | `divergences` | optional; see below |
 
@@ -90,6 +91,8 @@ case keeps the spec's value and the engine's behavior goes in `divergences`.
 | `vm` | `novalang.Interpreter("vm")`, in this process |
 | `tree` | `novalang.Interpreter("tree")`, in this process |
 | `bootstrap` | `novalang.py --bootstrap`, one subprocess per case, four at a time |
+
+The `bytecode` profile (`cases/bytecode.json`, written by `tests/bytecode/make_conformance_cases.py`) runs on `vm` only.
 
 ## Adding to the corpus
 

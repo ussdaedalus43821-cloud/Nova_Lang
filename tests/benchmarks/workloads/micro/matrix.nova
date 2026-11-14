@@ -1,0 +1,28 @@
+# micro: nested loops over lists of lists (indexing twice per access).
+def make(n, seed) {
+    let m = []
+    for i = 0 to n - 1 {
+        let row = []
+        for j = 0 to n - 1 {
+            append(row, (i * seed + j) % 10)
+        }
+        append(m, row)
+    }
+    return m
+}
+def multiply(a, b, n) {
+    let c = make(n, 0)
+    for i = 0 to n - 1 {
+        for j = 0 to n - 1 {
+            let s = 0
+            for k = 0 to n - 1 {
+                s = s + a[i][k] * b[k][j]
+            }
+            c[i][j] = s
+        }
+    }
+    return c
+}
+let n = 36
+let r = multiply(make(n, 3), make(n, 7), n)
+print(r[0][0] + r[n - 1][n - 1])

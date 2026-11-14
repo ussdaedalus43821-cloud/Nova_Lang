@@ -1,0 +1,40 @@
+# clock.nova - the clock reader (Stats: Modules/Clock).
+# format_time() only knows the machine's local zone and there is no zone database, so
+# other cities are fixed UTC offsets with no daylight-saving rules (docs/GAPS.md G-014).
+import "../kit.nova" as kit
+
+def at_offset(wall, hours) {
+    return format_time(wall + hours * 3600 - local_offset(wall) * 3600, "%H:%M")
+}
+
+# The local UTC offset, from the epoch itself: UTC minutes-of-day by arithmetic, local minutes-of-day from
+# format_time() (which follows the machine's zone and its daylight saving).
+def local_offset(wall) {
+    let local_minutes = num(format_time(wall, "%H")) * 60 + num(format_time(wall, "%M"))
+    let utc_minutes = (wall // 60) % 1440
+    let diff = (local_minutes - utc_minutes) % 1440
+    if diff > 720 {
+        diff = diff - 1440
+    }
+    return diff / 60
+}
+
+export def sample(ctx, state) {
+    let wall = ctx.wall
+    let zones = [
+        {name: "UTC", offset: 0},
+        {name: "New York", offset: -5},
+        {name: "London", offset: 0},
+        {name: "Tokyo", offset: 9}
+    ]
+    let world = []
+    for z in zones {
+        world = world + [{name: z.name, offset: z.offset, time: at_offset(wall, z.offset)}]
+    }
+    return {
+        time: format_time(wall, "%H:%M:%S"),
+        date: format_time(wall, "%Y-%m-%d"),
+        utc_offset_hours: local_offset(wall),
+        world: world
+    }
+}

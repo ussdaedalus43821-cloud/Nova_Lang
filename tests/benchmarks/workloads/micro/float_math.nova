@@ -1,0 +1,9 @@
+# micro: float arithmetic and math builtins (call into Python).
+def work(n) {
+    let total = 0.0
+    for i = 1 to n {
+        total = total + sqrt(i) * 0.5 + abs(sin(i)) - floor(i / 3.0)
+    }
+    return round(total, 3)
+}
+print(work(60000))

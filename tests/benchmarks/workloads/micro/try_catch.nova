@@ -1,0 +1,20 @@
+# micro: try/catch in a loop, half of the iterations throw.
+def risky(i) {
+    if i % 2 == 0 {
+        throw("odd one out")
+    }
+    return i
+}
+def work(n) {
+    let ok = 0
+    let failed = 0
+    for i = 1 to n {
+        try {
+            ok = ok + risky(i)
+        } catch e {
+            failed = failed + len(e)
+        }
+    }
+    return ok + failed
+}
+print(work(40000))

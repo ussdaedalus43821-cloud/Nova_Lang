@@ -1,0 +1,207 @@
+# battery_model.nova - runtime, charge time, health and wear.
+# Stats only shows the figures macOS computes (kIOPSTimeToEmptyKey / kIOPSTimeToFullChargeKey).
+# This module computes its own from the raw gauge readings and lets the dashboard put the
+# two side by side. Units: capacity mAh, voltage mV, current mA (negative = discharging),
+# power W, durations in hours. A duration of -1 means "unknown" (there is no null, G-009).
+import "kit.nova" as kit
+
+# ---- Assumptions (not measurements). Each is logged next to the result it affects. ----
+export let KNEE = 0.80              # constant-current charging holds up to this fraction of full capacity
+export let TERMINATION_C = 0.02     # charging ends when the current has tapered to this multiple of design capacity
+export let MIN_DRAW_W = 0.5         # below this the pack is idle and a runtime would be meaningless
+export let WINDOW_SECONDS = 300     # rolling window for the smoothed draw
+export let SERVICE_HEALTH = 80      # Apple's "service recommended" threshold, percent of design capacity
+export let UNKNOWN_TIME = 65535     # the gauge's "no estimate" value
+
+# Wh stored: capacity times voltage.
+export def watt_hours(mah, mv) {
+    return mah * mv / 1000000
+}
+
+# Power in watts from current and voltage: |I| * V.
+export def power_w(current_ma, voltage_mv) {
+    return abs(current_ma) * voltage_mv / 1000000
+}
+
+# Draw averaged over the last WINDOW_SECONDS of samples. `window` is kept in state.
+export def push_sample(window, t, watts) {
+    append(window, {t: t, w: watts})
+    while len(window) > 1 and t - window[0].t > WINDOW_SECONDS {
+        pop(window, 0)
+    }
+}
+
+export def window_average(window) {
+    if len(window) == 0 {
+        return 0
+    }
+    let total = 0
+    for s in window {
+        total = total + s.w
+    }
+    return total / len(window)
+}
+
+# Hours of runtime at a given draw, or -1 when the draw is too small to mean anything.
+export def runtime_hours(remaining_wh, watts) {
+    if watts < MIN_DRAW_W {
+        return -1
+    }
+    return remaining_wh / watts
+}
+
+# Time to reach a full charge. Two phases:
+#   constant current from where we are up to KNEE of full capacity, at the measured current;
+#   then a taper in which the current decays exponentially from that value down to the
+#   termination current. For a decay i(t) = i0 * exp(-t/tau) the charge delivered until the
+#   current reaches i_end is tau * (i0 - i_end), so tau is fixed by the charge still needed
+#   and the time is tau * ln(i0 / i_end).
+export def taper_hours(charge_needed_mah, i_start_ma, i_end_ma) {
+    if charge_needed_mah <= 0 {
+        return 0
+    }
+    if i_start_ma <= i_end_ma {
+        return charge_needed_mah / i_start_ma
+    }
+    let tau = charge_needed_mah / (i_start_ma - i_end_ma)
+    return tau * ln(i_start_ma / i_end_ma)
+}
+
+export def charge_hours(remaining_mah, full_mah, design_mah, current_ma) {
+    if current_ma <= 0 {
+        return -1
+    }
+    let i_end = TERMINATION_C * design_mah
+    let knee_mah = full_mah * KNEE
+    if remaining_mah >= full_mah {
+        return 0
+    }
+    if remaining_mah < knee_mah {
+        let cc_hours = (knee_mah - remaining_mah) / current_ma
+        return cc_hours + taper_hours(full_mah - knee_mah, current_ma, i_end)
+    }
+    return taper_hours(full_mah - remaining_mah, current_ma, i_end)
+}
+
+# The gauge writes 65535 for "no estimate". Minutes in, minutes out, -1 for unknown.
+export def gauge_minutes(v) {
+    if v >= UNKNOWN_TIME or v < 0 {
+        return -1
+    }
+    return v
+}
+
+export def health_pct(full_mah, design_mah) {
+    return full_mah * 100 / design_mah
+}
+
+# Wear: capacity lost per charge cycle, the cycle share used, a straight-line projection to the
+# service threshold and the projected health at the design cycle count. The projection is
+# linear - an assumption, since capacity fade is not.
+export def wear(full_mah, design_mah, cycles, design_cycles) {
+    let lost = design_mah - full_mah
+    let per_cycle = 0
+    if cycles > 0 {
+        per_cycle = lost / cycles
+    }
+    let service_mah = design_mah * SERVICE_HEALTH / 100
+    let cycles_left = -1
+    let below_service = full_mah < service_mah
+    if per_cycle > 0 and not below_service {
+        cycles_left = (full_mah - service_mah) / per_cycle
+    }
+    let at_design = design_mah - per_cycle * design_cycles
+    return {
+        lost_mah: lost,
+        lost_per_cycle_mah: per_cycle,
+        cycle_share_pct: cycles * 100 / design_cycles,
+        cycles_to_service: cycles_left,
+        below_service: below_service,
+        health_at_design_cycles_pct: at_design * 100 / design_mah
+    }
+}
+
+export def state_name(external, charging, current_ma) {
+    if external and charging {
+        return "charging"
+    }
+    if external {
+        return "plugged"
+    }
+    if current_ma < 0 {
+        return "discharging"
+    }
+    return "idle"
+}
+
+# Everything the dashboard shows about the pack. `g` is the parsed gauge sample.
+export def compute(g, state, t) {
+    let st = state_name(g.external, g.charging, g.current_ma)
+    let watts = power_w(g.current_ma, g.voltage_mv)
+    let remaining_wh = watt_hours(g.remaining_mah, g.voltage_mv)
+    let full_wh = watt_hours(g.full_mah, g.voltage_mv)
+    let smooth_w = watts
+    let inst_h = -1
+    let smooth_h = -1
+    let charge_h = -1
+    if st == "discharging" {
+        push_sample(state.window, t, watts)
+        smooth_w = window_average(state.window)
+        inst_h = runtime_hours(remaining_wh, watts)
+        smooth_h = runtime_hours(remaining_wh, smooth_w)
+    } else {
+        state.window = []
+    }
+    if st == "charging" {
+        charge_h = charge_hours(g.remaining_mah, g.full_mah, g.design_mah, g.current_ma)
+    }
+    # The gauge also reports the power itself, which makes a free consistency check.
+    let reported_w = abs(g.reported_power_mw) / 1000
+    let power_error_pct = 0
+    if reported_w > 0 {
+        power_error_pct = (watts - reported_w) * 100 / reported_w
+    }
+    return {
+        state: st,
+        percent: round(g.remaining_mah * 100 / g.full_mah, 1),
+        remaining_mah: g.remaining_mah,
+        full_mah: g.full_mah,
+        design_mah: g.design_mah,
+        voltage_v: g.voltage_mv / 1000,
+        current_ma: g.current_ma,
+        power_w: watts,
+        power_w_smoothed: smooth_w,
+        reported_power_w: reported_w,
+        power_error_pct: power_error_pct,
+        remaining_wh: remaining_wh,
+        full_wh: full_wh,
+        runtime_h: inst_h,
+        runtime_smoothed_h: smooth_h,
+        full_charge_runtime_h: runtime_hours(full_wh, smooth_w),
+        charge_h: charge_h,
+        health_pct: health_pct(g.full_mah, g.design_mah),
+        wear: wear(g.full_mah, g.design_mah, g.cycles, g.design_cycles),
+        cycles: g.cycles,
+        design_cycles: g.design_cycles,
+        window_samples: len(state.window)
+    }
+}
+
+# Compare the model with published battery-test figures. baselines.json holds the figures with
+# their sources and test conditions. A figure is hours on the design-capacity pack; the draw it
+# implies is design_wh / hours, and a pack with this one's health lasts that many hours scaled by health.
+export def benchmark(baselines, health_pct_now, measured_full_charge_h) {
+    let rows = []
+    for b in baselines.sources {
+        let implied_w = baselines.design_wh / b.hours
+        rows = rows + [{
+            source: b.source,
+            test: b.test,
+            published_h: b.hours,
+            implied_w: implied_w,
+            health_adjusted_h: b.hours * health_pct_now / 100,
+            measured_full_charge_h: measured_full_charge_h
+        }]
+    }
+    return rows
+}

@@ -4102,6 +4102,8 @@ class ProgramExit(Exception):
 
 
 class Interpreter:
+    artifact_cache = None            # an ArtifactCache for a command-line program and its modules ([bc.cache]); None: no cache
+
     def __init__(self, engine=None, allow_python=None, capabilities=None):
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
@@ -7000,11 +7002,23 @@ def typecheck_tool():
 
 def run(source, interpreter, path=None):
     """Lex, parse, type-gate and run `source`; (ast, value). `path` is the
-    module's absolute path when this is a module load."""
+    module's absolute path when this is a module load. When the interpreter
+    has an artifact cache (docs/spec/17-bytecode.md [bc.cache]: a command-line
+    program or a module it imports, on the bytecode VM), a hit skips lexing,
+    parsing and compiling - never the type gate - and a miss writes the entry."""
     try:
+        cache = interpreter.artifact_cache if interpreter.engine == "vm" else None
+        if cache is not None:
+            loaded = cache.lookup(source)
+            if loaded is not None and loaded is not CACHE_REJECTED:
+                program = LoadedProgram(loaded.annotated, loaded.imports, loaded.code)
+                type_gate(program, source, interpreter, path)
+                return program, run_program(program, interpreter)
         tokens = Lexer(source).tokenize()
         ast = Parser(tokens).parse()
         type_gate(ast, source, interpreter, path)
+        if cache is not None:
+            cache.store(source, ast, replacing=loaded is CACHE_REJECTED)
         return ast, run_program(ast, interpreter)
     except RecursionError:
         # A program nested too deeply to lex, parse or run: a NovaLang error, never Python's
@@ -7392,6 +7406,1141 @@ def show_vars(interpreter):
 
 
 # ---------------------------------------------------------------------------
+# Bytecode artifacts (.novac)  -  M12 slice 4
+# ---------------------------------------------------------------------------
+#
+# A compiled module written down so a later run can skip lexing, parsing and compiling, and so a program can be
+# shipped as one self-contained file: the artifact carries the source text it was compiled from. The contract is
+# docs/spec/17-bytecode.md (sections [bc.*]); the rules in short:
+#
+#   * a purpose-built, length-prefixed, little-endian binary format, never pickle or marshal, read by explicit code;
+#   * a closed set of constant types; no object reference of any kind; built-ins are named, never pointed at;
+#   * the loader checks everything the VM would otherwise trust (V1 to V14), and every way a file can be wrong is
+#     one named BytecodeLoadError: accepted, or cleanly rejected, never misread;
+#   * the same source and compiler give the same bytes (so a check is "recompile and compare").
+#
+# An artifact is not a security boundary and its checksum is not a signature: it detects accident, not tampering.
+
+ARTIFACT_MAGIC = b"NOVAC\r\n\x1a"
+ARTIFACT_FORMAT = 0             # development builds write 0; the first release writes 1 and a loader reads only its own
+ARTIFACT_LIMITS = {
+    "artifact": 64 * 1024 * 1024,       # bytes in a file
+    "string": 16 * 1024 * 1024,         # bytes in a name, a text constant or the source
+    "integer": 1661,                    # bytes of an integer's magnitude (4,000 decimal digits)
+    "instructions": 4194304,            # per code object
+    "pool": 1048576,                    # constants per code object
+    "slots": 1048576,                   # nslots per code object
+    "operands": 1048576,                # a count, a chain, a list of slots or keys
+    "depth": 256,                       # nested code objects
+    "objects": 65536,                   # code objects per file
+    "version": 64,                      # bytes of the compiler version string
+}
+
+# (opcode, argument kind, stack effect text) in opcode order: the table of [bc.ops]. tests/compiler/test_bytecode_draft.py
+# checks it against OPCODES, STACK_EFFECT and the document.
+ARTIFACT_TABLE = (
+    ('LOAD_CONST', 'const', '+1'),
+    ('POP', '-', '-1'),
+    ('DUP', '-', '+1'),
+    ('LOAD_FAST', 'slot', '+1'),
+    ('STORE_FAST', 'slot', '-1'),
+    ('LOAD_CELL', 'slot', '+1'),
+    ('STORE_CELL', 'slot', '-1'),
+    ('LOAD_GLOBAL', 'name', '+1'),
+    ('STORE_GLOBAL', 'name', '-1'),
+    ('LOAD_CHAIN', 'chain', '+1'),
+    ('STORE_CHAIN', 'chain', '-1'),
+    ('NEW_CELLS', 'slots', '0'),
+    ('RESET_SLOTS', 'slots', '0'),
+    ('LOAD_BUILTIN', 'name', '+1'),
+    ('ADD', '-', '-1'),
+    ('SUB', '-', '-1'),
+    ('MUL', '-', '-1'),
+    ('DIV', '-', '-1'),
+    ('FLOOR_DIV', '-', '-1'),
+    ('MOD', '-', '-1'),
+    ('NEG', '-', '0'),
+    ('POS', '-', '0'),
+    ('NOT', '-', '0'),
+    ('EQ', '-', '-1'),
+    ('NE', '-', '-1'),
+    ('LT', '-', '-1'),
+    ('GT', '-', '-1'),
+    ('LE', '-', '-1'),
+    ('GE', '-', '-1'),
+    ('IN', '-', '-1'),
+    ('CHECK_BOOL', 'sideop', '0'),
+    ('JUMP_IF_FALSE_KEEP', 'target', '-1 (0 if taken)'),
+    ('JUMP_IF_TRUE_KEEP', 'target', '-1 (0 if taken)'),
+    ('BUILD_LIST', 'count', '1 - n'),
+    ('BUILD_DICT', 'keys', '1 - n'),
+    ('BUILD_STRING', 'count', '1 - n'),
+    ('INDEX', '-', '-1'),
+    ('SLICE_TARGET', '-', '0'),
+    ('SLICE_BOUND', '-', '0'),
+    ('SLICE', 'flags2', '- (flags set)'),
+    ('GET_MEMBER', 'name', '0'),
+    ('INDEX_ASSIGN_TARGET', '-', '0'),
+    ('INDEX_ASSIGN_KEY', '-', '0'),
+    ('INDEX_ASSIGN', '-', '-2'),
+    ('MEMBER_ASSIGN_TARGET', '-', '0'),
+    ('SET_MEMBER', 'name', '-1'),
+    ('DELETE_TARGET', '-', '0'),
+    ('DELETE_KEY', '-', '-1'),
+    ('DELETE_FILE', '-', '0'),
+    ('JUMP', 'target', '0'),
+    ('JUMP_IF_NOT_TRUE', 'condtarget', '-1'),
+    ('LOOP_NUMBER', 'role', '0'),
+    ('RANGE_PREP', 'rangeprep', '-(2 + step flag)'),
+    ('RANGE_NEXT', 'slottarget', '0 if taken, +1 otherwise'),
+    ('ITER_PREP', 'iterprep', '-1'),
+    ('ITER_NEXT', 'slottarget', '0 if taken, +names otherwise'),
+    ('MAKE_FUNCTION', 'const', '+1'),
+    ('CALL', 'count', '-n'),
+    ('RETURN', '-', '-1'),
+    ('THROW', '-', '-1'),
+    ('RERAISE', 'slot', '0'),
+    ('STRAY', 'stray', '0'),
+    ('FAIL', 'failtext', '0'),
+    ('IMPORT', 'name', '+1'),
+    ('IMPORT_NAME', 'importname', '0'),
+    ('EXPORT', 'name', '0'),
+)
+ARTIFACT_KIND = {name: kind for name, kind, _ in ARTIFACT_TABLE}
+ARTIFACT_CHAIN_KINDS = ("fast", "cell", "free", "global")
+ARTIFACT_CONDITIONS = ("if", "while")
+ARTIFACT_ROLES = ("the start of a 'for' range", "the end of a 'for' range", "a 'for' step")
+ARTIFACT_STRAYS = ("return", "break", "continue")
+ARTIFACT_SIDES = ("left", "right")
+ARTIFACT_LOGIC = ("and", "or")
+ARTIFACT_NO_POSITION = 0xFFFFFFFF
+
+
+class BytecodeLoadError(Exception):
+    """Why an artifact was refused: `name` is the stable name of [bc.reject], `str(error)` its message."""
+
+    def __init__(self, name, message):
+        super().__init__(message)
+        self.name = name
+
+
+class BytecodeDumpError(Exception):
+    """A code object that cannot be written down (a limit of [bc.limits], or a shape the format does not know):
+    the program is simply not cached and runs from source."""
+
+
+def artifact_opcode_hash():
+    """SHA-256 of the canonical text of the opcode table ([bc.header]): one line per opcode, `number name kind effect r<revision>`."""
+    import hashlib
+    text = "".join("{} {} {} {} r1\n".format(number, name, kind, effect)
+                   for number, (name, kind, effect) in enumerate(ARTIFACT_TABLE))
+    return hashlib.sha256(text.encode("utf-8")).digest()
+
+
+def bytecode_flags(program):
+    return (1 if getattr(program, "annotated", False) else 0) | (2 if getattr(program, "imports", False) else 0)
+
+
+# -- writing ----------------------------------------------------------------------------------------
+
+class ArtifactWriter:
+    def __init__(self):
+        self.parts = []
+
+    def u8(self, value):
+        self.parts.append(bytes((value,)))
+
+    def u32(self, value):
+        if not 0 <= value <= 0xFFFFFFFF:
+            raise BytecodeDumpError("a number does not fit 32 bits")
+        self.parts.append(value.to_bytes(4, "little"))
+
+    def raw(self, data):
+        self.parts.append(data)
+
+    def name(self, text):
+        try:
+            data = text.encode("utf-8")
+        except (UnicodeEncodeError, AttributeError):
+            raise BytecodeDumpError("text that is not valid UTF-8") from None
+        if len(data) > ARTIFACT_LIMITS["string"]:
+            raise BytecodeDumpError("text too long")
+        self.u32(len(data))
+        self.raw(data)
+
+    def bytes(self):
+        return b"".join(self.parts)
+
+
+def pool_key(value):
+    if isinstance(value, CodeObject):
+        return ("code", id(value))
+    if isinstance(value, BuiltinFunction):
+        return ("builtin", value.name)
+    if value is NOTHING:
+        return ("nothing",)
+    if isinstance(value, float):
+        import struct
+        return ("float", struct.pack("<d", value))
+    return (type(value).__name__, value)
+
+
+def encode_constant(value, out, depth, counter):
+    if value is NOTHING:
+        out.u8(0)
+    elif value is False:
+        out.u8(1)
+    elif value is True:
+        out.u8(2)
+    elif isinstance(value, int):
+        out.u8(3)
+        out.u8(1 if value < 0 else 0)
+        magnitude = abs(value).to_bytes((abs(value).bit_length() + 7) // 8, "little")
+        if len(magnitude) > ARTIFACT_LIMITS["integer"]:
+            raise BytecodeDumpError("an integer too large")
+        out.u32(len(magnitude))
+        out.raw(magnitude)
+    elif isinstance(value, float):
+        import struct
+        if value != value:
+            raise BytecodeDumpError("a constant that is not a number")
+        out.u8(4)
+        out.raw(struct.pack("<d", value))
+    elif isinstance(value, str):
+        out.u8(5)
+        out.name(value)
+    elif isinstance(value, BuiltinFunction):
+        if BUILTINS.get(value.name) is not value or value.name in CAPABILITY_OF:
+            raise BytecodeDumpError("a built-in that cannot be named: {}".format(value.name))
+        out.u8(6)
+        out.name(value.name)
+    elif isinstance(value, CodeObject):
+        out.u8(7)
+        encode_code(value, out, depth + 1, counter)
+    else:
+        raise BytecodeDumpError("a constant of a kind the format does not have: {}".format(type(value).__name__))
+
+
+def encode_code(code, out, depth, counter):
+    if depth > ARTIFACT_LIMITS["depth"]:
+        raise BytecodeDumpError("functions nested more than {} deep".format(ARTIFACT_LIMITS["depth"]))
+    counter[0] += 1
+    if counter[0] > ARTIFACT_LIMITS["objects"]:
+        raise BytecodeDumpError("more than {} functions".format(ARTIFACT_LIMITS["objects"]))
+    count = len(code.ops)
+    if count > ARTIFACT_LIMITS["instructions"] or code.nslots > ARTIFACT_LIMITS["slots"]:
+        raise BytecodeDumpError("a function too large")
+    out.name(code.name)
+    out.u32(code.nslots)
+    out.u32(len(code.params))
+    for slot in code.params:
+        out.u32(slot)
+    out.u32(len(code.param_names))
+    for text in code.param_names:
+        out.name(text)
+    out.u32(len(code.cell_params))
+    for slot in code.cell_params:
+        out.u32(slot)
+    out.u32(len(code.slot_names))
+    for text in code.slot_names:
+        out.name(text)
+    out.u32(len(code.freevars))
+    for text in code.freevars:
+        out.name(text)
+    out.u32(len(code.closure))
+    for kind, where in code.closure:
+        if kind not in ("cell", "free") or not isinstance(where, int):
+            raise BytecodeDumpError("a closure entry the format does not know")
+        out.u8(1 if kind == "cell" else 2)
+        out.u32(where)
+    # Instructions first into a side buffer, so the pool is built in order of first use (and so deterministically).
+    pool, seen = [], {}
+
+    def pool_ref(value):
+        key = pool_key(value)
+        if key not in seen:
+            seen[key] = len(pool)
+            pool.append(value)
+        return seen[key]
+
+    body = ArtifactWriter()
+    for index in range(count):
+        number = code.ops[index]
+        name = OPCODES[number]
+        kind = ARTIFACT_KIND[name]
+        arg = code.args[index]
+        body.u8(number)
+        encode_argument(kind, name, arg, code, pool_ref, body)
+    out.u32(len(pool))
+    if len(pool) > ARTIFACT_LIMITS["pool"]:
+        raise BytecodeDumpError("a pool too large")
+    for value in pool:
+        encode_constant(value, out, depth, counter)
+    out.u32(count)
+    out.raw(body.bytes())
+    for position in code.positions:
+        if position is None:
+            out.u32(ARTIFACT_NO_POSITION)
+        elif isinstance(position, int) and 0 <= position < ARTIFACT_NO_POSITION:
+            out.u32(position)
+        else:
+            raise BytecodeDumpError("a source position the format does not know")
+    out.u32(len(code.exception_table))
+    for start, end, handler, kind in code.exception_table:
+        out.u32(start)
+        out.u32(end)
+        out.u32(handler)
+        out.u8({"catch": 0, "finally": 1}[kind])
+
+
+def encode_argument(kind, name, arg, code, pool_ref, out):
+    constants = code.constants
+    if kind == "-":
+        if arg is not None:
+            raise BytecodeDumpError("an argument where there is none")
+    elif kind in ("slot", "count", "target"):
+        out.u32(arg)
+    elif kind == "const":
+        out.u32(pool_ref(constants[arg]))
+    elif kind == "name":
+        out.name(arg if name in ("LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_BUILTIN") else constants[arg])
+    elif kind == "chain":
+        chain = constants[arg]
+        out.u32(len(chain))
+        for place, where in chain:
+            out.u8(ARTIFACT_CHAIN_KINDS.index(place))
+            if place == "global":
+                out.name(where)
+            else:
+                out.u32(where)
+    elif kind == "slots":
+        out.u32(len(constants[arg]))
+        for slot in constants[arg]:
+            out.u32(slot)
+    elif kind == "keys":
+        out.u32(len(constants[arg]))
+        for key in constants[arg]:
+            out.name(key)
+    elif kind == "sideop":
+        side, logic = constants[arg]
+        out.u8(ARTIFACT_SIDES.index(side))
+        out.u8(ARTIFACT_LOGIC.index(logic))
+    elif kind == "flags2":
+        out.u8(1 if arg[0] else 0)
+        out.u8(1 if arg[1] else 0)
+    elif kind == "condtarget":
+        out.u8(ARTIFACT_CONDITIONS.index(constants[arg[0]]))
+        out.u32(arg[1])
+    elif kind == "role":
+        out.u8(ARTIFACT_ROLES.index(constants[arg]))
+    elif kind == "rangeprep":
+        out.u32(arg[0])
+        out.u8(1 if arg[1] else 0)
+        out.u8(1 if arg[2] else 0)
+    elif kind == "slottarget":
+        out.u32(arg[0])
+        out.u32(arg[1])
+    elif kind == "iterprep":
+        out.u32(arg[0])
+        out.u8(arg[1])
+    elif kind == "stray":
+        out.u8(ARTIFACT_STRAYS.index(constants[arg]))
+    elif kind in ("failtext", "importname"):
+        first, second = constants[arg]
+        out.name(first)
+        out.name(second)
+    else:
+        raise BytecodeDumpError("an argument kind the format does not know: {}".format(kind))
+
+
+def dump_artifact(code, source, flags=0):
+    """The bytes of an artifact for `code`, compiled from `source` (a str) with the given flags."""
+    import hashlib
+    source_bytes = source.encode("utf-8", "strict") if isinstance(source, str) else None
+    if source_bytes is None:
+        raise BytecodeDumpError("source must be text")
+    body = ArtifactWriter()
+    encode_code(code, body, 1, [0])
+    body_bytes = body.bytes()
+    version = __version__.encode("utf-8")
+    if len(version) > ARTIFACT_LIMITS["version"]:
+        raise BytecodeDumpError("version string too long")
+    head = ArtifactWriter()
+    head.raw(ARTIFACT_MAGIC)
+    head.u32(ARTIFACT_FORMAT)
+    head.raw(artifact_opcode_hash())
+    head.u32(len(version))
+    head.raw(version)
+    head.u32(flags)
+    head.raw(hashlib.sha256(source_bytes).digest())
+    head.u32(len(source_bytes))
+    head.raw(source_bytes)
+    head.u32(len(body_bytes))
+    head.raw(body_bytes)
+    data = head.bytes()
+    if len(data) + 32 > ARTIFACT_LIMITS["artifact"]:
+        raise BytecodeDumpError("an artifact over {} bytes".format(ARTIFACT_LIMITS["artifact"]))
+    return data + hashlib.sha256(data).digest()
+
+
+def compile_artifact(source):
+    """Lex, parse and compile `source` and write the artifact. NovaError for a program that does not compile;
+    BytecodeDumpError for one that cannot be written down."""
+    program = Parser(Lexer(source).tokenize()).parse()
+    return dump_artifact(compile_ast(program), source, bytecode_flags(program))
+
+
+# -- reading ----------------------------------------------------------------------------------------
+
+def artifact_error(name, text):
+    return BytecodeLoadError(name, "bytecode artifact: " + text)
+
+
+class ArtifactReader:
+    def __init__(self, data, start, end):
+        self.data = data
+        self.at = start
+        self.end = end
+
+    def left(self):
+        return self.end - self.at
+
+    def take(self, count):
+        if count < 0 or count > self.left():
+            raise artifact_error("truncated", "truncated")
+        piece = self.data[self.at:self.at + count]
+        self.at += count
+        return piece
+
+    def u8(self):
+        return self.take(1)[0]
+
+    def flag(self):
+        value = self.u8()
+        if value > 1:
+            raise artifact_error("bad-constant", "bad constant")
+        return value == 1
+
+    def u32(self):
+        return int.from_bytes(self.take(4), "little")
+
+    def count(self, width=1, limit="operands"):
+        """A list length, checked against the limit and against the bytes that remain before anything is allocated."""
+        n = self.u32()
+        if n > ARTIFACT_LIMITS[limit]:
+            raise artifact_error("limit-exceeded", "too large ({})".format(limit))
+        if n * width > self.left():
+            raise artifact_error("truncated", "truncated")
+        return n
+
+    def name(self, limit="string"):
+        length = self.u32()
+        if length > ARTIFACT_LIMITS[limit]:
+            raise artifact_error("limit-exceeded", "too large ({})".format(limit))
+        try:
+            return self.take(length).decode("utf-8")
+        except UnicodeDecodeError:
+            raise artifact_error("bad-text", "text is not valid UTF-8") from None
+
+
+class LoadedArtifact:
+    """What load_artifact returns: the code object, the embedded source, the flags and the compiler that made it."""
+
+    def __init__(self, code, source, flags, compiler):
+        self.code = code
+        self.source = source
+        self.flags = flags
+        self.annotated = bool(flags & 1)
+        self.imports = bool(flags & 2)
+        self.compiler = compiler
+
+
+class ArtifactFrame:
+    """The little a CodeObject needs from the compiler's frame, rebuilt from the file."""
+
+    def __init__(self, slot_names, free_names):
+        self.slot_names = slot_names
+        self.freevars = [type("Free", (), {"name": text})() for text in free_names]
+
+
+def failed_verify(number):
+    return artifact_error("failed-verify", "failed verification (V{})".format(number))
+
+
+def load_artifact(data, expect_source=None):
+    """Read, check and rebuild an artifact: a LoadedArtifact, or a BytecodeLoadError with the name of [bc.reject].
+    `expect_source`, when given, is the source the caller is about to run: the embedded copy must be identical.
+    Anything unexpected inside the reader is converted to `internal-error` (the containment rule): nothing else escapes."""
+    try:
+        return read_artifact(data, expect_source)
+    except BytecodeLoadError:
+        raise
+    except Exception:               # noqa: BLE001 - the containment rule of [bc.verify]
+        raise artifact_error("internal-error", "internal error while reading") from None
+
+
+def read_artifact(data, expect_source):
+    import hashlib
+    if not isinstance(data, (bytes, bytearray)):
+        raise artifact_error("truncated", "truncated")
+    data = bytes(data)
+    if len(data) > ARTIFACT_LIMITS["artifact"]:
+        raise artifact_error("limit-exceeded", "too large (artifact)")
+    if len(data) < len(ARTIFACT_MAGIC):
+        raise artifact_error("truncated", "truncated")
+    if data[:len(ARTIFACT_MAGIC)] != ARTIFACT_MAGIC:
+        raise artifact_error("bad-magic", "not a NovaLang bytecode file")
+    if len(data) < len(ARTIFACT_MAGIC) + 32:
+        raise artifact_error("truncated", "truncated")
+    if hashlib.sha256(data[:-32]).digest() != data[-32:]:
+        raise artifact_error("checksum-mismatch", "checksum mismatch (the file is damaged)")
+    reader = ArtifactReader(data, len(ARTIFACT_MAGIC), len(data) - 32)
+    version = reader.u32()
+    if version != ARTIFACT_FORMAT:
+        raise artifact_error("unknown-format-version", "format version {} is not supported (this is {})".format(
+            version, ARTIFACT_FORMAT))
+    opcode_hash = reader.take(32)
+    compiler_text = reader.name("version")
+    if opcode_hash != artifact_opcode_hash():
+        raise artifact_error("opcode-set-mismatch", "made for a different instruction set (compiler {})".format(
+            compiler_text[:64]))
+    flags = reader.u32()
+    if flags & ~3:
+        raise artifact_error("bad-flags", "unknown flags")
+    source_hash = reader.take(32)
+    source_bytes = reader.take(reader.count(1, "string"))
+    if hashlib.sha256(source_bytes).digest() != source_hash:
+        raise artifact_error("source-mismatch", "made from a different source")
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise artifact_error("bad-text", "text is not valid UTF-8") from None
+    if expect_source is not None and expect_source != source:
+        raise artifact_error("source-mismatch", "made from a different source")
+    body_length = reader.u32()
+    if body_length > reader.left():
+        raise artifact_error("truncated", "truncated")
+    if body_length < reader.left():
+        raise artifact_error("trailing-bytes", "unexpected bytes after the end")
+    state = {"objects": 0, "source_length": len(source)}
+    code = read_code(reader, 1, state, None)
+    if reader.left():
+        raise artifact_error("trailing-bytes", "unexpected bytes after the end")
+    try:
+        verify(code)                # V4, V6 and V12: jump targets, the stack depth on every path, nothing falls off the end
+    except BytecodeError:
+        raise failed_verify(6) from None
+    return LoadedArtifact(code, source, flags, compiler_text)
+
+
+def read_constant(reader, depth, state, parent_shape):
+    tag = reader.u8()
+    if tag == 0:
+        return NOTHING
+    if tag == 1:
+        return False
+    if tag == 2:
+        return True
+    if tag == 3:
+        negative = reader.flag()
+        length = reader.count(1, "integer")
+        magnitude = reader.take(length)
+        if length and magnitude[-1] == 0:
+            raise artifact_error("bad-constant", "bad constant")
+        if not length and negative:
+            raise artifact_error("bad-constant", "bad constant")
+        value = int.from_bytes(magnitude, "little")
+        return -value if negative else value
+    if tag == 4:
+        import struct
+        value = struct.unpack("<d", reader.take(8))[0]
+        if value != value:
+            raise artifact_error("bad-constant", "bad constant")
+        return value
+    if tag == 5:
+        return reader.name()
+    if tag == 6:
+        text = reader.name()
+        function = BUILTINS.get(text)
+        if function is None or text in CAPABILITY_OF or not isinstance(function, BuiltinFunction):
+            raise artifact_error("unknown-builtin", "unknown or gated built-in {}".format(text[:64]))
+        return function
+    if tag == 7:
+        return read_code(reader, depth + 1, state, parent_shape)
+    raise artifact_error("bad-constant", "bad constant")
+
+
+def read_code(reader, depth, state, parent):
+    """One code object. `parent` is None for the module, else (nslots, free-name count, slot roles' placeholder)."""
+    if depth > ARTIFACT_LIMITS["depth"]:
+        raise failed_verify(1)
+    state["objects"] += 1
+    if state["objects"] > ARTIFACT_LIMITS["objects"]:
+        raise artifact_error("limit-exceeded", "too large (objects)")
+    name = reader.name()
+    nslots = reader.u32()
+    if nslots > ARTIFACT_LIMITS["slots"]:
+        raise artifact_error("limit-exceeded", "too large (slots)")
+    params = [reader.u32() for _ in range(reader.count(4))]
+    if any(slot >= nslots for slot in params):
+        raise failed_verify(3)
+    param_names = [reader.name() for _ in range(reader.count(4))]
+    cell_params = [reader.u32() for _ in range(reader.count(4))]
+    if len(param_names) != len(params) or any(slot not in params for slot in cell_params):
+        raise failed_verify(10)
+    slot_names = [reader.name() for _ in range(reader.count(4))]
+    if len(slot_names) != nslots:
+        raise failed_verify(10)
+    free_names = [reader.name() for _ in range(reader.count(4))]
+    closure = []
+    for _ in range(reader.count(5)):
+        kind, where = reader.u8(), reader.u32()
+        if kind not in (1, 2):
+            raise failed_verify(11)
+        closure.append(("cell" if kind == 1 else "free", where))
+    if len(closure) != len(free_names):
+        raise failed_verify(10)
+    if parent is None:
+        if closure:
+            raise failed_verify(9)
+    else:
+        for kind, where in closure:
+            if where >= (parent[0] if kind == "cell" else parent[1]):
+                raise failed_verify(9)
+    shape = (nslots, len(free_names))
+    code = CodeObject(name, ArtifactFrame(slot_names, free_names))
+    code.nslots = nslots
+    code.params = params
+    code.param_names = param_names
+    code.cell_params = cell_params
+    code.closure = closure
+    # the pool, in file order; structured arguments are appended to it afterwards, as the compiler keeps them
+    code.constants = [read_constant(reader, depth, state, shape) for _ in range(reader.count(1, "pool"))]
+    pool_size = len(code.constants)
+    count = reader.count(1, "instructions")
+    ops, args = [], []
+    for _ in range(count):
+        number = reader.u8()
+        if number >= len(ARTIFACT_TABLE):
+            raise artifact_error("bad-opcode", "unknown instruction {}".format(number))
+        name_ = ARTIFACT_TABLE[number][0]
+        ops.append(number)
+        args.append(read_argument(ARTIFACT_TABLE[number][1], name_, reader, code, nslots, len(free_names), count, pool_size))
+    if count * 4 > reader.left():
+        raise artifact_error("truncated", "truncated")
+    positions = []
+    for _ in range(count):
+        position = reader.u32()
+        if position == ARTIFACT_NO_POSITION:
+            positions.append(None)
+        elif position >= state["source_length"]:
+            raise failed_verify(14)
+        else:
+            positions.append(position)
+    code.ops, code.args, code.positions = ops, args, positions
+    for _ in range(reader.count(13)):
+        start, end, handler, kind = reader.u32(), reader.u32(), reader.u32(), reader.u8()
+        if not (0 <= start < end <= count and handler < count) or kind > 1:
+            raise failed_verify(4)
+        code.exception_table.append((start, end, handler, "finally" if kind else "catch"))
+    check_artifact_code(code, shape)
+    return code
+
+
+def read_argument(kind, name, reader, code, nslots, nfree, count, pool_size):
+    def slot():
+        value = reader.u32()
+        if value >= nslots:
+            raise failed_verify(3)
+        return value
+
+    def target():
+        value = reader.u32()
+        if value >= count:
+            raise failed_verify(4)
+        return value
+
+    def choice(options):
+        value = reader.u8()
+        if value >= len(options):
+            raise failed_verify(11)
+        return options[value]
+
+    if kind == "-":
+        return None
+    if kind == "slot":
+        return slot()
+    if kind == "count":
+        value = reader.u32()
+        if value > ARTIFACT_LIMITS["operands"]:
+            raise failed_verify(7)
+        return value
+    if kind == "target":
+        return target()
+    if kind == "const":
+        index = reader.u32()
+        if index >= pool_size:
+            raise failed_verify(2)
+        is_code = isinstance(code.constants[index], CodeObject)
+        if is_code != (name == "MAKE_FUNCTION"):
+            raise failed_verify(2)
+        return index
+    if kind == "name":
+        text = reader.name()
+        return text if name in ("LOAD_GLOBAL", "STORE_GLOBAL", "LOAD_BUILTIN") else code.const(text)
+    if kind == "chain":
+        entries = []
+        for _ in range(reader.count(5)):
+            place = reader.u8()
+            if place >= len(ARTIFACT_CHAIN_KINDS):
+                raise failed_verify(11)
+            if place == 3:
+                entries.append(("global", reader.name()))
+            else:
+                where = reader.u32()
+                if where >= (nfree if place == 2 else nslots):
+                    raise failed_verify(5)
+                entries.append((ARTIFACT_CHAIN_KINDS[place], where))
+        if not entries:
+            raise failed_verify(5)
+        return code.const(tuple(entries))
+    if kind == "slots":
+        slots = tuple(slot() for _ in range(reader.count(4)))
+        if not slots:
+            raise failed_verify(3)
+        return code.const(slots)
+    if kind == "keys":
+        return code.const(tuple(reader.name() for _ in range(reader.count(4))))
+    if kind == "sideop":
+        side = choice(ARTIFACT_SIDES)
+        logic = choice(ARTIFACT_LOGIC)
+        return code.const((side, logic))
+    if kind == "flags2":
+        return (reader.flag(), reader.flag())
+    if kind == "condtarget":
+        condition = choice(ARTIFACT_CONDITIONS)
+        return (code.const(condition), target())
+    if kind == "role":
+        return code.const(choice(ARTIFACT_ROLES))
+    if kind == "rangeprep":
+        return (slot(), reader.flag(), reader.flag())
+    if kind == "slottarget":
+        return (slot(), target())
+    if kind == "iterprep":
+        first = slot()
+        names = reader.u8()
+        if names not in (1, 2):
+            raise failed_verify(11)
+        return (first, names)
+    if kind == "stray":
+        return code.const(choice(ARTIFACT_STRAYS))
+    if kind in ("failtext", "importname"):
+        first = reader.name()
+        second = reader.name()
+        return code.const((first, second))
+    raise artifact_error("bad-argument", "bad argument")
+
+
+def check_artifact_code(code, shape):
+    """What `verify()` does not check and the VM trusts ([bc.findings] F4): each slot has one role, the closure of each
+    nested function names cells of this one, the loop state is prepared on every path to its use (V3, V8, V9)."""
+    nslots = shape[0]
+    roles = {}
+
+    def role(slot, what):
+        if roles.setdefault(slot, what) != what:
+            raise failed_verify(3)
+
+    for slot in code.params:
+        role(slot, "cell" if slot in code.cell_params else "plain")
+    for index, number in enumerate(code.ops):
+        name = OPCODES[number]
+        arg = code.args[index]
+        if name in ("LOAD_FAST", "STORE_FAST", "RERAISE"):
+            role(arg, "plain")
+        elif name in ("LOAD_CELL", "STORE_CELL"):
+            role(arg, "cell")
+        elif name == "NEW_CELLS":
+            for slot in code.constants[arg]:
+                role(slot, "cell")
+        elif name == "RESET_SLOTS":
+            for slot in code.constants[arg]:
+                role(slot, "plain")
+        elif name in ("LOAD_CHAIN", "STORE_CHAIN"):
+            for place, where in code.constants[arg]:
+                if place == "fast":
+                    role(where, "plain")
+                elif place == "cell":
+                    role(where, "cell")
+        elif name in ("RANGE_PREP", "RANGE_NEXT", "ITER_PREP", "ITER_NEXT"):
+            role(arg[0], "state")
+    for constant in code.constants:
+        if isinstance(constant, CodeObject):
+            for kind, where in constant.closure:
+                if kind == "cell":
+                    role(where, "cell")
+    # loop state: ITER_PREP names counts agree per slot, and every ITER_NEXT / RANGE_NEXT is reached with its state prepared
+    names_of = {}
+    uses = False
+    for index, number in enumerate(code.ops):
+        name = OPCODES[number]
+        if name == "ITER_PREP":
+            if names_of.setdefault(code.args[index][0], code.args[index][1]) != code.args[index][1]:
+                raise failed_verify(8)
+        if name in ("ITER_NEXT", "RANGE_NEXT", "RANGE_PREP", "ITER_PREP"):
+            uses = True
+    if uses:
+        check_loop_state(code)
+
+
+def check_loop_state(code):
+    """Forward data flow: the set of loop-state slots prepared on every path to each instruction (V8). A catch or finally
+    handler starts from what holds at every instruction of the range it protects."""
+    count = len(code.ops)
+    prepare = {OP["RANGE_PREP"], OP["ITER_PREP"]}
+    uses = {OP["RANGE_NEXT"], OP["ITER_NEXT"]}
+    unreached = None
+    state = [unreached] * count
+    handlers = {}
+    for start, end, handler, _ in code.exception_table:
+        handlers.setdefault(handler, []).append((start, end))
+    state[0] = frozenset()
+    work = [0]
+
+    def meet(target, incoming):
+        old = state[target]
+        new = incoming if old is unreached else old & incoming
+        if new != old:
+            state[target] = new
+            work.append(target)
+
+    guard = 0
+    while work:
+        guard += 1
+        if guard > 50 * (count + 1) + 1000:
+            raise failed_verify(8)          # not converging: refuse rather than loop
+        index = work.pop()
+        here = state[index]
+        op = code.ops[index]
+        if op in uses and code.args[index][0] not in here:
+            raise failed_verify(8)
+        out = here | {code.args[index][0]} if op in prepare else here
+        if op in JUMPS:
+            meet(jump_target(code, index), out)
+        if op not in ENDS_FLOW and index + 1 < count:
+            meet(index + 1, out)
+        for handler, ranges in handlers.items():
+            if any(start <= index < end for start, end in ranges):
+                meet(handler, here)
+
+
+def run_artifact_bytes(data, origin, script_args):
+    """Run an artifact in this process: the embedded source is the program's source, the type gate runs on it when the
+    flags say it has annotations or imports, and the loaded code runs on the VM, under the profile of the command line.
+    The containment rule: anything that is not a NovaError leaving the VM while it runs loaded code is an `InternalError`,
+    exit status 70 ([bc.questions] Q4)."""
+    global SCRIPT_ARGS
+    try:
+        artifact = load_artifact(data)
+    except BytecodeLoadError as error:
+        print("{}: {}".format(origin, error), file=sys.stderr)
+        return 1
+    if DEFAULT_ENGINE != "vm":
+        print("a bytecode artifact runs on the bytecode VM only, not on the tree-walker", file=sys.stderr)
+        return 2
+    SCRIPT_ARGS = list(script_args or [])
+    interpreter = Interpreter()
+    interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
+    source = artifact.source
+    program = LoadedProgram(artifact.annotated, artifact.imports, artifact.code)
+    try:
+        type_gate(program, source, interpreter, None)
+        run_program(program, interpreter)
+    except ProgramExit as stop:
+        return stop.code
+    except FatalLimit as fatal:
+        print("{}\n{}".format(origin, fatal.render(source)), file=sys.stderr)
+        return 1
+    except NovaError as error:
+        print("{}\n{}".format(origin, error.render(source)), file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\n(stopped)", file=sys.stderr)
+        return 130
+    except RecursionError:
+        print("NovaError: the interpreter ran out of stack - recursion too deep", file=sys.stderr)
+        return 1
+    except BrokenPipeError:
+        raise
+    except Exception as problem:        # noqa: BLE001 - the containment rule: never a traceback from loaded code
+        print("InternalError: {}".format(type(problem).__name__), file=sys.stderr)
+        return 70
+    return 0
+
+
+def compile_main(arguments):
+    """`--compile FILE.nova -o FILE.novac`: write the artifact of a program. Nothing is run."""
+    if len(arguments) != 3 or arguments[1] != "-o":
+        print("usage: novalang.py --compile file.nova -o file.novac", file=sys.stderr)
+        return 2
+    path, output = arguments[0], arguments[2]
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            source = handle.read()
+    except (OSError, UnicodeDecodeError) as problem:
+        print("cannot read {}: {}".format(path, problem), file=sys.stderr)
+        return 2
+    try:
+        data = compile_artifact(source)
+    except NovaError as error:
+        print(path, file=sys.stderr)
+        print(error.render(source), file=sys.stderr)
+        return 1
+    except BytecodeDumpError as error:
+        print("{}: cannot write a bytecode artifact: {}".format(path, error), file=sys.stderr)
+        return 1
+    temporary = output + ".tmp"
+    try:
+        with open(temporary, "wb") as handle:
+            handle.write(data)
+        os.replace(temporary, output)
+    except OSError as problem:
+        print("cannot write {}: {}".format(output, problem), file=sys.stderr)
+        return 2
+    return 0
+
+
+def check_artifact_main(arguments):
+    """`--check-artifact FILE.novac`: recompile the embedded source and compare the bytes (the format is deterministic), so
+    the code is known to be the compilation of that source ([bc.provenance])."""
+    if len(arguments) != 1:
+        print("usage: novalang.py --check-artifact file.novac", file=sys.stderr)
+        return 2
+    try:
+        with open(arguments[0], "rb") as handle:
+            data = handle.read(ARTIFACT_LIMITS["artifact"] + 1)
+    except OSError as problem:
+        print("cannot read {}: {}".format(arguments[0], problem), file=sys.stderr)
+        return 2
+    try:
+        artifact = load_artifact(data)
+    except BytecodeLoadError as error:
+        print("{}: {}".format(arguments[0], error), file=sys.stderr)
+        return 1
+    try:
+        fresh = compile_artifact(artifact.source)
+    except (NovaError, BytecodeDumpError):
+        print("{}: the embedded source does not compile, so the code cannot be its compilation".format(arguments[0]), file=sys.stderr)
+        return 1
+    if fresh != data:
+        print("{}: the code is NOT the compilation of the embedded source (or it was made by a different compiler: {})".format(
+            arguments[0], artifact.compiler), file=sys.stderr)
+        return 1
+    print("{}: ok: the code is the compilation of the embedded source ({} bytes, compiler {})".format(
+        arguments[0], len(data), artifact.compiler))
+    return 0
+
+
+def is_artifact_file(path):
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(len(ARTIFACT_MAGIC)) == ARTIFACT_MAGIC
+    except OSError:
+        return False
+
+
+def run_artifact_file(path, script_args):
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(ARTIFACT_LIMITS["artifact"] + 1)
+    except OSError as problem:
+        print("cannot read {}: {}".format(path, problem), file=sys.stderr)
+        return 2
+    return run_artifact_bytes(data, path, script_args)
+
+
+# -- the compiled-artifact cache (M12 slice 5; docs/spec/17-bytecode.md [bc.cache]) ----------------------
+
+class LoadedProgram:
+    """What a run needs of a parse when the code comes from an artifact: whether the source has annotations or imports (so the type gate
+    runs when it must) and the code itself."""
+
+    def __init__(self, annotated, imports, code):
+        self.annotated, self.imports, self._code = annotated, imports, code
+
+
+CACHE_SETTINGS = {"disabled": False, "dir": None}       # --no-cache and --cache-dir, set by main()
+CACHE_REJECTED = object()                                # a file was there and could not be used: compile, and replace it
+_CACHES = {}
+
+
+def cache_key(source):
+    """The 64 hex digits that name the entry for `source` ([bc.cache]): SHA-256 over the format version, the opcode-set hash, the compiler
+    version and the source text, each preceded by its length as a u32. Not the profile, the limits, the path or the working directory."""
+    import hashlib
+    parts = (ARTIFACT_FORMAT.to_bytes(4, "little"), artifact_opcode_hash(), __version__.encode("utf-8"), source.encode("utf-8", "surrogatepass"))
+    return hashlib.sha256(b"".join(len(part).to_bytes(4, "little") + part for part in parts)).hexdigest()
+
+
+def default_cache_directory(environ=None):
+    """The per-user cache directory, or None where there is none ([bc.cache]). The cache is not available on Windows."""
+    environ = os.environ if environ is None else environ
+    if sys.platform == "win32":
+        return None
+    explicit = environ.get("XDG_CACHE_HOME")
+    if explicit and os.path.isabs(explicit):
+        return os.path.join(explicit, "novalang")
+    home = environ.get("HOME") or os.path.expanduser("~")
+    if not home or home == "~":
+        return None
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Caches", "novalang")
+    return os.path.join(home, ".cache", "novalang")
+
+
+def cache_switched_off(environ=None):
+    """`--no-cache` or NOVALANG_CACHE=off (also 0, false, no): the cache is off whatever else is said."""
+    environ = os.environ if environ is None else environ
+    return CACHE_SETTINGS["disabled"] or environ.get("NOVALANG_CACHE", "").strip().lower() in ("off", "0", "false", "no")
+
+
+def cache_for_run(capabilities=None, directory=None, environ=None):
+    """The ArtifactCache a command-line run uses, or None. On for the `trusted` profile; off for `restricted` unless the embedder named a
+    directory (`--cache-dir`): a restricted program must not choose where anything is written. Off with `--no-cache`, with
+    NOVALANG_CACHE=off, on Windows (directory ownership cannot be verified there yet), and when the directory is not safe ([bc.cache])."""
+    environ = os.environ if environ is None else environ
+    capabilities = DEFAULT_CAPABILITIES if capabilities is None else capabilities
+    directory = CACHE_SETTINGS["dir"] if directory is None else directory
+    if cache_switched_off(environ):
+        return None
+    if sys.platform == "win32":
+        if directory is not None and not CACHE_SETTINGS.get("warned"):
+            CACHE_SETTINGS["warned"] = True
+            print("novalang: the artifact cache is not available on Windows (the owner of a directory cannot be verified there); "
+                  "running without it", file=sys.stderr)
+        return None
+    if capabilities.restricted and directory is None:
+        return None
+    directory = directory or default_cache_directory(environ)
+    if not directory:
+        return None
+    directory = os.path.abspath(directory)
+    if directory not in _CACHES:
+        cache = ArtifactCache(directory, debug=bool(environ.get("NOVALANG_CACHE_DEBUG")))
+        _CACHES[directory] = cache if cache.prepare() else None
+        if _CACHES[directory] is None and cache.debug:
+            print("novalang cache: the directory cannot be used (it is not ours, is writable by others, or cannot be made): {}".format(directory),
+                  file=sys.stderr)
+    return _CACHES[directory]
+
+
+class ArtifactCache:
+    """A directory of artifacts named by cache_key. Nothing here can fail a program: every problem is a miss or a skipped write
+    ([bc.cache], Reading and Writing). The directory must be owned by the user and not writable by group or others; an entry is
+    read without following a link and must be a regular file of the user's, not writable by others; it is loaded with the full checks of
+    [bc.verify], with the source being run, so an entry that is for another source, damaged, or from another compiler is refused."""
+
+    def __init__(self, directory, debug=False):
+        self.directory = directory
+        self.debug = debug
+        self.counts = {"hit": 0, "miss": 0, "rejected": 0, "stored": 0}
+
+    def note(self, what, key):
+        self.counts[what] = self.counts.get(what, 0) + 1
+        if self.debug:
+            print("novalang cache: {} {}".format(what, key[:12]), file=sys.stderr)
+
+    def safe(self, status, directory):
+        import stat
+        if not (stat.S_ISDIR(status.st_mode) if directory else stat.S_ISREG(status.st_mode)):
+            return False                                    # a link, a socket, a file where a directory should be
+        if hasattr(os, "getuid") and status.st_uid != os.getuid():
+            return False
+        return not status.st_mode & 0o022                   # not writable by group or others
+
+    def prepare(self):
+        """Create the directory (mode 0700) if it is missing, and say whether it may be used."""
+        try:
+            try:
+                status = os.lstat(self.directory)
+            except FileNotFoundError:
+                os.makedirs(os.path.dirname(self.directory), exist_ok=True)
+                try:
+                    os.mkdir(self.directory, 0o700)
+                except FileExistsError:
+                    pass
+                status = os.lstat(self.directory)
+            return self.safe(status, True)
+        except OSError:
+            return False
+
+    def path(self, key):
+        return os.path.join(self.directory, key + ".novac")
+
+    def lookup(self, source):
+        """A LoadedArtifact for `source`; None for no entry; CACHE_REJECTED for an entry that must be replaced."""
+        key = cache_key(source)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(self.path(key), flags)
+        except OSError:
+            self.note("miss", key)
+            return None
+        try:
+            status = os.fstat(descriptor)
+            if not self.safe(status, False) or status.st_size > ARTIFACT_LIMITS["artifact"]:
+                raise ValueError("an entry that may not be read")
+            chunks, remaining = [], status.st_size + 1
+            while remaining > 0:
+                chunk = os.read(descriptor, min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+        except (OSError, ValueError):
+            self.note("rejected", key)
+            return CACHE_REJECTED
+        finally:
+            os.close(descriptor)
+        try:
+            loaded = load_artifact(data, source)
+        except BytecodeLoadError as refusal:
+            self.note("rejected", key)
+            if self.debug:
+                print("novalang cache: {}".format(refusal.name), file=sys.stderr)
+            return CACHE_REJECTED
+        self.note("hit", key)
+        return loaded
+
+    def store(self, source, program, replacing=False):
+        """Compile `program` (the parse of `source`) and write its entry: to a temporary file made exclusively in the directory, then an atomic
+        replace. A program too large to write, a read-only directory, a full disk: skipped, silently."""
+        key = cache_key(source)
+        code = program._code = compile_ast(program)
+        try:
+            data = dump_artifact(code, source, bytecode_flags(program))
+        except BytecodeDumpError:
+            return
+        temporary = "{}.{}.{}.tmp".format(self.path(key), os.getpid(), os.urandom(4).hex())
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0), 0o600)
+            try:
+                view = memoryview(data)
+                while view:
+                    view = view[os.write(descriptor, view):]
+            finally:
+                os.close(descriptor)
+            os.replace(temporary, self.path(key))
+            self.note("stored", key)
+        except OSError:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -7400,6 +8549,7 @@ def run_source(source, origin, script_args=None):
     global SCRIPT_ARGS
     SCRIPT_ARGS = list(script_args or [])
     interpreter = Interpreter()
+    interpreter.artifact_cache = cache_for_run(interpreter.caps)
     # A relative import in this file resolves against its own directory first.
     interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
     try:
@@ -7617,6 +8767,18 @@ def dis_main(paths):
         return 2
     status = 0
     for path in paths:
+        if is_artifact_file(path):
+            try:
+                with open(path, "rb") as handle:
+                    loaded = load_artifact(handle.read(ARTIFACT_LIMITS["artifact"] + 1))
+            except (OSError, BytecodeLoadError) as problem:
+                print("{}: {}".format(path, problem), file=sys.stderr)
+                status = 2
+                continue
+            if len(paths) > 1:
+                print("== " + path)
+            print(disassemble(loaded.code, loaded.source))
+            continue
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 source = handle.read()
@@ -7893,6 +9055,8 @@ def isolate_main(runner, forwarded, rest):
         sys.stderr.buffer.write(chunk)
         sys.stderr.buffer.flush()
 
+    if cache_switched_off() and "--no-cache" not in forwarded:
+        forwarded = forwarded + ["--no-cache"]       # the child's environment is clean: say it, or it would choose for itself
     status, killed = supervise(runner_command(forwarded, rest, memory_mb, wall_ms), runner_environment(runner.get("pass_env", ())),
                                inherit, wall_ms, output_cap, to_out, to_err)
     seen = b"".join(err).decode("utf-8", "replace")
@@ -7936,9 +9100,22 @@ def main(argv):
     sandbox = {}                            # docs/spec/16-sandbox.md [sbx.profiles]
     runner = {}                             # [sbx.runner]: --isolate and the flags that tune it
     forwarded = []                          # the flags the isolated child is given again
-    while args and (args[0] in ("--tree-walk", "--allow-python") or args[0] in SANDBOX_FLAGS
+    while args and (args[0] in ("--tree-walk", "--allow-python", "--no-cache", "--cache-dir") or args[0] in SANDBOX_FLAGS
                     or args[0] in RUNNER_FLAGS):
         flag = args[0]
+        if flag == "--no-cache":
+            CACHE_SETTINGS["disabled"] = True
+            forwarded.append(flag)
+            args = args[1:]
+            continue
+        if flag == "--cache-dir":
+            if len(args) < 2 or not args[1]:
+                print("--cache-dir needs a directory", file=sys.stderr)
+                return 2
+            CACHE_SETTINGS["dir"] = args[1]
+            forwarded.extend([flag, args[1]])
+            args = args[2:]
+            continue
         if flag in RUNNER_FLAGS:
             if flag == "--isolate":
                 runner["isolate"] = True
@@ -8024,11 +9201,19 @@ def main(argv):
         return typecheck_tool().main(["novalang.py --typecheck"] + args[1:])
     if args[0] == "--dis":
         return dis_main(args[1:])
+    if args[0] == "--compile":
+        return compile_main(args[1:])
+    if args[0] == "--check-artifact":
+        return check_artifact_main(args[1:])
     if args[0] == "--format":
         if len(args) < 2:
             print("usage: novalang.py --format file.nova [more.nova ...]", file=sys.stderr)
             return 2
         return load_tool("nova-fmt.py").main(["novalang.py --format", "--write"] + args[1:])
+
+    # `python3 novalang.py program.novac`: a bytecode artifact (a binary file starting with the magic), run as it is
+    if is_artifact_file(args[0]):
+        return unless_the_reader_left(run_artifact_file, args[0], args[1:])
 
     # `python3 novalang.py program.nova`  or  `python3 novalang.py "1 + 2"`
     text = None

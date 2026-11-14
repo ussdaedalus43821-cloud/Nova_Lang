@@ -1,0 +1,23 @@
+# micro: list append and index, dictionary insert, lookup and keys.
+def work(n) {
+    let xs = []
+    let counts = {}
+    for i = 1 to n {
+        append(xs, i % 97)
+        let key = str(i % 53)
+        if key in counts {
+            counts[key] = counts[key] + 1
+        } else {
+            counts[key] = 1
+        }
+    }
+    let total = 0
+    for k in keys(counts) {
+        total = total + counts[k]
+    }
+    for i = 0 to len(xs) - 1 {
+        total = total + xs[i]
+    }
+    return total
+}
+print(work(50000))

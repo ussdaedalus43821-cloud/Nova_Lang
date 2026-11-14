@@ -1,0 +1,46 @@
+# net.nova - the network reader (Stats: Modules/Net/readers.swift).
+# Stats calls getifaddrs(); `netstat -ibn` prints the same per-interface byte counters.
+# The rate needs the previous counters, which live in `state` between ticks. Wi-Fi name,
+# signal strength and the public address need CoreWLAN / network calls and are not
+# attempted (docs/GAPS.md G-013).
+import "../kit.nova" as kit
+
+def is_physical(name) {
+    return kit.has_prefix(name, "en") or kit.has_prefix(name, "pdp_ip")
+}
+
+export def sample(ctx, state) {
+    let rx = 0
+    let tx = 0
+    let names = []
+    for line in split_lines(ctx.sh(["/usr/sbin/netstat", "-ibn"])) {
+        let t = split(line)
+        # One <Link#n> row per interface carries its byte counters. Its Address column is
+        # blank for some interfaces, so the counters are counted from the right-hand end.
+        if len(t) >= 10 and kit.has_prefix(t[2], "<Link#") and is_physical(t[0]) {
+            rx = rx + kit.to_num(t[len(t) - 5], 0)
+            tx = tx + kit.to_num(t[len(t) - 2], 0)
+            names = names + [t[0]]
+        }
+    }
+    let down = 0
+    let up = 0
+    let have_rate = false
+    if "t" in state.net {
+        let dt = ctx.t - state.net.t
+        if dt > 0 {
+            have_rate = true
+            down = max(0, (rx - state.net.rx) / dt)
+            up = max(0, (tx - state.net.tx) / dt)
+        }
+    }
+    state.net = {t: ctx.t, rx: rx, tx: tx}
+    return {
+        interfaces: names,
+        rx_total: rx,
+        tx_total: tx,
+        down: round(down, 1),
+        up: round(up, 1),
+        have_rate: have_rate
+    }
+}

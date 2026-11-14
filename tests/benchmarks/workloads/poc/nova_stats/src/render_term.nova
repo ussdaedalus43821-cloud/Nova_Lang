@@ -1,0 +1,136 @@
+# render_term.nova - the terminal view: snapshot in, list of lines out.
+# NovaLang cannot write an escape character (G-004: no \x, \u, \e; \033 is an error, and
+# there is no chr()), so the host hands over ESC and the style carries it:
+#   style = {esc: <ESC>, color: true}      or    {esc: "", color: false}  for plain text.
+import "kit.nova" as kit
+
+def paint(style, code, text) {
+    if not style.color {
+        return text
+    }
+    return style.esc + "[" + code + "m" + text + style.esc + "[0m"
+}
+
+def level_color(pct) {
+    if pct >= 85 {
+        return "31"
+    }
+    if pct >= 60 {
+        return "33"
+    }
+    return "32"
+}
+
+def meter(style, label, pct, detail) {
+    return pad(label, 8) + paint(style, level_color(pct), kit.bar(pct, 24)) + " " + pad_left(kit.fixed(pct, 1), 5) + "%  " + detail
+}
+
+def unavailable(style, title, m) {
+    return [paint(style, "1", title), "  unavailable: " + m.error]
+}
+
+def def_load(x) {
+    return kit.fixed(x, 2)
+}
+
+def cpu_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "CPU", m)
+    }
+    let lines = [paint(style, "1", "CPU  " + m.brand + "  (" + str(m.cores) + " cores, " + str(m.processes) + " processes)")]
+    lines = lines + [meter(style, "total", m.total, "user " + kit.fixed(m.user, 1) + "%  system " + kit.fixed(m.system, 1) + "%")]
+    lines = lines + ["  load " + join(map(def_load, m.load), "  ")]
+    for p in m.top {
+        lines = lines + ["    " + pad_left(kit.fixed(p.cpu, 1), 5) + "%  " + p.name]
+    }
+    return lines
+}
+
+def ram_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "Memory", m)
+    }
+    let lines = [paint(style, "1", "Memory  " + kit.human_bytes(m.total) + "  pressure " + m.pressure)]
+    lines = lines + [meter(style, "used", m.used_pct, kit.human_bytes(m.used) + " used, " + kit.human_bytes(m.free) + " free")]
+    lines = lines + ["  app " + kit.human_bytes(m.app) + "  wired " + kit.human_bytes(m.wired) + "  compressed " + kit.human_bytes(m.compressed) + "  cache " + kit.human_bytes(m.cache)]
+    lines = lines + ["  swap " + kit.human_bytes(m.swap_used) + " of " + kit.human_bytes(m.swap_total)]
+    for p in m.top {
+        lines = lines + ["    " + pad_left(kit.human_bytes(p.bytes), 10) + "  " + p.name]
+    }
+    return lines
+}
+
+def disk_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "Disk", m)
+    }
+    return [paint(style, "1", "Disk  " + m.volume + "  (" + m.device + ")"),
+        meter(style, "used", m.used_pct, kit.human_bytes(m.used) + " of " + kit.human_bytes(m.total) + ", " + kit.human_bytes(m.free) + " free"),
+        "  read " + m.read_total + " total   written " + m.written_total + " total"]
+}
+
+def net_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "Network", m)
+    }
+    let rate = "  (first sample, no rate yet)"
+    if m.have_rate {
+        rate = "  down " + kit.human_rate(m.down) + "   up " + kit.human_rate(m.up)
+    }
+    return [paint(style, "1", "Network  " + join(m.interfaces, ", ")), rate,
+        "  total in " + kit.human_bytes(m.rx_total) + "   out " + kit.human_bytes(m.tx_total)]
+}
+
+def battery_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "Battery", m)
+    }
+    if not m.present {
+        return [paint(style, "1", "Battery"), "  none"]
+    }
+    let lines = [paint(style, "1", "Battery  " + m.state + "  (" + m.source + ")")]
+    lines = lines + [meter(style, "charge", m.percent, kit.fixed(m.remaining_mah, 0) + " of " + kit.fixed(m.full_mah, 0) + " mAh, macOS says " + str(m.macos_percent) + "%")]
+    lines = lines + ["  power " + kit.fixed(m.power_w, 2) + " W (gauge " + kit.fixed(m.reported_power_w, 2) + " W, " + kit.fixed(m.power_error_pct, 1) + "% apart)   current " + kit.fixed(m.current_ma, 0) + " mA   " + kit.fixed(m.voltage_v, 2) + " V"]
+    if m.state == "discharging" {
+        lines = lines + ["  runtime  now " + kit.duration(m.runtime_h) + "   smoothed " + kit.duration(m.runtime_smoothed_h) + "   macOS " + kit.minutes_text(m.macos_minutes)]
+    }
+    if m.state == "charging" {
+        lines = lines + ["  to full  model " + kit.duration(m.charge_h) + "   macOS " + kit.minutes_text(m.macos_minutes) + "   gauge " + kit.minutes_text(m.gauge_to_full_minutes)]
+    }
+    lines = lines + ["  full-charge runtime at this draw " + kit.duration(m.full_charge_runtime_h)]
+    lines = lines + ["  health " + kit.fixed(m.health_pct, 1) + "%   cycles " + str(m.cycles) + " of " + str(m.design_cycles) + " (" + kit.fixed(m.wear.cycle_share_pct, 0) + "%)   lost " + kit.fixed(m.wear.lost_per_cycle_mah, 2) + " mAh/cycle"]
+    return lines
+}
+
+def clock_lines(style, m) {
+    if not m.ok {
+        return unavailable(style, "Clock", m)
+    }
+    let zones = []
+    for z in m.world {
+        zones = zones + [z.name + " " + z.time]
+    }
+    return [paint(style, "1", "Clock  " + m.date + " " + m.time), "  " + join(zones, "   ")]
+}
+
+export def render(snapshot, style) {
+    let m = snapshot.modules
+    let lines = [paint(style, "1;36", "novalang_stats") + "  " + snapshot.time, ""]
+    lines = lines + cpu_lines(style, m.cpu) + [""] + ram_lines(style, m.ram) + [""]
+    lines = lines + disk_lines(style, m.disk) + [""] + net_lines(style, m.net) + [""]
+    lines = lines + battery_lines(style, m.battery) + [""] + clock_lines(style, m.clock)
+    return lines
+}
+
+# Redraw in place: cursor home, each line followed by clear-to-end-of-line, then clear below.
+export def frame(snapshot, style) {
+    let body = render(snapshot, style)
+    if not style.color {
+        return join(body, "\n")
+    }
+    let out = style.esc + "[H"
+    for line in body {
+        out = out + line + style.esc + "[K\n"
+    }
+    return out + style.esc + "[J"
+}

@@ -1,0 +1,60 @@
+# main.nova - the loop: sample, model, render, sleep.
+# Host contract: `sh(argv)` (an allowlisted command runner) and `ESC` (the escape character).
+# Everything else - parsing, state, the battery model, both renderers, the files - is NovaLang.
+#   python3 host.py [--once] [--frames N] [--interval SECONDS] [--plain]
+import "pipeline.nova" as pipeline
+import "render_term.nova" as term
+import "render_html.nova" as html
+
+def option(argv, name, fallback) {
+    for i = 0 to len(argv) - 2 {
+        if argv[i] == name {
+            return num(argv[i + 1])
+        }
+    }
+    return fallback
+}
+
+let argv = args()
+let once = "--once" in argv
+let plain = "--plain" in argv
+let interval = option(argv, "--interval", 2)
+let frames = option(argv, "--frames", 0)
+if once {
+    frames = 1
+}
+
+mkdir("out")
+let baselines = json.loads(read("docs/baselines.json"))
+let state = pipeline.new_state()
+let style = {esc: ESC, color: not plain}
+let compare_path = "out/battery_compare.csv"
+
+def log_line(message) {
+    append("out/runtime.log", now() + " " + message + "\n")
+}
+
+let count = 0
+if not plain {
+    print(ESC + "[2J")
+}
+while true {
+    let started = monotonic()
+    let ctx = {sh: sh, t: started, wall: time(), iso: now(), log: log_line, baselines: baselines}
+    let snapshot = pipeline.collect(ctx, state)
+    write("out/snapshot.json", json.pretty(snapshot))
+    write("out/dashboard.html", html.render(snapshot, interval))
+    let row = pipeline.compare_row(snapshot)
+    if row != "" {
+        if not exists(compare_path) {
+            write(compare_path, pipeline.compare_header() + "\n")
+        }
+        append(compare_path, row + "\n")
+    }
+    print(term.frame(snapshot, style))
+    count = count + 1
+    if frames > 0 and count >= frames {
+        break
+    }
+    sleep(max(0, interval * 1000 - (monotonic() - started) * 1000))
+}

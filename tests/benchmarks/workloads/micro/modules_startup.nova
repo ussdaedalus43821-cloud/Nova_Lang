@@ -1,0 +1,5 @@
+# micro: a module-heavy start-up: two library modules are lexed, parsed, compiled and loaded, then barely used.
+# (what the artifact cache of M12 slice 5 can remove; there is almost no execution here)
+import "../../../../lib/ecs.nova" as ecs
+import "../../../../lib/spatial_hash.nova" as grid
+print(type(ecs), type(grid))

@@ -1,0 +1,1605 @@
+{
+ "area": "bytecode",
+ "version": 1,
+ "cases": [
+  {
+   "name": "bytecode-a-program-runs-through-an-artifact",
+   "spec": [
+    "bc.overview",
+    "bc.ops",
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "# a program that uses most of what the compiler can write\ndef make_counter(start) {\n    let count = start\n    def next() {\n        count = count + 1\n        return count\n    }\n    return next\n}\nlet counter = make_counter(10)\nlet total = 0\nfor i = 1 to 5 { total = total + counter() * i }\nlet words = split(\"a,b,c\", \",\")\nlet table = {name: \"nova\", size: len(words), \"k\": [1, 2.5, -3]}\nfor key, value in table { total = total + len(str(key)) }\nlet note = f\"total={total} {words[0]}\"\nprint(note, words[1:], table.name, 12345678901234567890 * 3, 1.5, true and not false)\ntry {\n    if total > 0 { throw(\"boom\") }\n} catch e {\n    print(\"caught\", e)\n} finally {\n    print(\"done\")\n}\nwhile total > 100 { total = total - 50 }\nprint(total, 10 // 3, 10 % 3, 2 in [1, 2], \"b\" in \"abc\", -total, +total)\n",
+   "output": [
+    "total=174 a [\"b\", \"c\"] nova 37037036703703703670 1.5 true",
+    "caught boom",
+    "done",
+    "74 3 1 true true -74 74"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-an-error-has-the-programs-line",
+   "spec": [
+    "bc.overview",
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "let a = 1\nprint(a / 0)\n",
+   "output": [],
+   "error": "NovaError: division by zero",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-constants-of-every-type",
+   "spec": [
+    "bc.constants"
+   ],
+   "profile": "bytecode",
+   "source": "let f = len\nprint(1, -2, 3.5, \"héllo ✓\", true, false, f(\"abc\"), 123456789012345678901234567890 * 2, 0.1 + 0.2)\n",
+   "output": [
+    "1 -2 3.5 héllo ✓ true false 3 246913578024691357802469135780 0.30000000000000004"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-an-integer-of-3999-digits-is-a-constant",
+   "spec": [
+    "bc.constants",
+    "bc.limits"
+   ],
+   "profile": "bytecode",
+   "source": "print(len(str(100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)))\n",
+   "output": [
+    "3999"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-a-float-literal-that-overflows-is-infinity",
+   "spec": [
+    "bc.constants"
+   ],
+   "profile": "bytecode",
+   "source": "print(10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0)\n",
+   "output": [
+    "inf"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-closures-and-nested-functions",
+   "spec": [
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "def outer(a) {\n    let b = a * 2\n    def middle(c) {\n        def inner(d) { return a + b + c + d }\n        return inner\n    }\n    return middle\n}\nprint(outer(1)(10)(100))\n",
+   "output": [
+    "113"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-loops-and-try-keep-their-state",
+   "spec": [
+    "bc.ops",
+    "bc.verify"
+   ],
+   "profile": "bytecode",
+   "source": "let total = 0\nfor i = 1 to 4 {\n    try {\n        for k, v in {\"a\": 1, \"b\": 2} { total = total + v * i }\n        if i == 3 { throw(\"three\") }\n    } catch e {\n        total = total + 100\n    }\n}\nprint(total)\n",
+   "output": [
+    "130"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-the-same-source-gives-the-same-bytes",
+   "spec": [
+    "bc.determinism"
+   ],
+   "profile": "bytecode",
+   "source": "# a program that uses most of what the compiler can write\ndef make_counter(start) {\n    let count = start\n    def next() {\n        count = count + 1\n        return count\n    }\n    return next\n}\nlet counter = make_counter(10)\nlet total = 0\nfor i = 1 to 5 { total = total + counter() * i }\nlet words = split(\"a,b,c\", \",\")\nlet table = {name: \"nova\", size: len(words), \"k\": [1, 2.5, -3]}\nfor key, value in table { total = total + len(str(key)) }\nlet note = f\"total={total} {words[0]}\"\nprint(note, words[1:], table.name, 12345678901234567890 * 3, 1.5, true and not false)\ntry {\n    if total > 0 { throw(\"boom\") }\n} catch e {\n    print(\"caught\", e)\n} finally {\n    print(\"done\")\n}\nwhile total > 100 { total = total - 50 }\nprint(total, 10 // 3, 10 % 3, 2 in [1, 2], \"b\" in \"abc\", -total, +total)\n",
+   "output": [
+    "total=174 a [\"b\", \"c\"] nova 37037036703703703670 1.5 true",
+    "caught boom",
+    "done",
+    "74 3 1 true true -74 74"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deterministic": true
+  },
+  {
+   "name": "bytecode-the-profile-still-gates-a-name",
+   "spec": [
+    "bc.profile",
+    "bc.overview"
+   ],
+   "profile": "bytecode",
+   "source": "print(read(\"data.txt\"))\n",
+   "output": [],
+   "error": "NovaError: undefined name 'read'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "data.txt": "hello"
+   },
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-a-granted-name-works-through-an-artifact",
+   "spec": [
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(read(\"data.txt\"))\n",
+   "output": [
+    "hello"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "data.txt": "hello"
+   },
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "."
+    ]
+   }
+  },
+  {
+   "name": "bytecode-a-step-limit-trips-in-loaded-code",
+   "spec": [
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "let n = 0\nwhile true { n = n + 1 }\n",
+   "output": [],
+   "error": "LimitError: step budget of 1000 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 1000
+    }
+   }
+  },
+  {
+   "name": "bytecode-the-type-gate-runs-on-the-source",
+   "spec": [
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"this line must never run\")\n# Built-ins with known signatures are checked like any typed function.\nlet n: int = 5\nprint(upper(n))       # T002\nprint(sqrt(\"nine\"))   # T002\nprint(len())          # T003\nprint(pad(\"x\", 2.5))  # T002\nlet count: int = len(\"abc\")\nlet root: int = sqrt(16)  # T006: sqrt gives a float\nlet whole: int = floor(2.7)\nlet back: int = abs(-3)  # abs keeps an int an int\nprint(count, whole, back, split(\"a b\"), split(\"a,b\", \",\"))\n",
+   "output": [],
+   "error": "TypeCheckError: T002 argument 1 of upper() must be a string, but this is an int\n  also line 5: T002 argument 1 of sqrt() must be a float, but this is a string\n  also line 6: T003 len() takes 1 argument but is given 0\n  also line 7: T002 argument 2 of pad() must be an int, but this is a float\n  also line 9: T006 'root' is declared int, but its value is a float",
+   "error_line": 4,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "bytecode-modules-are-written-and-read-too",
+   "spec": [
+    "bc.profile",
+    "bc.overview"
+   ],
+   "profile": "bytecode",
+   "source": "import \"util.nova\" as util\nprint(util.double(21))\n",
+   "output": [
+    "42"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "export def double(n) { return n * 2 }\n"
+   }
+  },
+  {
+   "name": "bytecode-a-valid-artifact-is-read-and-run",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [
+    "ok"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000917e56a0c06bfb1a60599ef631b19be4465d51e8ddd703f0f7290615df4d1692"
+  },
+  {
+   "name": "bytecode-bad-magic",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-magic: bytecode artifact: not a NovaLang bytecode file",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4f4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000917e56a0c06bfb1a60599ef631b19be4465d51e8ddd703f0f7290615df4d1692"
+  },
+  {
+   "name": "bytecode-not-an-artifact-at-all",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-magic: bytecode artifact: not a NovaLang bytecode file",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "7072696e7428312920697320612070726f6772616d2c206e6f7420616e2061727469666163742c20627574206c6f6e6720656e6f75676820746f2068617665206120747261696c6572"
+  },
+  {
+   "name": "bytecode-a-damaged-byte-fails-the-checksum",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "checksum-mismatch: bytecode artifact: checksum mismatch (the file is damaged)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e100000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000917e56a0c06bfb1a60599ef631b19be4465d51e8ddd703f0f7290615df4d1692"
+  },
+  {
+   "name": "bytecode-a-file-cut-short-fails-the-checksum",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "checksum-mismatch: bytecode artifact: checksum mismatch (the file is damaged)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000917e56a0c06bfb1a60599ef631b19be4465d51e8ddd703f0f72906"
+  },
+  {
+   "name": "bytecode-too-short-to-have-a-header",
+   "spec": [
+    "bc.header",
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "truncated: bytecode artifact: truncated",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f564143"
+  },
+  {
+   "name": "bytecode-an-unknown-format-version",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "unknown-format-version: bytecode artifact: format version 7 is not supported (this is 0)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0700000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff0000000043cec1c6d4bedabbe99d5f31652d575752ce9dc0e21603c61d3da8878e9267d2"
+  },
+  {
+   "name": "bytecode-a-different-instruction-set",
+   "spec": [
+    "bc.header",
+    "bc.ops",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "opcode-set-mismatch: bytecode artifact: made for a different instruction set (compiler 2.2.0)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a00000000b8db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000e11e3bc4f51ffdccda2fc2d2d8c9c544799b34b3d942ae76e11f67d4d430ea11"
+  },
+  {
+   "name": "bytecode-reserved-flags",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-flags: bytecode artifact: unknown flags",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30080000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff0000000069cb65ebed6988393a5390ee7261558920684fbc90ef44db7bdfb714d1147362"
+  },
+  {
+   "name": "bytecode-a-source-that-does-not-match-its-hash",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "source-mismatch: bytecode artifact: made from a different source",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007872696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff000000008ec930512e62143005c0952b595738e59c1713853661c7b58163554962ae0025"
+  },
+  {
+   "name": "bytecode-bytes-after-the-end-of-the-body",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "trailing-bytes: bytecode artifact: unexpected bytes after the end",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff0000000000c129bc40e74703fa6a4979ef78d17119c2e41605c5e5d3432d0502120a4c863a"
+  },
+  {
+   "name": "bytecode-a-body-length-that-is-too-long",
+   "spec": [
+    "bc.header",
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "truncated: bytecode artifact: truncated",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a6e000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000dec5fb193172f3b73535031eb649fa8c8d46801580a8b2f865253ac6bae3ac03"
+  },
+  {
+   "name": "bytecode-a-body-length-that-is-too-short",
+   "spec": [
+    "bc.header",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "trailing-bytes: bytecode artifact: unexpected bytes after the end",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a64000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000a1ff39bf62446ca5d96010ddfa05ea475bb24085c43bf324f35e32bd38c95230"
+  },
+  {
+   "name": "bytecode-a-compiler-version-over-64-bytes",
+   "spec": [
+    "bc.header",
+    "bc.limits",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "limit-exceeded: bytecode artifact: too large (version)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df6785060410000007676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676767676000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000c36cf124f0b6396c0ab7d06a329b1d2c2b4df5ea417d880cbb43a8eb53971945"
+  },
+  {
+   "name": "bytecode-text-that-is-not-utf8",
+   "spec": [
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-text: bytecode artifact: text is not valid UTF-8",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a6500000008000000ff6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7405020000006f6b040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000f38d87b69d755ade7f5ccef8163b41abb75a8c5882f2ad4cba5a006d29629918"
+  },
+  {
+   "name": "bytecode-a-flag-that-is-neither-0-nor-1",
+   "spec": [
+    "bc.encoding",
+    "bc.constants",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-constant: bytecode artifact: bad constant",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000010000000302000000000200000000000000003affffffffffffffff00000000848f8444e9b60f9eedc4a246225444c935ddd30c765794aa900e65518ee040e9"
+  },
+  {
+   "name": "bytecode-a-name-longer-than-the-file",
+   "spec": [
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "truncated: bytecode artifact: truncated",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a0a000000080000008403000061621d35e3b98dd17a7b2e8c0b66df159a5f2ad70a54365425dbc048da661bcb5480"
+  },
+  {
+   "name": "bytecode-constant-an-unknown-tag",
+   "spec": [
+    "bc.constants",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-constant: bytecode artifact: bad constant",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000630200000000000000003affffffffffffffff00000000863fda0c11613f8f2371471dc311215e7c02a3b9a0d70ee3657f4789928584a6"
+  },
+  {
+   "name": "bytecode-constant-a-nan",
+   "spec": [
+    "bc.constants",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-constant: bytecode artifact: bad constant",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4b000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000004000000000000f87f0200000000000000003affffffffffffffff000000006c46852e0cfc87bc48efa16ab8062f5b8fcacb0365f972c3934ff8317255aa29"
+  },
+  {
+   "name": "bytecode-constant-an-integer-with-a-leading-zero-byte",
+   "spec": [
+    "bc.constants",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-constant: bytecode artifact: bad constant",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4a000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000003000200000001000200000000000000003affffffffffffffff0000000073c0f276de10a78f02d34ca64d77cb4a4bd3a260821ecad633a696403717bc09"
+  },
+  {
+   "name": "bytecode-constant-a-negative-zero",
+   "spec": [
+    "bc.constants",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-constant: bytecode artifact: bad constant",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000010000000301000000000200000000000000003affffffffffffffff000000007afe50f60dfd621d7bfb2ee2994df763ff01d1fdb3c9b305591ebbfa6d90d5f5"
+  },
+  {
+   "name": "bytecode-positive-infinity-is-a-constant",
+   "spec": [
+    "bc.constants"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4b000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000004000000000000f07f0200000000000000003affffffffffffffff00000000561b8a138cff84e60ffe215b5345b1f3cddd3ac3ff05239db2e1853715cd5f1c"
+  },
+  {
+   "name": "bytecode-an-integer-magnitude-over-the-limit",
+   "spec": [
+    "bc.constants",
+    "bc.limits",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "limit-exceeded: bytecode artifact: too large (integer)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000003007e0600000200000000000000003affffffffffffffff00000000a0f7658b64df10fba4023bac9eae5996ea947e62c6dcd295e7985060b2d21ac9"
+  },
+  {
+   "name": "bytecode-a-built-in-is-a-name",
+   "spec": [
+    "bc.constants"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a64000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006030000006c656e0503000000616263040000000000000000000100000039010000003affffffffffffffffffffffffffffffff0000000050ef4aab64422ac79cc2564cf85db4d4c837ede270874e662cb98cfc0da68ca4"
+  },
+  {
+   "name": "bytecode-constant-a-gated-built-in",
+   "spec": [
+    "bc.constants",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "unknown-builtin: bytecode artifact: unknown or gated built-in now",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4a000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000006030000006e6f770200000000000000003affffffffffffffff00000000bb3148b1d2f893ff12a1b4c9e4f56cec0f554b069844449fd0d1913ccdeef4a4"
+  },
+  {
+   "name": "bytecode-constant-a-gated-built-in-read",
+   "spec": [
+    "bc.constants",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "unknown-builtin: bytecode artifact: unknown or gated built-in read",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4b000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000010000000604000000726561640200000000000000003affffffffffffffff00000000ba27c79bc713506263ea28f44e0b02229de34eaaa9a957b4ac10e9fe330fd8ae"
+  },
+  {
+   "name": "bytecode-constant-a-name-that-is-no-built-in",
+   "spec": [
+    "bc.constants",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "unknown-builtin: bytecode artifact: unknown or gated built-in no_such_function",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a57000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000006100000006e6f5f737563685f66756e6374696f6e0200000000000000003affffffffffffffff00000000c51370d3d5a5f92f5ef2930b763c6f5b2cbae0a34cfdc0547630d172ca15cf3d"
+  },
+  {
+   "name": "bytecode-a-closure-that-names-a-slot-the-parent-does-not-have",
+   "spec": [
+    "bc.code",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V9)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a93000000080000003c6d6f64756c653e01000000000000000000000000000000010000000200000073300000000000000000010000000705000000696e6e6572000000000000000000000000000000000000000001000000010000006101000000010400000001000000000200000000000000003affffffffffffffff000000000200000038000000003affffffffffffffff00000000bba688a9266ba6e9f4d1d0d599e23f0ee08bfda3ce07560a6fcc882d0e1a5e1f"
+  },
+  {
+   "name": "bytecode-slot-names-that-do-not-match-the-slot-count",
+   "spec": [
+    "bc.code",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V10)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e02000000000000000000000000000000010000000100000061000000000000000001000000000200000000000000003affffffffffffffff0000000022cee3031fc940d73c5ab07e171cdf88b9529bf343314e802585ff6b12fb351a"
+  },
+  {
+   "name": "bytecode-parameters-and-their-names-differ-in-number",
+   "spec": [
+    "bc.code",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V10)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4d000000080000003c6d6f64756c653e010000000100000000000000000000000000000001000000020000007330000000000000000001000000000200000000000000003affffffffffffffff00000000ac53734540ad082be00e1d6a4ee3184923c23d2d73b81ea5ab64c28c8e9a000f"
+  },
+  {
+   "name": "bytecode-a-cell-parameter-that-is-not-a-parameter",
+   "spec": [
+    "bc.code",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V10)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a5c000000080000003c6d6f64756c653e020000000100000000000000010000000100000061010000000100000002000000020000007330020000007331000000000000000001000000000200000000000000003affffffffffffffff00000000d9c87bab82a297e09ecb3fdc427a03b6cb80beabd16688a064c8f165fb364477"
+  },
+  {
+   "name": "bytecode-a-module-with-a-closure",
+   "spec": [
+    "bc.code",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V9)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4d000000080000003c6d6f64756c653e000000000000000000000000000000000000000001000000010000006101000000010000000001000000000200000000000000003affffffffffffffff00000000e45f9f8be6b65baea45d5466d83b2eaf043a46365b0d9b30b3671d537b66631f"
+  },
+  {
+   "name": "bytecode-an-opcode-outside-the-table",
+   "spec": [
+    "bc.ops",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-opcode: bytecode artifact: unknown instruction 66",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a3a000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000100000042ffffffff00000000d7017ae0df5b07d52b5dca6092af55f4579c5ae296bd1cdff90c5d908903c5ca"
+  },
+  {
+   "name": "bytecode-opcode-255",
+   "spec": [
+    "bc.ops",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "bad-opcode: bytecode artifact: unknown instruction 255",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a3a000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000010000000001000000ffffffffff000000008c2523ee79fafec4d2aa24d72f7b70180f8a2f7089ac39d63b533e5fdea91c03"
+  },
+  {
+   "name": "bytecode-an-enumerated-byte-out-of-range",
+   "spec": [
+    "bc.ops",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V11)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4a000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000300000000000000001e02003affffffffffffffffffffffff000000003f621f25a274e9cb11c58c968393e8a2e014789dfefcd1001b59bc6de6665f06"
+  },
+  {
+   "name": "bytecode-a-loop-state-count-of-three",
+   "spec": [
+    "bc.ops",
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V11)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a53000000080000003c6d6f64756c653e0100000000000000000000000000000001000000020000007330000000000000000001000000000300000000000000003600000000033affffffffffffffffffffffff000000001278cbfeabbb379f1d65be588bdbf0b140203f73f44e0523bc87aaf326abd7c0"
+  },
+  {
+   "name": "bytecode-verify-v1-functions-nested-too-deep",
+   "spec": [
+    "bc.verify",
+    "bc.limits",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V1)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a683d000001000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000070100000066000000000000000000000000000000000000000000000000000000000100000007010000006600000000000000000000000000000000000000000000000000000000010000000701000000660000000000000000000000000000000000000000000000000000000001000000000200000000000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff000000000200000038000000003affffffffffffffff00000000db40acead19bcb3b595614599cb30122555092a392dfe4c68b2b1698e9be8fe3"
+  },
+  {
+   "name": "bytecode-verify-v2-a-pool-index-that-is-not-there",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V2)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a42000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000000000000200000000000000003affffffffffffffff0000000008d3039026de4c2a8727a784c3187c9f9889ee0e62a987908963a18727810646"
+  },
+  {
+   "name": "bytecode-verify-v2-make-function-of-a-constant-that-is-not-code",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V2)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000038000000003affffffffffffffff00000000f4966c1966881862bb30a5539441850eeb3b0c8b9194edb74bddc8ed66ac90d7"
+  },
+  {
+   "name": "bytecode-verify-v3-a-slot-that-is-not-there",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V3)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e01000000000000000000000000000000010000000200000073300000000000000000000000000200000003050000003affffffffffffffff000000002f5d51a3011445375cb3fab5babccbe87e4e0c2334a00889b605d41168a8ca44"
+  },
+  {
+   "name": "bytecode-verify-v3-a-slot-that-is-a-variable-and-a-cell",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V3)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a65000000080000003c6d6f64756c653e0100000000000000000000000000000001000000020000007330000000000000000001000000000600000003000000000105000000000100000000003affffffffffffffffffffffffffffffffffffffffffffffff000000001f698a5cc2eb129f407fd471af4d88dae20041fd212dcc9098b25f934e04289f"
+  },
+  {
+   "name": "bytecode-verify-v4-a-jump-out-of-the-code",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V4)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000031090000003affffffffffffffff00000000ee351903abff828e7ce989e8e96e8c22655062c47744162db66f2f519418572b"
+  },
+  {
+   "name": "bytecode-verify-v4-an-empty-exception-range",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V4)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a50000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000000000000003affffffffffffffff0100000001000000010000000000000000f596fe1cdc07f517037dafc4d15a0b1baf8bebe61e79b4db6fdd5f4ed00ec90d"
+  },
+  {
+   "name": "bytecode-verify-v4-a-handler-out-of-the-code",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V4)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a50000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000000000000003affffffffffffffff0100000000000000010000000700000000fec9a358bdc3a4f26ae0b5a09c58f7cf135742d8310d7adcc9fb447d009bd959"
+  },
+  {
+   "name": "bytecode-verify-v5-an-empty-chain",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V5)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a42000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000000000000200000009000000003affffffffffffffff00000000d3c8208a83279639302f75ed97edd46aaf29b828a3f2131998bdf5cac21db4ec"
+  },
+  {
+   "name": "bytecode-verify-v5-a-free-variable-the-function-does-not-have",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V5)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a47000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000000000002000000090100000002000000003affffffffffffffff0000000059116486759b62fcf8afdae12759498a935a438037dcd005fc69a5fa1bbd4605"
+  },
+  {
+   "name": "bytecode-verify-v6-the-stack-underflows",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V6)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a3e000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000000000002000000013affffffffffffffff000000005d07b4743f29d0fd867bf63082399896c875ffd8c20501eb837d278b9ace8afa"
+  },
+  {
+   "name": "bytecode-verify-v6-return-with-two-values",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V6)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a4c000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000010000000003000000000000000000000000003affffffffffffffffffffffff00000000d3c70debbad410c6a08671f3ded941f89806b151c8614534e56570263803a6d1"
+  },
+  {
+   "name": "bytecode-verify-v6-execution-falls-off-the-end",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V6)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a3e000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000000010000000000000000ffffffff00000000abb9227a10a929b9a180a929806f7d1910d5ca593622f27c1467a7c2bb57be6c"
+  },
+  {
+   "name": "bytecode-verify-v7-a-count-over-the-limit",
+   "spec": [
+    "bc.verify",
+    "bc.limits",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V7)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000021010010003affffffffffffffff000000005ef0a017ff2ae22af2840b30c4c6dadce621a92569d924d8c13b0438d408d5fb"
+  },
+  {
+   "name": "bytecode-verify-v8-a-loop-step-with-no-loop-state",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V8)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a5f000000080000003c6d6f64756c653e01000000000000000000000000000000010000000200000073300000000000000000010000000004000000370000000002000000310000000000000000003affffffffffffffffffffffffffffffff00000000937c0dc7ba6a5f80b912b20ac89c3007ad5c82f87dada584cb6e03d7fa6f4c23"
+  },
+  {
+   "name": "bytecode-verify-v14-a-position-past-the-source",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "failed-verify: bytecode artifact: failed verification (V14)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000000000000003a000000006300000000000000248716c2dff7ba591d0e40be0c3fe6292f643978ceb7eeab47c1b34c570dced7"
+  },
+  {
+   "name": "bytecode-a-position-inside-the-source-is-fine",
+   "spec": [
+    "bc.verify",
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a43000000080000003c6d6f64756c653e0000000000000000000000000000000000000000000000000000000001000000000200000000000000003a000000000500000000000000f915e38a46ddae8d7cffd24687d801127e60f86dbc6ec35d453745e6d7b16782"
+  },
+  {
+   "name": "bytecode-limit-too-many-slots",
+   "spec": [
+    "bc.limits",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "limit-exceeded: bytecode artifact: too large (slots)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a10000000080000003c6d6f64756c653e01001000df01b77c516b989940c95329e3c9146befa73de96eea97cb3fab28cb6fce4306"
+  },
+  {
+   "name": "bytecode-limit-an-instruction-count-of-four-billion",
+   "spec": [
+    "bc.limits",
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "limit-exceeded: bytecode artifact: too large (instructions)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a31000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000100000000fffffffffb8726f8e0b50116e6ea74985944f7f475596877715e28cb517ce6f07a320709"
+  },
+  {
+   "name": "bytecode-limit-a-pool-count-of-four-billion",
+   "spec": [
+    "bc.limits",
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "limit-exceeded: bytecode artifact: too large (pool)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a2c000000080000003c6d6f64756c653e00000000000000000000000000000000000000000000000000000000ffffffff0f88c13c1a8a718db71b7e54dbc3743deb915fdeb667efd71262738b4a07ce68"
+  },
+  {
+   "name": "bytecode-limit-a-list-count-larger-than-the-file",
+   "spec": [
+    "bc.limits",
+    "bc.encoding",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "truncated: bytecode artifact: truncated",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a14000000080000003c6d6f64756c653e00000000a086010050560cef97ef9749c80f4ddaa742a84339abc7a750f36a79c9c8b6f2874e79da"
+  },
+  {
+   "name": "bytecode-an-accepted-file-can-still-be-wrong-at-run-time",
+   "spec": [
+    "bc.verify",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [],
+   "error": "InternalError: AttributeError: 'Unset' object has no attribute 'value'",
+   "error_like": "InternalError: .*",
+   "error_line": null,
+   "exit": 70,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000009e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f40600000078203d20310a48000000080000003c6d6f64756c653e01000000000000000000000000000000010000000200000073300000000000000000000000000200000005000000003affffffffffffffff0000000083fb2fae0ad95d4352a5e133b903a6fe8db0546ff1d917d159108967dad9beb4"
+  },
+  {
+   "name": "bytecode-code-that-is-not-the-compilation-of-its-source-is-accepted",
+   "spec": [
+    "bc.provenance",
+    "bc.overview"
+   ],
+   "profile": "bytecode",
+   "source": "",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000ffb1bd6f6a91b5c8899384191668e74439fc78329b2f074793b384c613b048b4"
+  },
+  {
+   "name": "bytecode-cache-cold-then-warm",
+   "spec": [
+    "bc.cache",
+    "bc.overview"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-directory-the-embedder-names",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-changes-no-error-and-no-line",
+   "spec": [
+    "bc.cache",
+    "bc.overview",
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "let a = 1\nprint(a / 0)\n",
+   "output": [],
+   "error": "NovaError: division by zero",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-off-for-restricted-by-default",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "default"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-on-for-restricted-when-a-directory-is-named",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-switched-off-by-the-environment",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "env": {
+    "NOVALANG_CACHE": "off"
+   },
+   "cache": {
+    "dir": "default"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-damaged-entry-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-empty-entry-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": ""
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-made-for-another-source-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000e650c8a0b003c68e9dbe2e0e55c16c088d2e31b7f69fe8e59412a37adbddbdbe170000007072696e742822736f6d65626f647920656c736522290a70000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e74050d000000736f6d65626f647920656c7365040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff000000002f6335d7bed60796209cb69061fb155576f37902f9b9768449656e84c9c16197"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-of-another-format-version-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0700000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000da7fbfa3472baad8e920da35dba1c499b0a1440aafb0718d604c0b7664da08ee660000006465662066286e29207b2072657475726e206e202a2032207d0a6c657420746f74616c203d20300a666f722069203d203120746f2035207b20746f74616c203d20746f74616c202b2066286929207d0a7072696e742822746f74616c222c20746f74616c290ac1010000080000003c6d6f64756c653e02000000000000000000000000000000020000000600000069406c6f6f700c0000003c6c6f6f702073746174653e00000000000000000600000007010000006601000000010000000000000001000000010000006e0000000001000000010000006e00000000000000000200000003000100000002000600000003000000000000000000103a00010000003a12000000ffffffff140000000b000000ffffffffffffffff00000000030000000000030001000000010300010000000506050000007072696e740505000000746f74616c17000000380000000008010000006600010000000805000000746f74616c00020000003300000300000033013401000000000035010000001200000004000000000705000000746f74616c070100000066030000000039010000000e0805000000746f74616c3109000000000400000000050000000705000000746f74616c39020000003a0000000000000000ffffffff1a000000ffffffff28000000ffffffff280000002800000028000000ffffffff41000000490000004b0000004a0000004700000039000000ffffffff50000000ffffffff5f00000055000000ffffffff000000002c8e87af630145ac8d26f2c62e2255c6a63220a6dfafcde216a9c927be298e1a"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-for-another-instruction-set-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a00000000b8db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000da7fbfa3472baad8e920da35dba1c499b0a1440aafb0718d604c0b7664da08ee660000006465662066286e29207b2072657475726e206e202a2032207d0a6c657420746f74616c203d20300a666f722069203d203120746f2035207b20746f74616c203d20746f74616c202b2066286929207d0a7072696e742822746f74616c222c20746f74616c290ac1010000080000003c6d6f64756c653e02000000000000000000000000000000020000000600000069406c6f6f700c0000003c6c6f6f702073746174653e00000000000000000600000007010000006601000000010000000000000001000000010000006e0000000001000000010000006e00000000000000000200000003000100000002000600000003000000000000000000103a00010000003a12000000ffffffff140000000b000000ffffffffffffffff00000000030000000000030001000000010300010000000506050000007072696e740505000000746f74616c17000000380000000008010000006600010000000805000000746f74616c00020000003300000300000033013401000000000035010000001200000004000000000705000000746f74616c070100000066030000000039010000000e0805000000746f74616c3109000000000400000000050000000705000000746f74616c39020000003a0000000000000000ffffffff1a000000ffffffff28000000ffffffff280000002800000028000000ffffffff41000000490000004b0000004a0000004700000039000000ffffffff50000000ffffffff5f00000055000000ffffffff000000008e6e3519b7313dea09b0782c376a955d6c58989adda69bc3925e660e16d3a620"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-is-what-runs",
+   "spec": [
+    "bc.cache",
+    "bc.provenance"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"ok\")\nlet padding = \"so that every position of the other program is inside this source\"\n",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000221ef7dd281410dd96e3d39631039fc79f5427c53915c51b2f7d45e4bf8056c85e0000007072696e7428226f6b22290a6c65742070616464696e67203d2022736f207468617420657665727920706f736974696f6e206f6620746865206f746865722070726f6772616d20697320696e73696465207468697320736f75726365220a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000458ff63304f0c47862f48b635cebf2c3728c8243c0a7e97287ff196370a94058"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-still-runs-the-type-gate",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"this line must never run\")\n# Built-ins with known signatures are checked like any typed function.\nlet n: int = 5\nprint(upper(n))       # T002\nprint(sqrt(\"nine\"))   # T002\nprint(len())          # T003\nprint(pad(\"x\", 2.5))  # T002\nlet count: int = len(\"abc\")\nlet root: int = sqrt(16)  # T006: sqrt gives a float\nlet whole: int = floor(2.7)\nlet back: int = abs(-3)  # abs keeps an int an int\nprint(count, whole, back, split(\"a b\"), split(\"a,b\", \",\"))\n",
+   "output": [],
+   "error": "TypeCheckError: T002 argument 1 of upper() must be a string, but this is an int\n  also line 5: T002 argument 1 of sqrt() must be a float, but this is a string\n  also line 6: T003 len() takes 1 argument but is given 0\n  also line 7: T002 argument 2 of pad() must be an int, but this is a float\n  also line 9: T006 'root' is declared int, but its value is a float",
+   "error_line": 4,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3001000000a6d0b58243f91f1508299e44706fc5dd4ef28d27d26f5778a256d1d9d6bdba15c70100007072696e74282274686973206c696e65206d757374206e657665722072756e22290a23204275696c742d696e732077697468206b6e6f776e207369676e6174757265732061726520636865636b6564206c696b6520616e792074797065642066756e6374696f6e2e0a6c6574206e3a20696e74203d20350a7072696e74287570706572286e2929202020202020202320543030320a7072696e74287371727428226e696e652229292020202320543030320a7072696e74286c656e282929202020202020202020202320543030330a7072696e7428706164282278222c20322e35292920202320543030320a6c657420636f756e743a20696e74203d206c656e282261626322290a6c657420726f6f743a20696e74203d20737172742831362920202320543030363a2073717274206769766573206120666c6f61740a6c65742077686f6c653a20696e74203d20666c6f6f7228322e37290a6c6574206261636b3a20696e74203d20616273282d332920202320616273206b6565707320616e20696e7420616e20696e740a7072696e7428636f756e742c2077686f6c652c206261636b2c2073706c6974282261206222292c2073706c69742822612c62222c20222c2229290a10030000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000001400000006050000007072696e74051800000074686973206c696e65206d757374206e657665722072756e030001000000050605000000757070657206040000007371727405040000006e696e6506030000006c656e06030000007061640501000000780400000000000004400503000000616263030001000000100605000000666c6f6f72049a99999999990540060300000061627303000100000003060500000073706c697405030000006120620503000000612c6205010000002c3c00000000000000000001000000390100000001000200000008010000006e0000000000000300000007010000006e39010000003901000000010000000000000400000000050000003901000000390100000001000000000000060000003900000000390100000001000000000000070000000008000000000900000039020000003901000000010006000000000a00000039010000000805000000636f756e740004000000000b00000039010000000804000000726f6f74000c000000000d0000003901000000080500000077686f6c65000e000000000f00000014390100000008040000006261636b00000000000705000000636f756e74070500000077686f6c6507040000006261636b001000000000110000003901000000001000000000120000000013000000390200000039050000003a00000000ffffffff05000000ffffffffffffffff69000000780000007e00000084000000830000007d000000ffffffff950000009b000000ffffffff9f0000009a000000ffffffffb2000000b8000000bb000000b7000000ffffffffcf000000d5000000ffffffffffffffffd8000000d4000000fffffffffd000000ffffffff00010000ec00000018010000ffffffff1c010000080100004e010000ffffffff530100003d01000069010000ffffffff6d0100006c010000590100008c0100009201000099010000a0010000a6010000ffffffffab010000b4010000ffffffffffffffffb901000091010000ffffffff00000000ce2ca84f83f69dbfcc0a6af78590390c8f1b36e3d707326e4de48d52a9844ab7"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-is-still-gated-by-the-profile",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(read(\"data.txt\"))\n",
+   "output": [],
+   "error": "NovaError: undefined name 'read'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e300000000064048b052e63117360e249ce167be43f6af4acba0cccd6c322951c64e74151c8180000007072696e7428726561642822646174612e7478742229290a81000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e740508000000646174612e7478740600000000000000000d04000000726561640001000000390100000039010000003a0000000006000000ffffffff0a00000005000000ffffffff000000005f4a7eed90ba0159448535fc32ad899f7d2e098c44284fdaec1c6099715735c9"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-a-directory-others-can-write-is-not-used",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "mode": "0770"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-symbolic-link-is-not-followed",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"ok\")\nlet padding = \"so that every position of the other program is inside this source\"\n",
+   "output": [
+    "ok"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "link": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000221ef7dd281410dd96e3d39631039fc79f5427c53915c51b2f7d45e4bf8056c85e0000007072696e7428226f6b22290a6c65742070616464696e67203d2022736f207468617420657665727920706f736974696f6e206f6620746865206f746865722070726f6772616d20697320696e73696465207468697320736f75726365220a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000458ff63304f0c47862f48b635cebf2c3728c8243c0a7e97287ff196370a94058"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-each-module-has-its-own-entry",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "import \"util.nova\" as util\nprint(util.double(21))\n",
+   "output": [
+    "42"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "export def double(n) { return n * 2 }\n"
+   },
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "module util.nova:valid",
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  }
+ ]
+}
