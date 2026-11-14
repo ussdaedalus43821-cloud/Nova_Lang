@@ -1,0 +1,14 @@
+# std:hash - SHA-256 (docs/spec/09-library.md [lib.std-hash]).
+#
+#   import "std:hash" as hash
+#   hash.sha256("abc")   # "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+#
+# The digest of a string is the SHA-256 of its UTF-8 bytes, written as 64 lower-case hexadecimal digits. The digest of a
+# FILE is files.sha256_file(path) in std:files, which reads the file in pieces under the read grant like the rest of that
+# module. This module reads nothing and declares no capability. There is no MD5 and no SHA-1: this is for evidence that
+# an input was what it was, which a weak hash cannot give.
+
+# The SHA-256 of the UTF-8 bytes of `text`, as 64 hexadecimal digits.
+export def sha256(text) {
+    return native.sha256(text)
+}

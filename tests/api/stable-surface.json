@@ -378,6 +378,72 @@
   "--seed"
  ],
  "std_modules": {
+  "date": {
+   "capabilities": [],
+   "exports": [
+    "add_days",
+    "add_months",
+    "add_seconds",
+    "add_years",
+    "compare",
+    "date_of",
+    "day",
+    "day_of_year",
+    "days_in_month",
+    "diff_days",
+    "diff_seconds",
+    "format",
+    "from_epoch",
+    "is_date",
+    "is_leap",
+    "is_timestamp",
+    "last_day_of_month",
+    "make",
+    "make_timestamp",
+    "month",
+    "offset_of",
+    "parse_date",
+    "parse_timestamp",
+    "parse_timestamp_at",
+    "to_epoch",
+    "to_utc",
+    "weekday",
+    "with_offset",
+    "year"
+   ],
+   "native": [
+    "add_days",
+    "add_months",
+    "add_seconds",
+    "add_years",
+    "compare",
+    "date_of",
+    "day",
+    "day_of_year",
+    "days_in_month",
+    "diff_days",
+    "diff_seconds",
+    "format",
+    "from_epoch",
+    "is_date",
+    "is_leap",
+    "is_timestamp",
+    "last_day_of_month",
+    "make",
+    "make_timestamp",
+    "month",
+    "offset_of",
+    "parse_date",
+    "parse_timestamp",
+    "parse_timestamp_at",
+    "to_epoch",
+    "to_utc",
+    "weekday",
+    "with_offset",
+    "year"
+   ],
+   "tier": "provisional"
+  },
   "decimal": {
    "capabilities": [],
    "exports": [
@@ -436,12 +502,14 @@
     "is_dir",
     "is_link",
     "lines",
+    "sha256_file",
     "size"
    ],
    "native": [
     "is_dir",
     "is_link",
     "next_lines",
+    "sha256_file",
     "size"
    ],
    "tier": "provisional"
@@ -454,6 +522,16 @@
     "pad_zero"
    ],
    "native": [],
+   "tier": "provisional"
+  },
+  "hash": {
+   "capabilities": [],
+   "exports": [
+    "sha256"
+   ],
+   "native": [
+    "sha256"
+   ],
    "tier": "provisional"
   },
   "math": {
@@ -518,5 +596,5 @@
    "tier": "provisional"
   }
  },
- "version": "2.3.0"
+ "version": "2.4.0"
 }

@@ -33,6 +33,16 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   the VS Code extension's `package.json` says `MIT OR Apache-2.0`, and `novalang.py` and `novalang.nova` begin with an SPDX header. Releases up to and including `v2.3.0` were published under the MIT license and remain
   available under it; this applies to what is published from now on.
 
+### Added (M14 slice P1: the libraries the first product pilots need; version 2.4.0 in development)
+
+- **`std:date`**: civil dates and timestamps with a numeric UTC offset, as text (`2027-01-31`, `2027-01-31T13:55:36+00:00`): `add_days`, `add_months`, `add_years` (with the
+  month-end rule: `2027-01-31` plus one month is `2027-02-28`), `diff_days`, `weekday`, `day_of_year`, `last_day_of_month`, `is_leap`, `days_in_month`, `compare`, `make`, the parts, and for
+  timestamps `with_offset`, `to_utc`, `add_seconds`, `diff_seconds`, `to_epoch`, `from_epoch`, plus `format`, `parse_date`, `parse_timestamp` and `parse_timestamp_at` over a small English-only
+  format (`%Y %m %d %e %H %M %S %b %B %a %A %z %f %%`) that reads the combined-log, ISO and syslog forms. Years 1 to 9999, whole seconds, no time zone database and no daylight saving; the
+  module reads no clock and declares no capability. Specified in `docs/spec/09-library.md` `[lib.std-date]`; checked against Python's `datetime` for every day from 1900 to 2100.
+- **`std:hash`**: `hash.sha256(text)`, and **`files.sha256_file(path)`** in `std:files` (the file's SHA-256, read in pieces under the read grant). NIST vectors and `sha256sum` agree.
+- Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change. `std:dict.get()` (decision D-P6) is next.
+
 ## [2.3.0] - 2026-11-14 — The standard library, a declared stable surface, safer packages and a registry (M12 and M13)
 
 This release has two parts. **M13** is new: the standard library as `std:` modules, a declared and tested stable surface, a regex engine of

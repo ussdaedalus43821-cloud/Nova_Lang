@@ -5,7 +5,7 @@
 | Status | **Draft for the project owner, revised 2026-11-14. Nothing here is decided and nothing is built.** Written after M13 closed (v2.3.0) |
 | Scope | The charters of two products that are built to use what M11 (the security model) and M13 (the libraries) made possible: **NovaLedger**, a financial tool for prosumers and small businesses, and **NovaAudit**, an enterprise log analyzer built on `std:regex`; what NovaLang must still provide for them; how their cores are built; the slices that get each to a first pilot. **Not** the other M14 products, **not** a go-to-market plan |
 | Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md). See the private Nova_Vision repository for the Master Plan. |
-| Names | **NovaLedger** is the financial product (renamed from an earlier working name), **NovaAudit** the log analyzer. The module of the finance design that used the same name is now called NovaBalances |
+| Names | **NovaLedger** is the financial product (renamed from an earlier working name), **NovaAudit** the log analyzer. The module of the finance design that used the same name is now called NovaBooks |
 
 ## 1. What changed from the first draft
 
@@ -210,7 +210,7 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | D-P1 | **Product owners and repositories** | One repository per product (`NovaLedger`, `NovaAudit`), each with its own tests and CI on Windows 3.7 and 3.12 and Linux from the first commit | The roadmap requires a named owner; M13 showed that the rows nobody watches are where failures appear |
 | D-P2 | **Which first** | **NovaAudit**, then NovaLedger | Section 9: the closest precedent, the heaviest use of M13, no regulatory exposure, the smaller date need. The owner may well have a customer conversation that changes this |
 | D-P3 | **The audiences** (section 5) | Treat both as hypotheses, and run P0 before P2 and P3 | The plan does not know the customer. Building a product for an audience that was assumed is the mistake the consumer draft was in danger of making |
-| D-P4 | **The name collision between the product and a module of the finance design** | **Decided by the owner, 2026-11-14:** the module is renamed NovaBalances; the product stays NovaLedger | Two things with one name is the confusion the rename was meant to remove |
+| D-P4 | **The name collision between the product and a module of the finance design** | **Decided by the Architect, 2026-11-14:** the module is renamed NovaBooks; the product stays NovaLedger | Two things with one name is the confusion the rename was meant to remove |
 | D-P5 | **Order of work: libraries first or product first** | **Libraries first (P1)**, then the products | M13's own lesson: Nova_Data's hand-written helpers were the cost of building the product before the library |
 | D-P6 | **Missing values** (L4) | A `std:` function over dictionaries (additive, a minor change), not a new reserved global | A new global built-in is a **major** change by `STABLE.md` |
 | D-P7 | **How much speed NovaAudit promises, and whether to build a faster matcher** | State the measured ceiling (tens of megabytes a run, one file per process) in the first pilot, and **decide on a faster matcher after P0 says what volume customers have** | A faster matcher is a large security-sensitive piece of code (the current one is unreviewed); building it on a guess about volume would be the wrong order |
@@ -218,6 +218,32 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | D-P9 | **NovaLedger's three forecasts** (section 6.3) | Accept the definitions as a first version, with each margin a named parameter in a file the user can read | "Conservative" and "stress" are a judgment; the engine must show them, not decide them |
 | D-P10 | **Gates before a customer sees either product** | The independent review of the sandbox, the matcher and the registry client has an outcome, and the release is signed and reproducible (P4) | An enterprise buyer will ask both; a product that holds financial records or reads sensitive logs should not outrun its reviewer |
 | D-P11 | **Do the products publish packages?** | Not to a registry (none exists, D8); install from the repositories by path or git, with the lock | Operating a registry is a business and security commitment that belongs to a later decision |
+
+### Decisions recorded (the Architect, 2026-11-14)
+
+D-P1 to D-P11 were answered as follows; the recommendations of the table above stand except where noted.
+
+| # | Decision |
+| --- | --- |
+| D-P1 | **Approved.** One repository per product |
+| D-P2 | **Approved.** NovaAudit is first |
+| D-P3 | **Approved.** P0 validation is required before any application logic is written |
+| D-P4 | The module is renamed **NovaBooks** (the product stays NovaLedger) |
+| D-P5 | **Approved.** The libraries (P1) are built before the applications |
+| D-P6 | **A standard-library function, `std:dict.get()`**, for missing values: no new global name, no `nothing` literal. It is a minor change (L4) |
+| D-P7 | **Deferred.** No faster matcher until P0 says what volume customers have |
+| D-P8 | **Approved.** Encryption is the host's job, not the language's |
+| D-P9, D-P10, D-P11 | **Approved as written** |
+
+### P1: progress (branch `m14/p1-libraries`; version 2.4.0 in development; a draft until the owner has read it)
+
+| Item | State |
+| --- | --- |
+| L1 `std:date` | **Built on all three engines**, 29 functions, specified in `[lib.std-date]`. Dates and timestamps are **plain text** (`2027-01-31`, `2027-01-31T13:55:36+00:00`), so they store and compare like strings; whole seconds and a numeric offset, no time zone database. The month-end rule is written down (`add_months("2027-01-31", 1)` is `2027-02-28`). Formats are a small English-only set (`%Y %m %d %e %H %M %S %b %B %a %A %z %f %%`), never the locale's, and read the combined-log and ISO forms; text with no offset (syslog) uses `parse_timestamp_at`. **Tested against Python's `datetime` and `calendar` over every day from 1900 to 2100** (about 75,000 days, every operation), 3,000 random timestamps with offsets, and a seeded program on the three engines. A junk-argument test found two crashes that the sweeps did not: December 9999 and very large integers each ended in a Python exception; both are fixed and the test now fails on any Python exception from any `std:date` function. **Not built:** named time zones (G-014), sub-second precision |
+| L5 `std:hash` | **Built**: `hash.sha256(text)` (the SHA-256 of the UTF-8 bytes) and, in `std:files`, `files.sha256_file(path)` (the file read in 64 KiB pieces, under the read grant, charged to the run). **A departure from the plan:** the file digest is in `std:files`, not `std:hash`, so that hashing a string needs no capability and hashing a file needs exactly the read grant a program already holds for it. NIST vectors (including the million-`a` one), sizes around a piece, a folder, a missing file, a link leading out of the grant, and agreement with `sha256sum` on the three engines |
+| L4 `std:dict.get()` | **Decided (D-P6); not built yet** |
+| L2 `std:csv`, L3 ordering by a key, L6 the 2.3.x patch list, L7 `std:terminal` | Not started |
+| Version | `__version__` is 2.4.0 on this branch; `v2.3.0` is the last release |
 
 ## 12. Exit criteria for the NovaLang side of the first pilots (testable)
 
