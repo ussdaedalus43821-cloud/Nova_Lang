@@ -23,7 +23,7 @@ These benchmarks establish the performance and security baseline for the M12 (By
 - **Datasets & Results:**
   | Dataset | Lines | Time | Unparsed | Notes |
   |---|---|---|---|---|
-  | Sample access log (May 2015) | 10,000 | 0.42s | 0 | Combined log format; first 10,000-line sample file, dated 17 May 2015 |
+  | Sample access log (May 2015) | 10,000 | 0.42s | 0 | Combined log format; 10,000-line sample file, dated 17 May 2015 |
   | Synthetic (Tesla/Starlink) | 50,000 | 2.05s | 0 | 50/50 split of 200s/404s |
   | Nginx (Modern) | 51,462 | 2.09s | 0 | 6.8MB file, universal parsing |
 - **Sandbox Limit:** Refused a 1.1MB file with `a string cannot grow beyond 1000000 characters`. Successfully parsed a 488KB chunk (2,154 lines) in the sandbox.
