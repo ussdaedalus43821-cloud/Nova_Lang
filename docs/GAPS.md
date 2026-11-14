@@ -31,7 +31,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
   `restricted` profile must not be offered on it (M12 plan, slice 8: a new engine may not carry the name until the 201-cell matrix passes on it).
 - **Workaround:** none in the program. Do not run NovaLang on PyPy.
 - **Fix (decided 2026-11-14: slice 6 or earlier):** make the nesting depth **explicit**: a counter in the parser, the compiler and the tree-walker (and the
-  loader of the bytecode chapter, [`design/m12-bytecode-spec-draft.md`](design/m12-bytecode-spec-draft.md) V1), with a stated maximum and the same
+  loader of the bytecode chapter, [`spec/17-bytecode.md`](spec/17-bytecode.md) V1), with a stated maximum and the same
   error text, independent of the host's recursion limit; then raise `sys.setrecursionlimit` only as far as that maximum needs, and re-run the two failing conformance cases and the
   suite on PyPy. The explicit limit is worth having on CPython too: it is the same on every host, as the portability chapter wants.
 - **Probe:** [`tests/portability/test_pypy_nesting.py`](../tests/portability/test_pypy_nesting.py) (`test_G051_*`). It needs a PyPy interpreter, which CI does not have, so it is skipped
@@ -39,7 +39,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
   error.
 
 ## G-052 A float literal that overflows is silently infinity - TRAP (minor)
-- **Found:** 2026-11-14, writing the constants section of the bytecode specification ([`design/m12-bytecode-spec-draft.md`](design/m12-bytecode-spec-draft.md), F3):
+- **Found:** 2026-11-14, writing the constants section of the bytecode specification ([`spec/17-bytecode.md`](spec/17-bytecode.md) `[bc.constants]`, finding F3 of [`design/m12-bytecode-notes.md`](design/m12-bytecode-notes.md)):
   a constant pool can hold `inf`, and no source can make a NaN constant, which led to asking what *can* make an infinite one.
 - **Tried:** `print(1` followed by 400 zeros and `.0)` prints `inf`; two such literals subtracted print `nan`. The same on the VM, the tree-walker and the self-hosted interpreter.
 - **Why it matters:** [`spec/06-portability.md`](spec/06-portability.md) `[port.floats]` says an overflowing float *result* is infinity, not an error, so a literal that overflows

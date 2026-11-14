@@ -119,39 +119,21 @@ the reactor's policy-dialect tick loop, the CI job and the generated `docs/BENCH
 
 ### Slice 3: the bytecode specification (`docs/spec/17-bytecode.md`)
 
-**Status (2026-11-14): drafted, in [`m12-bytecode-spec-draft.md`](m12-bytecode-spec-draft.md), not yet in `docs/spec/`.** The conformance station fails
-if a section of `docs/spec/` has no case citing it, and a bytecode section has nothing a case can run until the loader exists, so the chapter keeps its
-`[bc.*]` ids in `docs/design/` and moves to `docs/spec/17-bytecode.md` in slice 4 with its cases (the end of the draft says how). `tests/compiler/test_bytecode_draft.py`
-(run by the compiler station) keeps the draft's opcode table, its hash and its cross-references in step with `novalang.OPCODES`. Reading the compiler and the VM for
-it found six facts the plan did not have (draft section `[bc.findings]`): the compiler's pool holds tuples, lists and `BuiltinFunction` objects, so those become
-instruction arguments and a built-in-by-name tag; ungated built-ins are constants, so the loader must refuse gated names (an artifact could otherwise carry `read` into an
-engine without the grant); `verify()` does not check what the VM trusts (pool indexes, slots inside chains and loop state, closure indexes); a cache hit would skip the type
-gate unless the artifact records whether the source has annotations or imports; a 400-digit float literal compiles to infinity; and nesting depth leans on
-CPython's recursion limit, which PyPy breaks. Nine questions for the owner are listed there; on 2026-11-14 the owner answered two: **an artifact embeds its source text and is self-contained (Q2), and the cache is off by default on Windows (Q5)**. Seven are open.
-
-Normative text, in the style of the other chapters (ids, a table per concept, error texts). Sections:
-
-* `[bc.overview]` what an artifact is and is not (not a security boundary; not an API, D3);
-* `[bc.header]` magic, format version, opcode-set hash, compiler version, flags, source hash, length;
-* `[bc.constants]` the closed set of constant types and their encoding (numbers: integers of any size up to the 4,000-digit limit,
-  floats as 64-bit IEEE; strings as UTF-8; no list or dictionary constants, by decision D1; nested code objects);
-* `[bc.code]` a code object: the opcode list, arguments, source positions, slots and parameters, free variables, closure layout,
-  exception table;
-* `[bc.ops]` the opcode table: number, name, argument, stack effect, what it does (generated from `OPCODES` and checked against it);
-* `[bc.verify]` what `verify()` checks and guarantees, and, as plainly, what it does not (it checks well-formedness, not
-  capabilities: capability gating is still `LOAD_BUILTIN` at run time);
-* `[bc.reject]` the rejection errors, each with a name and a text: bad magic, unknown format version, opcode-set mismatch,
-  truncated, trailing bytes, unknown constant type, out-of-range reference, failed `verify()`;
-* `[bc.determinism]` the same source and compiler produce the same bytes;
-* `[bc.cache]` the key, the location rules of D4, atomic replacement, what happens on a corrupt or foreign file (recompile,
-  never fail the program), and what is never cached (programs read from standard input, the REPL).
+**Status (2026-11-14): done. The chapter is [`docs/spec/17-bytecode.md`](../spec/17-bytecode.md), normative, with 72 conformance cases (profile `bytecode`) citing all twelve of its sections.**
+It is implemented (slice 4) and its decisions are the owner's. What did not move: the cache rules (`[bc.cache]`), the findings and the nine questions stay in
+[`m12-bytecode-notes.md`](m12-bytecode-notes.md), because a case is a program and its result and no case can pin a cache directory before slice 5 builds it; `[bc.cache]` joins
+the chapter, with its cases, in slice 5. `tests/compiler/test_bytecode_draft.py` (run by the compiler station) keeps the chapter's opcode table, its hash and the table in `novalang.py`
+in step with `novalang.OPCODES`. Reading the compiler and the VM for it found six facts the plan did not have (notes, `[bc.findings]`): the compiler's pool holds tuples, lists and `BuiltinFunction`
+objects, so those became instruction arguments and a built-in-by-name tag; ungated built-ins are constants, so the loader refuses gated names (an artifact could otherwise carry `read` into an
+engine without the grant); `verify()` does not check what the VM trusts (pool indexes, slots inside chains and loop state, closure indexes); a cache hit would skip the type gate unless the
+artifact records whether the source has annotations or imports; a 400-digit float literal compiles to infinity (G-052); and nesting depth leans on CPython's recursion limit, which PyPy
+breaks (G-051).
 
 ### Slice 4: the serializer, the loader and the compatibility corpus
 
 **Status (2026-11-14): built** (`dump_artifact`, `load_artifact`, `--compile`, `--check-artifact`, running a `.novac`; `tests/bytecode/`, a station of `run_all.py`).
 It follows the owner's nine decisions (the format embeds its source; development builds write version 0; limits as proposed; no compression; no cache on Windows by default;
-`InternalError` exit 70). Measured: reading and verifying is 2.5x to 3.0x faster than compiling (`docs/benchmarks.md`). Not done: the chapter is still in `docs/design/`
-because no conformance case cites its sections yet (slice 4's remaining item: a conformance profile `bytecode`), and the cache is slice 5.
+`InternalError` exit 70). Measured: reading and verifying is 2.5x to 3.0x faster than compiling (`docs/benchmarks.md`). The chapter's conformance cases are done (slice 3's section); the cache is slice 5.
 
 * `dump(code) -> bytes` and `load(bytes) -> CodeObject` in `novalang.py`, plus `--compile file.nova -o file.novac` and running
   a `.novac` directly. `load` calls `verify()` and rejects with the errors of `[bc.reject]`.

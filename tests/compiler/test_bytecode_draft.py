@@ -1,9 +1,9 @@
-"""Keeps the draft of chapter 17 (docs/design/m12-bytecode-spec-draft.md) in step with the compiler.
+"""Keeps chapter 17 (docs/spec/17-bytecode.md) in step with the compiler.
 
-The opcode table of the draft is generated from novalang.OPCODES and novalang.STACK_EFFECT; this check reads the table back out of the
-Markdown and fails if an opcode was added, removed, renumbered or given another stack effect without the draft being regenerated, if the
-opcode-set hash printed in the draft is not the hash of the printed table, or if the draft refers to a section id it does not define.
-It is the seed of the test slice 4 adds for the real chapter (M12 plan, slice 3)."""
+The opcode table of the chapter was generated from novalang.OPCODES and novalang.STACK_EFFECT; this check reads the table back out of the
+Markdown and fails if an opcode was added, removed, renumbered or given another stack effect without the chapter being updated, if the
+opcode-set hash printed in the chapter is not the hash of the printed table or of the table compiled into novalang.py, or if the chapter
+refers to a section id it does not define. The design notes (docs/design/m12-bytecode-notes.md) are checked for the questions they list."""
 import hashlib
 import os
 import re
@@ -14,7 +14,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 import novalang as nl  # noqa: E402
 
-DRAFT = os.path.join(ROOT, "docs", "design", "m12-bytecode-spec-draft.md")
+DRAFT = os.path.join(ROOT, "docs", "spec", "17-bytecode.md")
+NOTES = os.path.join(ROOT, "docs", "design", "m12-bytecode-notes.md")
 
 
 def rows(text):
@@ -52,10 +53,14 @@ def run(check):
     check(bool(said) and int(said.group(1)) == len(nl.OPCODES), "bytecode draft: the text says how many opcodes there are, and it is right")
     defined = set(re.findall(r"^## \[(bc\.[a-z]+)\]", text, flags=re.M))
     used = set(re.findall(r"`\[(bc\.[a-z]+)\]`", text))
-    check(used <= defined, "bytecode draft: every section id the draft cites is a section it defines", str(sorted(used - defined)))
-    questions = set(re.findall(r"`\[bc\.questions\]` (Q\d)", text))
-    listed = set(re.findall(r"^\| (Q\d) \|", text, flags=re.M))
-    check(questions <= listed, "bytecode draft: every question the draft refers to (Q1..) is listed under [bc.questions]", str(sorted(questions - listed)))
+    check(used <= defined, "bytecode draft: every section id the chapter cites is a section it defines", str(sorted(used - defined)))
+    with open(NOTES, encoding="utf-8") as handle:
+        notes = handle.read()
+    questions = set(re.findall(r"`\[bc\.questions\]` (Q\d)", notes))
+    listed = set(re.findall(r"^\| (Q\d) \|", notes, flags=re.M))
+    check(questions <= listed and len(listed) == 9, "bytecode draft: the notes list the nine questions, and every question they refer to is listed under [bc.questions]", str(sorted(questions - listed)))
+    check("[bc.questions]" not in text and "[bc.findings]" not in text and "[bc.cache]" not in text,
+          "bytecode draft: the chapter cites no section that is not in it (the cache, the findings and the questions are in the notes)")
     # the table compiled into novalang.py is the table in the document, and its hash is the document's
     check([(name, kind) for _, name, kind, _ in table] == [(name, (kind if kind != "-" else "-")) for name, kind, _ in nl.ARTIFACT_TABLE],
           "bytecode draft: the opcode table in novalang.py (ARTIFACT_TABLE) lists the same opcodes and argument kinds as the document")

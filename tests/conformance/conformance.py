@@ -44,7 +44,12 @@ CASES_DIR = HERE / "cases"
 SPEC_DIR = ROOT / "docs" / "spec"
 DIVERGENCE_LOG = SPEC_DIR / "DIVERGENCES.md"
 
-PROFILES = ("core", "host", "modules", "embedding", "python", "policy", "sandbox")
+PROFILES = ("core", "host", "modules", "embedding", "python", "policy", "sandbox", "bytecode")
+
+# docs/spec/17-bytecode.md [bc.reject]: the names of the errors a refused artifact can give.
+BYTECODE_ERRORS = ("truncated", "bad-magic", "checksum-mismatch", "unknown-format-version", "opcode-set-mismatch", "bad-flags",
+                   "trailing-bytes", "bad-text", "bad-constant", "bad-opcode", "bad-argument", "unknown-builtin", "limit-exceeded",
+                   "failed-verify", "source-mismatch", "internal-error")
 
 # docs/spec/16-sandbox.md [sbx.config]: what a `sandbox` object may hold. The engines do not
 # enforce it yet (D-040 to D-044); the corpus records what they do instead.
@@ -122,6 +127,23 @@ def validate(cases, sections, log):
             problems.append("{} cites no spec section".format(where))
         if case.get("profile") == "sandbox" and "sandbox" not in case:
             problems.append("{} is a sandbox case with no 'sandbox' object".format(where))
+        if case.get("profile") == "bytecode":
+            if "artifact" in case:
+                try:
+                    bytes.fromhex(case["artifact"])
+                except (ValueError, TypeError):
+                    problems.append("{} has an 'artifact' that is not hexadecimal".format(where))
+            elif not case.get("source"):
+                problems.append("{} is a bytecode case with neither an 'artifact' nor a 'source'".format(where))
+            elif case.get("deterministic") is not None and not isinstance(case["deterministic"], bool):
+                problems.append("{} has a 'deterministic' that is not true or false".format(where))
+            if "artifact" in case and case.get("source"):
+                problems.append("{} gives both an artifact and a source: the artifact carries its own".format(where))
+            if "artifact" in case and case.get("error") and case["error"].partition(": ")[0] in BYTECODE_ERRORS:
+                if case.get("exit") != 1 or case.get("output") != []:
+                    problems.append("{} is a refused artifact: it must have exit 1 and no output".format(where))
+        elif "artifact" in case or "deterministic" in case:
+            problems.append("{} has 'artifact' or 'deterministic' but is not a bytecode case".format(where))
         for name, target in (case.get("symlinks") or {}).items():
             if not isinstance(target, str) or name.startswith("/") or "\\" in name or ":" in name \
                     or any(part in ("", ".", "..") for part in name.split("/")):
@@ -131,8 +153,8 @@ def validate(cases, sections, log):
                 problems.append("{} has matrix cell {!r} that is not 'cell:kind'".format(where, cell))
         if "sandbox" in case:
             config = case["sandbox"]
-            if case.get("profile") != "sandbox":
-                problems.append("{} has a 'sandbox' object but is not profile 'sandbox'".format(where))
+            if case.get("profile") not in ("sandbox", "bytecode"):
+                problems.append("{} has a 'sandbox' object but is not profile 'sandbox' or 'bytecode'".format(where))
             if config.get("profile") not in SANDBOX_PROFILES:
                 problems.append("{} has sandbox profile {!r}".format(where, config.get("profile")))
             for key, value in config.items():
@@ -258,7 +280,8 @@ def tree_walker_stack_limited():
 
 def run_engine(cases, engine, workers=4):
     """{name: result} for one engine."""
-    cases = [case for case in cases if (case["profile"] == "policy") == (engine == "policy")]
+    cases = [case for case in cases if (case["profile"] == "policy") == (engine == "policy")
+             and (case["profile"] != "bytecode" or engine == "vm")]      # an artifact is a format of the VM
     if engine == "bootstrap":
         cases = [case for case in cases if "embedding" not in case]
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -285,7 +308,7 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
         """Cases this machine cannot run are left out for every engine, the slow one included."""
         if case.get("platforms") and not any(sys.platform.startswith(p) for p in case["platforms"]):
             return False
-        return not (no_links and case.get("symlinks")) and not (no_sandbox and case["profile"] == "sandbox")
+        return not (no_links and case.get("symlinks")) and not (no_sandbox and (case["profile"] == "sandbox" or case.get("sandbox")))
 
     # Start the slow engine first so it overlaps the in-process ones.
     pending = {}
@@ -298,6 +321,10 @@ def check_all(check, selected=engines.ENGINES, verbose=False):
     if dialect and set(selected) & {"vm", "tree", "bootstrap"}:
         print("  NOT APPLICABLE: the NovaLang engines did not run {} policy cases: the policy dialect is a "
               "separate language (ADR 0004) and has its own engine.".format(dialect))
+    artifacts = sum(1 for case in cases if case["profile"] == "bytecode")
+    if artifacts and set(selected) & {"tree", "bootstrap"}:
+        print("  NOT APPLICABLE: the tree-walker and the self-hosted interpreter did not run {} bytecode cases: a bytecode "
+              "artifact is a format of the bytecode VM (docs/spec/17-bytecode.md).".format(artifacts))
     hosted = sum(1 for case in cases if "embedding" in case)
     if hosted and "bootstrap" in selected:
         print("  NOT APPLICABLE: the self-hosted interpreter did not run {} embedding cases: they need a "

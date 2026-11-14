@@ -1,4 +1,4 @@
-"""Helpers for the bytecode artifact tests (docs/design/m12-bytecode-spec-draft.md)."""
+"""Helpers for the bytecode artifact tests (docs/spec/17-bytecode.md)."""
 import contextlib
 import hashlib
 import io

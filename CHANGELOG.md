@@ -35,7 +35,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `marshal`): a closed set of constant types, built-ins named and never pointed at, a trailing SHA-256 checksum, and the same bytes for the same
   source and compiler. The loader checks everything the VM trusts (14 checks, limits before allocation) and every fault is one of sixteen named
   errors; a file that is accepted but wrong at run time ends as `InternalError`, exit status 70, never a traceback. **Development builds write
-  format version 0**; the cache that uses it is not in yet. Specified in `docs/design/m12-bytecode-spec-draft.md`; 51 tests in `tests/bytecode/`
+  format version 0**; the cache that uses it is not in yet. Specified in `docs/spec/17-bytecode.md` (chapter 17, with the new `bytecode` conformance profile: 72 cases that cite all twelve of its sections); 51 tests in `tests/bytecode/`
   (a station of `tests/run_all.py`): every opcode, 19 golden fixtures and 16 damaged ones, a seeded fuzzer, and the whole conformance corpus
   (765 cases) run through an artifact with identical results.
 - **M12 benchmarks and profile.** `tests/benchmarks/run.py` gains a `workloads` group (15 micro programs and the Nova_Data, Nova_Log and Nova_Stats

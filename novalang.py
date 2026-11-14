@@ -7397,7 +7397,7 @@ def show_vars(interpreter):
 #
 # A compiled module written down so a later run can skip lexing, parsing and compiling, and so a program can be
 # shipped as one self-contained file: the artifact carries the source text it was compiled from. The contract is
-# docs/design/m12-bytecode-spec-draft.md (sections [bc.*]); the rules in short:
+# docs/spec/17-bytecode.md (sections [bc.*]); the rules in short:
 #
 #   * a purpose-built, length-prefixed, little-endian binary format, never pickle or marshal, read by explicit code;
 #   * a closed set of constant types; no object reference of any kind; built-ins are named, never pointed at;

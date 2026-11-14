@@ -1,6 +1,6 @@
 """The bytecode artifact (.novac): format, rejection, corruption, limits, determinism, the command line, and the round trip.
 
-The contract is docs/design/m12-bytecode-spec-draft.md (sections [bc.*]); the section ids appear in the test names. Run:
+The contract is docs/spec/17-bytecode.md (sections [bc.*]); the section ids appear in the test names. Run:
 
     python3 -m unittest discover -s tests/bytecode -v
 

@@ -454,7 +454,77 @@ def run_policy_engine(case):
     return result
 
 
+@contextlib.contextmanager
+def through_artifacts(stats=None, preloaded=None):
+    """Inside this block every program the VM runs, and every module it imports, is compiled, written as a bytecode artifact, read back and
+    verified, and the loaded code is what runs (docs/spec/17-bytecode.md). Everything else is `novalang.run`. `preloaded` maps a source text
+    to an artifact already loaded for it: that program runs from the artifact's code, its flags and its embedded source, without being
+    parsed (what running a `.novac` does). A program too large to write runs from source, as the cache would; `stats` counts what happened."""
+    stats = stats if stats is not None else {}
+    original = novalang.run
+    preloaded = preloaded or {}
+
+    def run(source, interpreter, path=None):
+        if interpreter.engine != "vm":
+            return original(source, interpreter, path)
+        try:
+            if source in preloaded:
+                loaded = preloaded[source]
+                program = types.SimpleNamespace(annotated=loaded.annotated, imports=loaded.imports, _code=loaded.code)
+                novalang.type_gate(program, source, interpreter, path)
+                stats["from a file"] = stats.get("from a file", 0) + 1
+                return program, novalang.run_program(program, interpreter)
+            tokens = novalang.Lexer(source).tokenize()
+            program = novalang.Parser(tokens).parse()
+            novalang.type_gate(program, source, interpreter, path)
+            try:
+                data = novalang.dump_artifact(novalang.compile_ast(program), source, novalang.bytecode_flags(program))
+            except novalang.BytecodeDumpError:
+                stats["not written"] = stats.get("not written", 0) + 1
+                data = None
+            if data is not None:
+                program._code = novalang.load_artifact(data, source).code
+                stats["through an artifact"] = stats.get("through an artifact", 0) + 1
+            return program, novalang.run_program(program, interpreter)
+        except RecursionError:
+            raise novalang.NovaError("the interpreter ran out of stack - recursion too deep") from None
+
+    novalang.run = run
+    try:
+        yield stats
+    finally:
+        novalang.run = original
+
+
+def run_bytecode_case(case, engine):
+    """A `bytecode` case (docs/spec/17-bytecode.md): the host reads the artifact the case gives (`artifact`, as hex) or writes one from the
+    program (`source`), and the result is what running it through the artifact gives. A refused file is the result `name: message`, status 1,
+    no output. Only the bytecode VM runs these: an artifact is a VM format."""
+    if engine != "vm":
+        raise ValueError("bytecode cases run on the bytecode VM only")
+    preloaded = None
+    source = case["source"]
+    if "artifact" in case:
+        try:
+            loaded = novalang.load_artifact(bytes.fromhex(case["artifact"]))
+        except novalang.BytecodeLoadError as refusal:
+            return {"output": [], "error": "{}: {}".format(refusal.name, refusal), "error_line": None, "exit": 1}
+        source = loaded.source
+        preloaded = {source: loaded}
+    with through_artifacts(preloaded=preloaded):
+        result = run(source, engine, case.get("files"), case.get("env"), case.get("stdin", ""), case.get("args"),
+                     bool(case.get("allow_python")), case.get("sandbox"), case.get("symlinks"))
+    if case.get("deterministic"):
+        first = novalang.compile_artifact(source)
+        again = novalang.load_artifact(first)
+        if novalang.compile_artifact(source) != first or novalang.dump_artifact(again.code, again.source, again.flags) != first:
+            result = dict(result, error="InternalError: the same source gave different artifacts", exit=70)
+    return result
+
+
 def run_case(case, engine):
+    if case.get("profile") == "bytecode":
+        return run_bytecode_case(case, engine)
     if engine == "policy":
         return run_policy_engine(case) if "engine" in case else run_policy(case)
     files = case.get("files")

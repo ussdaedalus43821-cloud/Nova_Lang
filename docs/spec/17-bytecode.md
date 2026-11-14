@@ -1,30 +1,22 @@
-# Draft chapter 17: the bytecode artifact (`.novac`)
+# 17. The bytecode artifact (`.novac`)
 
-Status: **Implemented (slice 4, 2026-11-14) and decided by the owner; not independently reviewed, and not yet normative.** Written for M12 slice 3
-([plan](m12-runtime-plan.md)); `dump_artifact`, `load_artifact`, `verify`'s companions and the `--compile`, `--check-artifact` and run-a-`.novac` commands are in
-`novalang.py` (the section "Bytecode artifacts"), and `tests/bytecode/` tests this text against them (51 tests, golden fixtures, a seeded fuzzer, and the whole
-conformance corpus run through an artifact). The cache (`[bc.cache]`) is slice 5 and is **not** implemented. The chapter moves to `docs/spec/17-bytecode.md` once
-conformance cases cite its sections; see the end of this file.
+Status: **Owner-decided and implemented on the bytecode VM; not independently reviewed.** This chapter is the specification of
+milestone M12's bytecode format ([the plan](../design/m12-runtime-plan.md), slices 3 and 4). It is implemented by `dump_artifact` and
+`load_artifact` in `novalang.py`, by the commands `--compile`, `--check-artifact` and running a `.novac`, and is tested by the `bytecode`
+conformance profile (below) and by `tests/bytecode/` (golden fixtures, a seeded fuzzer, and the whole conformance corpus run through an
+artifact). The compiled-artifact **cache** that uses it is not part of this chapter yet: its rules are in
+[`../design/m12-bytecode-notes.md`](../design/m12-bytecode-notes.md) and join this chapter, with the cases that pin them, when slice 5 lands.
+The decisions behind the format, and what reading the compiler and the VM found, are in the same notes.
 
-**Why it is in `docs/design/` and not in `docs/spec/`.** The conformance station fails if a section of `docs/spec/` has no case citing
-it ([`tests/conformance/README.md`](../../tests/conformance/README.md)), and a case is a program with an expected output: a bytecode artifact
-has nothing a case can run until the loader exists. Putting a chapter with ids into `docs/spec/` now would stop the local suite. The ids
-below (`[bc.*]`) are the ones the chapter will keep.
+**What this chapter claims, and what it does not.** An artifact is the compiled form of one source text, written down so a later run can skip
+lexing, parsing and compiling, and so a program can travel as one self-contained file. It is **a cache of a compilation, not a security
+boundary and not an authenticity check** (`[bc.overview]`, `[bc.provenance]`). The chapter specifies what a reader must accept and what it must
+refuse; it does not specify an instruction selection, so two hosts compile the same source to different bytes and both conform.
 
-**Where its content comes from, so you can tell what to trust:**
-
-* **Decided on 2026-11-14 (D1 to D7 of the plan):** a purpose-built, versioned, length-prefixed binary, not `pickle` or `marshal` (D1); a format
-  version, an opcode-set hash and the compiler version in the header, reject with a named error and recompile (D2); the format is not part of the
-  M13 stable API (D3); the cache location and who may write it, off by default in `restricted` (D4); no shared format with the GDScript port (D5).
-  D1 was corrected: **no list or dictionary constants**.
-* **Approved on 2026-11-11 for the earlier draft of this chapter (recorded in the register; the draft itself is not on this computer):** a trailing
-  checksum; no list or dictionary constants; names inline and integers fixed-width `u32`; an `InternalError` containment rule; the limit values; the
-  compiler-version information. **This text re-derives them from the owner's list, not from the lost draft.** Where a number or wording is mine, the
-  section says *proposed*. The limits of `[bc.limits]` are all proposed.
-* **Decided by the owner on 2026-11-14 (all nine questions of `[bc.questions]`), among them** Q2, **an artifact embeds the original source text and is self-contained** (so a
-  standalone `.novac` can run the type gate and print exact error lines with carets); Q5, **the cache is off by default on Windows** and stays off until
-  directory ownership and ACLs can be verified reliably, in a later milestone ("security over performance"); and Q7, Q4, Q3, Q1, Q6, Q8 and Q9 as recommended. All are written into the sections below.
-* **New in this draft, found by reading the compiler and the VM:** `[bc.findings]` (six facts about the current implementation that the format has to deal with).
+**Profile.** Cases of the `bytecode` profile (`tests/conformance/cases/bytecode.json`) run only on the bytecode VM; the tree-walker and the
+self-hosted interpreter have no artifacts. A case gives either a `source` (the host writes an artifact from it, reads it back and runs it, and the
+result must be the program's own) or an `artifact` (hexadecimal bytes: the host reads that file; a refusal is the result `name: message`, status 1,
+no output). `deterministic` asks the host to check `[bc.determinism]`. A `sandbox` object, as in the `sandbox` profile, sets the engine's grants.
 
 ## [bc.overview] What an artifact is, and is not
 
@@ -38,7 +30,7 @@ It is what `Compiler` makes from a program (`compile_source`), written down so a
 * It is **not a security boundary and not an authenticity check.** The trailing checksum detects accident, not tampering: anyone who can write
   an artifact can compute its checksum. What keeps a hostile artifact from doing more than a program can is `[bc.verify]` and `[bc.constants]`: the loader
   reads a closed set of types and checks everything the VM would otherwise trust.
-* It is **not an API** (D3): any minor release may change the format. The only promise is `[bc.reject]`: an artifact is **accepted or cleanly rejected,
+* It is **not an API** (decision D3 of [the M12 plan](../design/m12-runtime-plan.md)): any minor release may change the format. The only promise is `[bc.reject]`: an artifact is **accepted or cleanly rejected,
   never misread**.
 * It is **independent of the profile.** A gated name compiles to `LOAD_BUILTIN` and is resolved by the engine that runs the code; one artifact is right
   for a `trusted` and a `restricted` engine (M11). `[bc.profile]` keeps it so.
@@ -79,9 +71,9 @@ checksum         32 bytes  SHA-256 of every byte before this field (header and b
 ```
 
 * **Why the version string is in the header** (the approved "compiler-version information"): so a rejection can say which compiler made the file, and so the
-  cache key (`[bc.cache]`) includes it. It is informational for rejection; acceptance is decided by the format version and the opcode-set hash (D2).
+  key of a cache of artifacts includes it. It is informational for rejection; acceptance is decided by the format version and the opcode-set hash (decision D2 of [the M12 plan](../design/m12-runtime-plan.md)).
 * **Flags** exist for one reason, `[bc.profile]`: a program with annotations or imports must still pass the type gate when its code comes from an artifact.
-* **The source** is embedded (the owner's answer to Q2). The loader checks that the SHA-256 of the embedded source is the header's source hash; a caller
+* **The source** is embedded (a decision of the owner). The loader checks that the SHA-256 of the embedded source is the header's source hash; a caller
   that has its own copy of the source (the cache) additionally checks that the two are identical. The embedded source is what a standalone run uses for the type
   gate and for error lines (`[bc.profile]`). **It is not proof that the code was compiled from it** (`[bc.provenance]`).
 * **The checksum** is checked first, over the whole file, before anything else is interpreted. It is not a signature.
@@ -101,7 +93,7 @@ entry is a `u8` tag followed by its payload:
 | 1 | `false` | none |
 | 2 | `true` | none |
 | 3 | integer | a `u8` sign (0 or 1), then a list of `u8` (the magnitude, little-endian, **no leading zero byte**, empty for zero; zero is never negative) |
-| 4 | float | eight bytes, an IEEE 754 binary64 in little-endian order; **a NaN is rejected** (the compiler never makes one); positive infinity is accepted (`[bc.findings]` F3) |
+| 4 | float | eight bytes, an IEEE 754 binary64 in little-endian order; **a NaN is rejected** (the compiler never makes one); positive infinity is accepted (a float literal too large for a binary64 compiles to it, G-052 in [`../GAPS.md`](../GAPS.md)) |
 | 5 | text | a *name* |
 | 6 | built-in function | a *name*: the name of an ungated built-in; resolved against the loader's own table (`[bc.verify]` V13) |
 | 7 | code object | a code object, nested (`[bc.code]`) |
@@ -246,12 +238,12 @@ An argument is read with exactly its kind's width. An opcode number outside the 
 
 `verify(code)` exists today (`novalang.py`). It checks jump targets, the slots of five opcodes, the exception table, the stack depth (it must agree
 wherever paths meet, never go negative, and be exactly 1 at `RETURN`), that execution never falls off the end, and the nested code objects. **It is not
-enough for a file from outside**: the VM trusts several things `verify()` never looks at (`[bc.findings]` F4). The loader MUST check all of the following,
+enough for a file from outside**: the VM trusts several things `verify()` never looks at (finding F4 of [`../design/m12-bytecode-notes.md`](../design/m12-bytecode-notes.md)). The loader MUST check all of the following,
 in this order, and reject with `failed-verify` and the check's number (V1 to V14) when one fails:
 
 | # | Check |
 | ---: | --- |
-| V1 | the nested depth of code objects is at most `[bc.limits]` *depth*, counted by the loader itself (never by the host's recursion limit, `[bc.findings]` F5) |
+| V1 | the nested depth of code objects is at most `[bc.limits]` *depth*, counted by the loader itself (never by the host's recursion limit, G-051 in [`../GAPS.md`](../GAPS.md)) |
 | V2 | every pool index (`LOAD_CONST`, `MAKE_FUNCTION`) is below the pool size; `LOAD_CONST` names a non-code entry and `MAKE_FUNCTION` a code entry |
 | V3 | every slot number (`LOAD_FAST`, `STORE_FAST`, `LOAD_CELL`, `STORE_CELL`, `RERAISE`, `NEW_CELLS`, `RESET_SLOTS`, `RANGE_PREP`, `RANGE_NEXT`, `ITER_PREP`, `ITER_NEXT`, and each slot in `parameters`, `cell parameters` and `closure` kind 1) is below `nslots` |
 | V4 | every jump target and handler is below the instruction count; every exception table entry has start below end |
@@ -271,10 +263,10 @@ and the checksum are not a proof); that it terminates; that it uses only values 
 code); or that it is safe to run outside its grants. Capability gating is still `LOAD_BUILTIN` and the run-time checks. Verification makes a hostile file
 behave **like some program**, not like *this* program.
 
-**The containment rule (approved in principle on 2026-11-11; wording is mine).** The loader raises only the errors of `[bc.reject]`. If it hits anything
+**The containment rule (decided by the owner).** The loader raises only the errors of `[bc.reject]`. If it hits anything
 else (a Python exception from a malformed value, memory exhaustion, an internal bug), it converts it to `InternalError` (`internal-error`) and rejects the
-artifact: it never lets a traceback, a crash or a partially built code object escape. The consequence for the cache is that every rejection means *ignore
-the file and compile from source* (`[bc.cache]`). The runtime has the matching rule: an exception that is not a `NovaError` leaving the VM while it runs
+artifact: it never lets a traceback, a crash or a partially built code object escape. The consequence for a host that caches artifacts is that every rejection means *ignore
+the file and compile from source*. The runtime has the matching rule: an exception that is not a `NovaError` leaving the VM while it runs
 loaded code is reported as `InternalError`, not as a Python traceback.
 
 **As implemented.** V1, V2, V3, V5, V7 to V11 and V14 are checked while the file is read (`read_code`, `read_argument`); V3 includes a *role* for every slot (plain variable, cell or loop
@@ -311,7 +303,7 @@ the first it meets. **The invariants slice 4 tests:** every prefix of every fixt
 fixture is accepted (and then it is a valid, verified code object) or a named error; a seeded fuzzer finds no input that is accepted and fails `verify()`,
 or raises anything else.
 
-## [bc.limits] Limits (all proposed; the owner decides)
+## [bc.limits] Limits
 
 | Limit | Value | Because |
 | --- | ---: | --- |
@@ -347,8 +339,8 @@ same bytes, so a lost race loses nothing.
    the *code*.
 3. **Steps and limits are the VM's.** The step counter counts a loop pass and a call, as now; the artifact adds no event and removes none. A limit
    that trips in compiled code trips at the same instruction in loaded code.
-4. **Modules.** `IMPORT` is resolved at run time under the grants (not at load time), so an artifact does not embed another artifact. A cached
-   module is keyed on its own text (`[bc.cache]`).
+4. **Modules.** `IMPORT` is resolved at run time under the grants (not at load time), so an artifact does not embed another artifact. A host that
+   caches modules keys each on its own text.
 
 ## [bc.provenance] What embedding the source does and does not prove
 
@@ -357,82 +349,5 @@ artifact can carry a harmless source and different code, and the type gate would
 boundary and not an authenticity check) and is why `[bc.verify]` makes hostile code behave like some program under the same grants.
 
 The format is deterministic (`[bc.determinism]`), which gives an exact check at no extra cost: **recompile the embedded source and compare the bytes.** If `dump(compile(source))` equals the
-file, the code is the compilation of that source and the gate's verdict on the source is a verdict on the code. This is the proposed `novalang.py --check-artifact FILE` (`[bc.questions]` Q9, decided);
+file, the code is the compilation of that source and the gate's verdict on the source is a verdict on the code. This is what `novalang.py --check-artifact FILE` does in the reference host;
 it costs a compile, so a run does not do it by default. The cache does something stronger for free: it always has the source it is about to run and compares it with the embedded one.
-
-## [bc.cache] The compiled-artifact cache
-
-* **Key.** SHA-256 over: the format version, the opcode-set hash, the compiler version string, and the source text (as UTF-8), each preceded by its length
-  as a `u32`. Not the profile, not the limits, not the working directory, not the path of the file (M11: code is profile-independent). The file is
-  named `<key as 64 hex digits>.novac`.
-* **Where (D4).** A per-user cache directory: `$XDG_CACHE_HOME/novalang` when set, else `~/.cache/novalang` on Linux; `~/Library/Caches/novalang` on macOS;
-  `%LOCALAPPDATA%\novalang\cache` on Windows. `--cache-dir DIR` and `NOVALANG_CACHE=off` override. (The exact subdirectory was left open in the draft
-  guide; this is the proposal.)
-* **Who may write it.** The directory is created with mode 0700 and files with 0600. A loader **refuses to use** a directory that is not owned by the current
-  user or is writable by group or others (checked with `lstat`, not through a link), and never follows a symbolic link for the file.
-  **On Windows the cache is off by default** (the owner's answer to Q5) and stays off until directory ownership and ACLs can be verified reliably, in a later milestone;
-  this draft reads that as off **even with `--cache-dir`**, and the owner may say if an explicit `--cache-dir` should be allowed as an opt-in.
-* **Reading.** The size is checked against the *artifact* limit before reading; then the full `[bc.reject]` checks, with the source given, so the embedded source
-  must be identical to the source being run. **Any rejection means: ignore the file, compile from the source, and replace the entry when the directory is writable.**
-  A cache problem never fails the program.
-* **Writing.** To a temporary file in the same directory (created exclusively), then an atomic replace. A read-only directory or a full disk is ignored.
-  Concurrent runs may both write the same key; they write the same bytes (`[bc.determinism]`).
-* **Defaults.** On for `trusted` command-line runs; **off in `restricted`** unless the embedder passes a cache directory (a restricted program must not choose where
-  it is written); off for programs read from standard input and for the REPL. `--no-cache` and `NOVALANG_CACHE=off` always win.
-* **Never cached:** standard input, the REPL, and a program whose code objects exceed a limit.
-* **Size:** an entry holds the source as well as the code (about the size of the source again, plus the code); it is the same format as a standalone artifact.
-* **What it saves:** lexing, parsing and compiling, **not execution** (D4's caveat, measured: 0.1% to 5% of the proof-of-concept programs' run time;
-  7% of Nova_Stats' because it loads 21 modules). A warm start of a module-heavy program is the exit measure.
-* **Growth:** nothing removes an entry (no cache-clear command in M12). `[bc.questions]` Q6.
-* **Threat T17, a poisoned cache** (to be added to the M11 threat model with slice 5): a file another account can write is a way to inject code, which the
-  directory rule prevents; a file that gets through anyway can do what a program can do under the loader's profile, no more, because of `[bc.verify]` and
-  `[bc.constants]`; the cache stays an input the embedder keeps private.
-
-## [bc.findings] Facts about the current implementation that shape this chapter
-
-1. **F1. The compiler's pool holds Python objects the format cannot store as constants:** tuples and lists (`BUILD_DICT` keys, `NEW_CELLS` and `RESET_SLOTS` slots, a
-   `LOAD_CHAIN` chain, the `(side, operator)` of `CHECK_BOOL`, the `(message, label)` of `FAIL`, the `(name, path)` of `IMPORT_NAME`), strings used as flags (the
-   `if`/`while` of `JUMP_IF_NOT_TRUE`, the loop roles, the stray keyword), and **`BuiltinFunction` objects**. The format therefore encodes these as arguments
-   (`[bc.ops]`) and as tag 6, and the loader rebuilds the in-memory pool; the in-memory representation does not change.
-2. **F2. Ungated built-ins are constants.** `print`, `len` and every built-in not in `CAPABILITY_OF` compile to `LOAD_CONST` of the function object, not to a lookup
-   (`e_VarNode`). A file cannot hold the object, so it holds a name (tag 6), and V13 is what stops a name from reaching a gated function. This is a new
-   security-relevant rule: without V13 an artifact could carry `read` into an engine with no `files.read` grant.
-3. **F3. A very long float literal compiles to infinity.** `1` followed by 400 zeros and `.0` is a valid float constant equal to `inf`. The format accepts
-   positive infinity so every compiled program can be written; whether the lexer should accept such a literal is a separate question for the language
-   (`[bc.questions]` Q3). A NaN cannot be written by any source and is rejected.
-4. **F4. `verify()` does not check what the VM trusts.** It does not check that a pool index exists or has the right type, that the slots inside a chain, a `NEW_CELLS`
-   list or a loop state exist, that a `free` index is within the closure, that a closure entry is within the parent, or that `ITER_NEXT`'s slot was prepared. The VM
-   indexes with these values directly, so a bad value is an `IndexError` or a `TypeError`, which the VM's own handler turns into a Python traceback.
-   V2, V3, V5, V8, V9 and V10 close that. They should also run on compiled code in the test suite, so the compiler cannot regress.
-5. **F5. Nesting depth leans on the host's recursion limit.** `novalang.py` sets `sys.setrecursionlimit(20000)` and relies on `RecursionError` for "recursion too
-   deep". On PyPy 3.10 that setting crashes the interpreter with a segmentation fault on a long enough chain, and at 10,000 the same program runs instead of
-   being refused (measured, [`docs/benchmarks.md`](../benchmarks.md)). The loader must therefore count depth itself (V1, `[bc.limits]` *depth*), and the same
-   explicit counter should be added to the parser, the compiler and the tree-walker (a proposed addition to slice 6 or 8).
-6. **F6. Positions are offsets into the source, and an error prints the offending line from the source text.** Hence the owner's decision to embed the source (Q2).
-
-## [bc.questions] Decisions of the owner
-
-All nine questions were answered on 2026-11-14 ("accept all" for the recommendations); nothing is open.
-
-| # | Question | Decision |
-| ---: | --- | --- |
-| Q1 | The limits of `[bc.limits]` | accepted as proposed |
-| Q2 | A standalone `.novac` | **embeds the source text and is self-contained** (`[bc.header]`, `[bc.profile]`, `[bc.provenance]`) |
-| Q3 | The float literal that is infinity | the format accepts +infinity; logged as G-052 ([`docs/GAPS.md`](../GAPS.md)); the lexer is decided with the number work in M13 |
-| Q4 | Is `InternalError` language-visible? | no: `catch` cannot see it; the program ends with `InternalError: <text>` on standard error, no traceback, **exit status 70** |
-| Q5 | Windows | **the cache is off by default**, until ownership and ACLs can be verified (`[bc.cache]`) |
-| Q6 | Cache growth | no eviction in M12; stated in the cache's documentation; revisit in M13 |
-| Q7 | The format version number | **development builds write 0**, the first release writes 1, and a release rejects 0 (a loader accepts only its own version, `[bc.header]`) |
-| Q8 | Compression of the embedded source | **none** in format 1: stored raw, so bytes are reproducible and no decompression limit is needed |
-| Q9 | `novalang.py --check-artifact FILE` | **yes**: recompile the embedded source and compare the bytes (`[bc.provenance]`) |
-
-## How this becomes chapter 17
-
-1. **Done in slice 4:** `dump_artifact` and `load_artifact` to this text; the test that regenerates the table (`tests/compiler/test_bytecode_draft.py`, which now also compares the table in
-   `novalang.py` with this document); and `tests/bytecode/fixtures/v1/`: 19 golden artifacts that together contain every opcode, the output each printed, and 16 damaged files with the name of
-   the error each must give (written by `tests/bytecode/make_fixtures.py`; "v1" names this format generation, whose development-build version number is 0).
-2. A conformance profile `bytecode` is added to `docs/spec/README.md`, and cases (a program, compiled and dumped by the host, loaded and run) cite `[bc.constants]`, `[bc.ops]`,
-   `[bc.determinism]`, `[bc.profile]`; the rejection and cache sections are cited by the fixture corpus's expected-error entries. Each section of the chapter needs at least one case
-   or the station stops, so a section no case can reach is moved out of the chapter and kept here (as the rules of `[bc.cache]` may be).
-3. The file moves to `docs/spec/17-bytecode.md`, `README.md` of the specification gains its row, `DIVERGENCES.md` any disagreement the loader shows, and the review label
-   of the M11 documents is applied to anything this chapter changes in them (the threat model's T17).
