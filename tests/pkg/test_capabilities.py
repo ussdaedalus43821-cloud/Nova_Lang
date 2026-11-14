@@ -15,6 +15,11 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
+import novalang as nl  # noqa: E402
+
+RESTRICTED = unittest.skipIf(nl.SANDBOX_UNSUPPORTED, "the restricted profile needs Python 3.8 or later on Windows")
 PKG = os.path.join(ROOT, "tools", "nova-pkg.py")
 NOVA = os.path.join(ROOT, "novalang.py")
 ENGINES = (("vm", []), ("tree", ["--tree-walk"]), ("bootstrap", ["--bootstrap"]))
@@ -361,6 +366,7 @@ class Import(Project):
             self.assertEqual(code, 1, name)
             self.assertIn('ImportError: package "lib": src/inner.nova uses time, which needs the clock capability', out + err, name)
 
+    @RESTRICTED
     def test_declared_capabilities_must_be_granted_by_the_run(self):
         self.publish("lib", "1.0.0", READER, capabilities=["files.read"])
         self.manifest({"lib": "*"})
@@ -376,6 +382,7 @@ class Import(Project):
             granted = self.imports(flags, ["--profile", "restricted", "--allow-import", ".", "--allow-read", "."])
             self.assertEqual((granted[0], granted[1]), (0, "true\n"), (name, granted[2]))
 
+    @RESTRICTED
     def test_a_package_that_declares_nothing_needs_no_grant(self):
         self.publish("lib", "1.0.0", PURE)
         self.manifest({"lib": "*"})
