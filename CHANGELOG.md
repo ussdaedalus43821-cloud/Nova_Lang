@@ -26,7 +26,88 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
-### Added
+## [2.3.0] - 2026-11-14 — The standard library, a declared stable surface, safer packages and a registry (M12 and M13)
+
+This release has two parts. **M13** is new: the standard library as `std:` modules, a declared and tested stable surface, a regex engine of
+our own, packages that declare what they use, and a signed registry. **M12** (the bytecode format, the artifact cache and the benchmark suite)
+was in `[Unreleased]` and ships here; its entries follow the M13 ones. The default profile is still `trusted`.
+
+**Two changes narrow what worked before. Read them before upgrading.**
+
+1. **`regex()` now accepts a specified dialect, and refuses the rest.** Until now a pattern was handed to Python's `re`, so anything `re` has
+   worked on the Python engines. A pattern that uses a back-reference (`\1`), look-ahead or look-behind (`(?=` `(?!` `(?<=` `(?<!`), an atomic
+   group, a possessive quantifier (`a*+`), a conditional group, a comment group, a flag other than a leading `(?i)`, `{,n}`, or an octal
+   escape is now `TypeError: regex(): bad pattern: <reason>`, and the reason names the construct. Every pattern inside the dialect
+   (`docs/spec/09-library.md` `[lib.regex]`) keeps its meaning, and `$` still matches before a final line feed. What you gain: the time is the
+   size of the pattern times the length of the text **whatever the pattern** (`(a+)+$` on a long run of `a` answers at once, where `re` never
+   does), and the work is charged to the run's step budget and time limit. `\B` now matches in an empty text (`re` does not). Where a repeated
+   item can match nothing (`(a|b*)*`) the end of the match and the final captures may differ from `re`'s; whether there is a match and where it
+   starts do not (`docs/spec/STABLE.md`).
+2. **A package's `nova.json` is read strictly, and a package must declare the capabilities it uses.** An unknown key is an error unless it
+   starts with `x-`, and a package whose code refers to a gated name (`read`, `write`, `time`, `env`, `regex`, `python` and the rest of
+   `[sbx.capabilities]`) must list its capability in `"capabilities"`, or it is refused at `nova-pkg install` and again when its file is
+   imported, on all three engines. A package that declares a capability the run did not grant is refused at the import, before any of its
+   code runs. A package with no `capabilities` key declares none. The 17 manifests in this repository's tests use no gated name; a package
+   of yours that does needs the key added, and the message names the file, the name and the key.
+
+A third, smaller change: **a string of two names with one `/` and no `.nova` (`import "acme/ledger"`) is a package import**, not a file
+path (see Packages below). A file imported without its extension through a folder (`import "lib/util"`) now says `cannot find package`.
+
+### Added: the standard library and the declared stable surface (M13)
+
+- **`std:` modules** (`import "std:decimal" as dec`): a name looked up in `lib/std/modules.json`, never joined to a path; no `import` grant, but every capability
+  a module declares must be granted; one shared module per name; no global name is added. All provisional, since 2.3.0. Specified in
+  `docs/spec/08-modules.md` `[mod.std]` and `docs/spec/09-library.md`.
+  - `std:decimal`: exact decimals with a rounding mode (`parse`, `add`, `sub`, `mul`, `div`, `quantize`, `cmp`, `to_string`, `to_int`, `total`, and more).
+    Written first in NovaLang, then moved to the native tier because the pure version was four times too slow for a 10,000-row report.
+  - `std:math` (`divmod`, `trunc`, `exp`, `round_half`), `std:format` (`fixed`, `grouped`, `pad_zero`),
+    `std:text` (`find`, `starts_with`, `ends_with`, `is_number`, `parse_number`, `basename`, `splitext`, `chr`, `ord`: the escape character is `text.chr(27)`),
+    `std:files` (`lines`, `each_line`, `size`, `is_dir`, `is_link`: a file read in 64 KiB pieces, nothing open between pieces, the read grant judged for each, so a
+    file over the 1,000,000-character string limit reads under `restricted`), and `std:regex` (below).
+- **The native module tier.** A standard module may list Python-implemented functions; its file reaches them through a predefined name `native` that exists only in that
+  module's scope. The self-hosted engine reaches the same functions through `native_call`. Natives are held to the read grant and to the string limit.
+- **`std:regex`**: `test`, `match`, `match_from`, `find_all`, `find_n`, `sub`, `sub_n`, `pieces`, `pieces_n`, `escape`, with captures and named groups; a match is
+  `{start, end, text, groups, named}`. Needs the `regex` capability (kept until a release of fuzzing). The matcher is written for NovaLang (a Pike virtual machine) and is
+  also what `regex()` runs. Differential fuzzer against `re`, nine patterns that are exponential for a backtracking engine, and the work charged on all three engines.
+- **The stable surface is declared and tested** (`docs/spec/STABLE.md`, `docs/spec/DEPRECATIONS.md`, `tests/api/`): the built-ins and their arities, the predefined names,
+  the sandbox settings and flags, the embedding class, the manifest keys and the `std:` modules with their tiers are recorded in `tests/api/stable-surface.json`; removing or
+  changing something stable fails the test unless the major version moved, and any other change fails until the record is rewritten in the same change. The policy
+  (what is a major, minor or patch change, how a function leaves) is written, with the narrowings of this release named as such.
+- `replace_all` is no longer behind the `regex` capability (G-050): it is a plain substring replacement, already bounded by the string limit.
+
+### Added: packages and the registry (M13)
+
+- **Chapter 18 of the specification** (`docs/spec/18-packages.md`): `nova.json` version 2, version ranges, the folders, `nova.lock` version 2, declared capabilities, what
+  `install` checks, and the registry protocol.
+- **Declared capabilities (decision D9).** The syntax tree of every `.nova` file of a package is searched for the gated names it reads or calls (not field names, dictionary
+  keys or declared names; a name inside an f-string counts). Checked at `nova-pkg install` and at import, on all three engines. A project's `policy.capabilities` is the most a dependency may
+  declare; a locked package does not move to a version that declares more unless `install --accept-capabilities NAMES` names it. This proves a package cannot *name* a function it did not
+  declare. It does **not** stop capability passing (a program can hand a package `write`) and it is not isolation: the run's grants stay the only enforcement at run time.
+- **`nova.lock` version 2** records each package's `capabilities`, and for registry packages `resolved`, `archive` (the archive's SHA-256) and `signedBy`. Version 1 is read and rewritten.
+- **A signed static registry (decisions D7, D8).** `registry.json` (signed by the root keys the project lists in `registryKeys`; names the signing keys, a serial, an expiry, and the
+  hash of every other file), `revoked.json`, `index/<owner>/<name>.json` and `archive/.../<version>.tar`, on a folder, a `file://` address or HTTPS. A client refuses a file that is
+  altered, a snapshot of files from different times, a serial lower than one it has seen, an expired registry, an archive that does not match the signed index, and anything revoked.
+  Ed25519 (RFC 8032, pure Python, tested against the RFC's vectors), deterministic ustar archives, and a hardened reader written for the purpose (`tarfile` is never used on a download;
+  29 hostile archives are refused and leave nothing behind). **No public registry is operated by this release; the protocol and a tested reference are shipped.**
+- **`nova-pkg`**: `init`, `capabilities`, `keygen`, `pack`, `publish` (`--dry-run`), `yank`, `unyank`, `revoke`; `install` from a registry folder or an HTTPS server. Publishing
+  refuses a name one letter away from another owner's, never changes a published version, and refuses files named like secrets. The fetch core is **internal to `nova-pkg`**: HTTPS only,
+  certificate verification with no switch, no proxy, size and time limits, redirects only to the same host. It is not reachable from a NovaLang program and is not a capability.
+- **`import "owner/name"`** on all three engines; it binds the part after the slash.
+- Threat model: T8 (a pattern that never returns) is rewritten for the new matcher; the matcher, the registry client and the `replace_all` change are in the review log, **not reviewed**.
+
+### Fixed (M13)
+
+- `nova-typecheck` no longer fails when a module is on another drive than the current directory (Windows).
+- A package whose `nova.json` has an unreadable or malformed `capabilities` is an `ImportError` that says so, not a traceback.
+
+### Not in 2.3.0 (carried to a patch release or M14)
+
+`nova-pkg add` and `audit`; the `novalang.py pkg` front door (decision D12); the deprecation warning itself (the policy and an empty list exist, nothing is deprecated); the explicit
+nesting counter that closes G-051 (its own pull request); the embedding fixes G-015 and G-017; a lazy `for line in files.lines(path)` (use `each_line`); the step-counted time limit
+(decision D5); the first-import re-hash of installed packages (R12) and the resolver limits (R16); applying the `files` allowlist at install; the independent review of the matcher,
+the registry client and the M11 sandbox; HTTP and a `net` capability (M14, decision D6). The plan's progress tables (`docs/design/m13-libraries-and-registry-plan.md`) give the reason for each.
+
+### Added: the runtime (M12)
 
 - **The compiled-artifact cache, M12 slice 5.** A program run from a file, and every module it imports, is compiled once: the entry (a bytecode artifact, named by the
   SHA-256 of the format version, the opcode-set hash, the compiler version and the source text) is written to a per-user directory

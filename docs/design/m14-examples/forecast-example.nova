@@ -1,0 +1,32 @@
+# The worked example of docs/vision/NOVA_FINANCE.md section 7, computed with std:decimal (no float anywhere).
+import "std:decimal" as dec
+import "std:format" as fmt
+
+def money(d) {
+    return "$" + fmt.grouped(dec.to_string(dec.quantize(d, 2, "half_even")), ",")
+}
+
+let balance = dec.parse("1200.00")
+let rent = dec.parse("500.00")
+let insurance = dec.parse("120.00")
+let phone = dec.parse("45.00")
+let essentials = dec.parse("180.00")
+let reserve = dec.parse("150.00")
+
+def capacity(balance, bills, essentials, reserve) {
+    return dec.sub(dec.sub(dec.sub(balance, dec.total(bills)), essentials), reserve)
+}
+
+let expected = capacity(balance, [rent, insurance, phone], essentials, reserve)
+print("expected      ", money(expected))
+
+# conservative: variable essentials 20% higher, the electricity bill $40 over its forecast, nothing counted from income that is not yet in
+let padded = dec.add(essentials, dec.quantize(dec.mul(essentials, dec.parse("0.20")), 2, "half_up"))
+let conservative = capacity(balance, [rent, insurance, phone, dec.parse("40.00")], padded, reserve)
+print("conservative  ", money(conservative))
+
+# an unplanned $80 purchase against the expected forecast
+print("after $80     ", money(dec.sub(expected, dec.parse("80.00"))))
+
+# what a float does with cents
+print("0.10 + 0.20   ", dec.to_string(dec.add(dec.parse("0.10"), dec.parse("0.20"))), "float equals 0.3:", 0.1 + 0.2 == 0.3)
