@@ -10,7 +10,7 @@ and carry no calendar commitments. Anything that needs a decision from the
 project owner is marked **Decision** and has a record in
 [`decisions/`](decisions/README.md).
 
-Last reviewed against NovaLang v2.2.0.
+Last reviewed against NovaLang v2.3.0.
 
 ## Vision
 
@@ -29,8 +29,8 @@ use NovaLang as an embedded policy and scripting layer:
 
 ## Where we are
 
-Established, with evidence (the full suite is 1,951 checks; it passes locally, and CI has run it green on the head
-commit of 2.2.0 across the Linux, macOS and Windows jobs described in [`CI.md`](CI.md)):
+Established, with evidence (the full suite is 2,077 checks; it passes locally, and CI has run it green on the merge commit of
+every M13 slice across the Linux, macOS and Windows jobs described in [`CI.md`](CI.md), including Python 3.7 on Windows):
 
 - One language implemented three ways that must agree: the Python bytecode VM
   (default), the Python tree-walker (reference), and `novalang.nova`
@@ -52,6 +52,13 @@ commit of 2.2.0 across the Linux, macOS and Windows jobs described in [`CI.md`](
   bytecode VM and on the tree-walker, on the owner's Mac and in CI under Godot 4.7.2
   ([run](https://github.com/ussdaedalus43821-cloud/Reactor-Game/actions/runs/43113071481), 778 corpus cases).
 - One language for the games too: the policy dialect is a profile with its own spec chapters (M10).
+- A standard library of `std:` modules with a native tier (decimal, math, format, text, files, regex), a declared stable
+  surface that a test enforces, and a semantic-versioning and deprecation policy (M13; `spec/STABLE.md`).
+- A regex engine of our own whose time is the pattern times the text whatever the pattern, charged to the run's limits and
+  fuzzed against `re`.
+- Packages that declare the capabilities they use, checked statically at install and at import on all three engines, and a
+  signed static registry (Ed25519, deterministic archives, a hardened extractor, rollback, expiry and revocation) installed
+  from a folder or over HTTPS in tests. **No public registry exists or is operated** (decision D8).
 
 Not established:
 
@@ -65,10 +72,14 @@ Not established:
   made; it moves to M12. (`DaedalusGodot` holds its own copy of the runtime files; a CI job in `Reactor-Game`
   fails if the two differ, nine files identical on 2026-11-11.)
 - **Releases are not signed or reproducible.** `v2.2.0` is a lightweight, unsigned tag with no checksums, bill of
-  materials or provenance.
+  materials or provenance, and `v2.3.0` will be the same until that is done.
+- **The matcher and the registry client have not been independently reviewed.** They are the first code of the project that
+  runs on untrusted patterns and parses downloaded bytes and signatures; the threat model's review log asks the M11 reviewer
+  to read them, with the sandbox itself.
 - **Only Linux has been exercised by hand with the latest review.** Windows and macOS rest on CI runs.
-- No native backend, no remote package registry, no public API stability policy, no hard real-time guarantee,
-  and no simulation libraries (units, numerics, integrators).
+- No native backend, no operated public registry, no hard real-time guarantee, no HTTP or `net` capability (M14),
+  and no simulation libraries (units, numerics, integrators). The stable surface is declared as of 2.3.0 and is
+  provisional for the `std:` modules: nothing is promised for them across a minor release until a module is marked stable.
 
 ## Milestone overview
 
@@ -80,9 +91,9 @@ Not established:
 | M9 | Language specification and conformance corpus | **Done** (v2.2.0; [`spec/`](spec/README.md), the `conformance` station on all three engines) | M7 | L |
 | M10 | One language: dialects become profiles | **Done** (2026-11-08; ADR 0004, `pol.*` chapters 12-15) | M8, M9 | L |
 | M11 | Security model and sandbox | **Done (pending independent review)** (v2.2.0; slices 1 to 8; [hand-off package](design/m11-review-package.md)). Not described as a security boundary until the review has an outcome | M9 | XL |
-| M12 | Runtime: bytecode format and performance | **Slices 1 to 5 implemented** (2026-11-14: benchmark suite and VM profile, the bytecode format as [chapter 17](spec/17-bytecode.md), the artifact cache); PyPy evaluation documented; slice 6 (fast paths) deferred by the owner to the native-runtime phase; slices 8 and 9 and the CI benchmark job open ([status](#m12--runtime-bytecode-format-and-performance), [plan](design/m12-runtime-plan.md)) | M9 | L |
-| M13 | Platform libraries, registry and API stability | Planned | M9, M11 | L |
-| M14 | Product pilots | Horizon | M10, M11, M13 | per product |
+| M12 | Runtime: bytecode format and performance | **Slices 1 to 5 implemented, shipped in v2.3.0** (2026-11-14: benchmark suite and VM profile, the bytecode format as [chapter 17](spec/17-bytecode.md), the artifact cache); PyPy evaluation documented; slice 6 (fast paths) deferred by the owner to the native-runtime phase; slices 8 and 9 and the CI benchmark job open ([status](#m12--runtime-bytecode-format-and-performance), [plan](design/m12-runtime-plan.md)) | M9 | L |
+| M13 | Platform libraries, registry and API stability | **Done** (v2.3.0, 2026-11-14; implemented and closed by the project owner; slices 1 to 6 of the [plan](design/m13-libraries-and-registry-plan.md), HTTP moved to M14 by decision D6). Carried to a patch release: `nova-pkg add` and `audit`, the deprecation warning, the step-counted time limit, the independent review. See [the deferred list](#m13-closed-what-was-deferred) | M9, M11 | L |
+| M14 | Product pilots | **Plan drafted** (revised 2026-11-14) for NovaLedger, for prosumers and small businesses, and NovaAudit, a log analyzer ([`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md)); other products stay on the horizon until each has a charter | M10, M11, M13 | per product |
 
 Sizes are relative effort (S, M, L, XL), not durations.
 
@@ -453,6 +464,24 @@ NovaLang.
   end, in a test.
 - A breaking change to the declared stable surface fails a test.
 
+### M13 closed: what was deferred
+
+M13 is implemented and closed (v2.3.0, 2026-11-14), by the project owner's decision, with these items **not built** and carried to a
+patch release (2.3.x) unless a later milestone takes them. Each is explained in the plan's progress tables.
+
+| Deferred | Why |
+| --- | --- |
+| `nova-pkg add` and `audit` | `audit` needs the registry for yanks and revocations; both are small now that the registry exists |
+| The deprecation warning (one warning per call site, `--warnings`, an embedding callback) | The policy and an empty `DEPRECATIONS.md` exist; nothing is deprecated, so nothing is owed |
+| The step-counted time limit (G-042, decision D5) | The wall-clock limit still gives a different answer on each engine; the self-hosted engine stops near 250 CSV rows |
+| The independent review | Of the M11 sandbox, the regex matcher, the registry client and the signature check; it is still pending and the threat model's review log lists what it is asked to read |
+| The explicit nesting counter (G-051), as its own pull request | It touches the parser, the compiler, the tree-walker and the artifact loader, and needs PyPy to verify |
+| The embedding fixes (G-015 `args()` through the embedding API, G-017 the four extra files an `import` needs) | Not started; Nova_Data vendors the four files by hand |
+| The first-import re-hash of installed packages (R12), the resolver limits (R16), applying the `files` allowlist at install, the `novalang.py pkg` front door (D12) | Better made with the archive format now in place |
+| A lazy `for line in files.lines(path)` | `each_line` gives constant memory without a new kind of iterable |
+| Nova_Log on the new libraries | Left as it is by the owner: its tests assert that it has no imports and no `regex`, which is its point |
+| HTTP and the `net` capability | Moved to M14 by decision D6; the registry's fetch core is internal to `nova-pkg` and is not a capability |
+
 ### Requirements from the Proof-of-Concept Apps
 
 Four proof-of-concept programs were written entirely in NovaLang, each with its
@@ -530,6 +559,14 @@ outcome. Entry also requires the prerequisites below.
 
 Products with no precedent stay on the horizon until a charter exists. Nothing
 in this roadmap commits to building them.
+
+**First charters, drafted 2026-11-14 and revised the same day: NovaLedger and NovaAudit**, in
+[`design/m14-product-pilots-plan.md`](design/m14-product-pilots-plan.md), a draft for the owner. NovaLedger is for prosumers and small businesses, not a mass-market consumer
+app; NovaAudit is an enterprise log analyzer built on `std:regex`. Both are read-only command-line tools whose point is what M11 and M13 made
+possible: exact money, linear-time parsing, and a run whose permissions are on its command line and in its receipt. The plan names what
+NovaLang must still provide first (`std:date` with offsets, `std:csv`, ordering by a key, a decision on missing values, `std:hash`, and the
+2.3.x patch list), measures NovaAudit's throughput (about 5,000 lines a second, so tens of megabytes a run), and puts customer validation
+before any building. HTTP and the `net` capability (moved here by M13's decision D6) are a gated slice. No product code exists.
 
 ---
 

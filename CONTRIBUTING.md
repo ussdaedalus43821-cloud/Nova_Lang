@@ -110,7 +110,7 @@ escape across that boundary.
 
 - **Run the whole suite.** `python3 tests/run_all.py` runs every station
   (conformance, differential VM-against-tree-walker, security matrix, formatter,
-  linter, type checker, embedding, and the rest). At v2.2.0 that is **1,951
+  linter, type checker, embedding, and the rest). At v2.3.0 that is **2,077
   checks**, and all of them must pass. `--quick` skips the slow self-hosted
   runs and is the tier pull requests are gated on.
 - **CI.** Every pull request runs the `fast` job (the `--quick` tier on Linux

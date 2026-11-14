@@ -24,7 +24,7 @@ nova.json (version 2; docs/spec/18-packages.md)
       "name": "my-project",                       "owner/name" for anything to be published
       "version": "1.0.0",
       "description", "license", "authors", "repository"      optional text
-      "nova": "^2.2.0",                           the NovaLang versions it works with
+      "nova": "^2.3.0",                           the NovaLang versions it works with
       "registry": "../registry",                  optional; else $NOVA_REGISTRY
       "main": "main.nova",                        for a package: its entry file
       "files": ["main.nova", "src/**/*.nova"],    what publishing will pack
@@ -231,7 +231,7 @@ def read_manifest(directory, what, root=False):
             raise PkgError('{}: "registryThreshold" is how many of "registryKeys" must sign, from 1 to their number'.format(path))
     if "nova" in manifest:
         if not isinstance(manifest["nova"], str):
-            raise PkgError('{}: "nova" must be a version range such as "^2.2.0"'.format(path))
+            raise PkgError('{}: "nova" must be a version range such as "^2.3.0"'.format(path))
         manifest["_nova"] = Range(manifest["nova"], path + ' "nova"')
     if "main" in manifest:
         check_relative(manifest["main"], path, "main", False)
