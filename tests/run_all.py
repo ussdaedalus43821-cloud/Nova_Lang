@@ -765,6 +765,9 @@ def station_compiler(line):
     import test_compiler
     test_compiler.run(lambda ok, label, detail=None: line.check(
         ok, "compiler: " + label, "" if detail is None else str(detail)[:3000]))
+    import test_bytecode_draft              # the draft of chapter 17 stays in step with OPCODES (M12 slice 3)
+    test_bytecode_draft.run(lambda ok, label, detail=None: line.check(
+        ok, "compiler: " + label, "" if detail is None else str(detail)[:3000]))
 
 
 def station_differential(line):

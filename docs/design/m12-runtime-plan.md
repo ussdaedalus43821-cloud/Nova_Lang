@@ -119,6 +119,16 @@ the reactor's policy-dialect tick loop, the CI job and the generated `docs/BENCH
 
 ### Slice 3: the bytecode specification (`docs/spec/17-bytecode.md`)
 
+**Status (2026-11-14): drafted, in [`m12-bytecode-spec-draft.md`](m12-bytecode-spec-draft.md), not yet in `docs/spec/`.** The conformance station fails
+if a section of `docs/spec/` has no case citing it, and a bytecode section has nothing a case can run until the loader exists, so the chapter keeps its
+`[bc.*]` ids in `docs/design/` and moves to `docs/spec/17-bytecode.md` in slice 4 with its cases (the end of the draft says how). `tests/compiler/test_bytecode_draft.py`
+(run by the compiler station) keeps the draft's opcode table, its hash and its cross-references in step with `novalang.OPCODES`. Reading the compiler and the VM for
+it found six facts the plan did not have (draft section `[bc.findings]`): the compiler's pool holds tuples, lists and `BuiltinFunction` objects, so those become
+instruction arguments and a built-in-by-name tag; ungated built-ins are constants, so the loader must refuse gated names (an artifact could otherwise carry `read` into an
+engine without the grant); `verify()` does not check what the VM trusts (pool indexes, slots inside chains and loop state, closure indexes); a cache hit would skip the type
+gate unless the artifact records whether the source has annotations or imports; a 400-digit float literal compiles to infinity; and nesting depth leans on
+CPython's recursion limit, which PyPy breaks. Seven questions for the owner are listed there.
+
 Normative text, in the style of the other chapters (ids, a table per concept, error texts). Sections:
 
 * `[bc.overview]` what an artifact is and is not (not a security boundary; not an API, D3);
