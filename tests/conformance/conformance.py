@@ -142,8 +142,25 @@ def validate(cases, sections, log):
             if "artifact" in case and case.get("error") and case["error"].partition(": ")[0] in BYTECODE_ERRORS:
                 if case.get("exit") != 1 or case.get("output") != []:
                     problems.append("{} is a refused artifact: it must have exit 1 and no output".format(where))
-        elif "artifact" in case or "deterministic" in case:
-            problems.append("{} has 'artifact' or 'deterministic' but is not a bytecode case".format(where))
+        elif "artifact" in case or "deterministic" in case or "cache" in case:
+            problems.append("{} has 'artifact', 'deterministic' or 'cache' but is not a bytecode case".format(where))
+        if "cache" in case:
+            spec = case["cache"]
+            if "artifact" in case or not case.get("source"):
+                problems.append("{} is a cache case: it needs a 'source' and no 'artifact'".format(where))
+            if set(spec) - {"entry", "link", "mode", "dir", "runs"} or spec.get("dir") not in ("default", "explicit"):
+                problems.append("{} has a 'cache' object with unknown keys or a 'dir' that is not 'default' or 'explicit'".format(where))
+            for key in ("entry", "link"):
+                try:
+                    bytes.fromhex(spec.get(key, ""))
+                except ValueError:
+                    problems.append("{} has a cache '{}' that is not hexadecimal".format(where, key))
+            if not isinstance(case.get("cache_after"), list) or not all(isinstance(x, str) for x in case["cache_after"]):
+                problems.append("{} is a cache case with no 'cache_after' list".format(where))
+            if not case.get("platforms") or any(name.startswith("win") for name in case["platforms"]):
+                problems.append("{} is a cache case: it needs 'platforms' without Windows (the cache is off there)".format(where))
+        elif "cache_after" in case:
+            problems.append("{} has 'cache_after' without 'cache'".format(where))
         for name, target in (case.get("symlinks") or {}).items():
             if not isinstance(target, str) or name.startswith("/") or "\\" in name or ":" in name \
                     or any(part in ("", ".", "..") for part in name.split("/")):
@@ -233,6 +250,8 @@ def differences(wanted, got, engine):
     for key in ("host_calls", "results"):
         if key in got and wanted.get(key, []) != got[key]:
             out.append("{}: expected {!r}, got {!r}".format(key, wanted.get(key, []), got[key]))
+    if "cache_after" in got and wanted.get("cache_after") != got["cache_after"]:
+        out.append("cache_after: expected {!r}, got {!r}".format(wanted.get("cache_after"), got["cache_after"]))
     if engine != "bootstrap" and wanted.get("error_line") is not None \
             and wanted["error_line"] != got["error_line"]:
         out.append("error_line: expected {!r}, got {!r}".format(wanted["error_line"], got["error_line"]))
@@ -249,6 +268,7 @@ def judge(case, engine, result):
     spec["error_like"] = case.get("error_like")
     spec["host_calls"] = case.get("host_calls", [])
     spec["results"] = case.get("results", [])
+    spec["cache_after"] = case.get("cache_after")
     recorded = case.get("divergences", {}).get(engine)
     if recorded is None:
         return differences(spec, got, engine)

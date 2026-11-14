@@ -502,6 +502,8 @@ def run_bytecode_case(case, engine):
     no output. Only the bytecode VM runs these: an artifact is a VM format."""
     if engine != "vm":
         raise ValueError("bytecode cases run on the bytecode VM only")
+    if "cache" in case:
+        return run_cache_case(case)
     preloaded = None
     source = case["source"]
     if "artifact" in case:
@@ -520,6 +522,87 @@ def run_bytecode_case(case, engine):
         if novalang.compile_artifact(source) != first or novalang.dump_artifact(again.code, again.source, again.flags) != first:
             result = dict(result, error="InternalError: the same source gave different artifacts", exit=70)
     return result
+
+
+def cache_states(directory, planted, sources):
+    """What the cache directory holds for each source after a run: [`program:valid`, ...], sorted. `sources` maps a label to the source text."""
+    states = []
+    for label, text in sources.items():
+        path = Path(directory) / (novalang.cache_key(text) + ".novac")
+        if not (path.is_symlink() or path.exists()):
+            state = "absent"
+        elif path.is_symlink():
+            state = "link"
+        else:
+            data = path.read_bytes()
+            if label == "program" and planted is not None and data == planted:
+                state = "unchanged"
+            else:
+                try:
+                    novalang.load_artifact(data, text)
+                    state = "valid"
+                except novalang.BytecodeLoadError:
+                    state = "invalid"
+        states.append("{}:{}".format(label, state))
+    return sorted(states)
+
+
+def run_cache_case(case):
+    """A bytecode case about the cache ([bc.cache]). `cache` says what is in the cache directory before the run: `entry` (hex bytes of the file named for
+    the case's source), `link` (the same, but the entry is a symbolic link to a file outside the directory holding these bytes), `mode` (the directory's
+    mode, an octal string, 0700 if absent), `dir` (`explicit`: the embedder names the directory, as `--cache-dir` does; `default`: the host finds the
+    per-user directory, here through XDG_CACHE_HOME) and `runs` (how many times the program runs; every run must give the same result). The result is the
+    last run's, plus `cache_after`: for the program and each module, `absent`, `valid` (an artifact of that source), `unchanged` (the planted bytes)
+    or `invalid`."""
+    spec = case["cache"]
+    source = case["source"]
+    planted = None
+    with tempfile.TemporaryDirectory(prefix="nova-cache-") as folder:
+        folder = os.path.realpath(folder)
+        explicit = os.path.join(folder, "explicit")
+        default_home = os.path.join(folder, "xdg")
+        directory = explicit if spec.get("dir") == "explicit" else os.path.join(default_home, "novalang")
+        os.makedirs(directory, mode=0o700)
+        os.chmod(directory, int(spec.get("mode", "0700"), 8))
+        name = novalang.cache_key(source) + ".novac"
+        if "entry" in spec:
+            planted = bytes.fromhex(spec["entry"])
+            Path(directory, name).write_bytes(planted)
+            os.chmod(os.path.join(directory, name), 0o600)
+        if "link" in spec:
+            planted = bytes.fromhex(spec["link"])
+            target = os.path.join(folder, "target.novac")
+            Path(target).write_bytes(planted)
+            os.symlink(target, os.path.join(directory, name))
+        env = dict(case.get("env") or {})
+        env.setdefault("XDG_CACHE_HOME", default_home)
+        sandbox = case.get("sandbox")
+        capabilities = novalang.Capabilities(**sandbox) if sandbox else novalang.Capabilities()
+        results = []
+        saved = novalang.Interpreter.artifact_cache
+        # the suite turns the cache off for everything else (NOVALANG_CACHE=off): here it is the case that decides
+        switch = os.environ.pop("NOVALANG_CACHE", None) if "NOVALANG_CACHE" not in env else None
+        try:
+            with patched_environment(env):
+                merged = dict(os.environ)
+                for _ in range(spec.get("runs", 1)):
+                    novalang._CACHES.clear()            # a fresh process each run: nothing remembered
+                    novalang.Interpreter.artifact_cache = novalang.cache_for_run(
+                        capabilities, explicit if spec.get("dir") == "explicit" else None, merged)
+                    results.append(run_in_process(source, "vm", case.get("files"), case.get("env"), case.get("stdin", ""), case.get("args"),
+                                                  bool(case.get("allow_python")), sandbox, case.get("symlinks")))
+        finally:
+            novalang.Interpreter.artifact_cache = saved
+            if switch is not None:
+                os.environ["NOVALANG_CACHE"] = switch
+        if any(result != results[0] for result in results):
+            return dict(results[-1], error="InternalError: the runs gave different results", exit=70, cache_after=[])
+        sources = {"program": source}
+        for label, text in sorted((case.get("files") or {}).items()):
+            sources["module " + label] = text
+        result = dict(results[-1])
+        result["cache_after"] = cache_states(directory, planted, sources)
+        return result
 
 
 def run_case(case, engine):

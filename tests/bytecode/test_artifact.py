@@ -432,7 +432,7 @@ class CommandLine(unittest.TestCase):
 
     def nova(self, *args, cwd=None):
         done = subprocess.run([sys.executable, str(ROOT / "novalang.py"), *args], cwd=cwd or self.path, capture_output=True, text=True,
-                              stdin=subprocess.DEVNULL, timeout=120)
+                              stdin=subprocess.DEVNULL, timeout=120, env=dict(os.environ, NOVALANG_CACHE="off"))     # the cache has its own tests
         return done.returncode, done.stdout, done.stderr
 
     def compile(self, source, name="program"):
@@ -544,7 +544,7 @@ class RoundTrip(unittest.TestCase):
             return ("raised", type(problem).__name__)
 
     def test_bc_the_whole_corpus_gives_identical_results_through_an_artifact(self):
-        cases = [c for c in conformance.load_cases() if c.get("profile") != "policy" and "embedding" not in c
+        cases = [c for c in conformance.load_cases() if c.get("profile") not in ("policy", "bytecode") and "embedding" not in c
                  and not (c.get("sandbox") and "isolate" in c["sandbox"])]
         if os.environ.get("NOVA_BYTECODE_QUICK"):
             cases = cases[::10]

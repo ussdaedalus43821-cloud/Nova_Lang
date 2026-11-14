@@ -1,12 +1,12 @@
 # 17. The bytecode artifact (`.novac`)
 
 Status: **Owner-decided and implemented on the bytecode VM; not independently reviewed.** This chapter is the specification of
-milestone M12's bytecode format ([the plan](../design/m12-runtime-plan.md), slices 3 and 4). It is implemented by `dump_artifact` and
+milestone M12's bytecode format and cache ([the plan](../design/m12-runtime-plan.md), slices 3 to 5). It is implemented by `dump_artifact` and
 `load_artifact` in `novalang.py`, by the commands `--compile`, `--check-artifact` and running a `.novac`, and is tested by the `bytecode`
 conformance profile (below) and by `tests/bytecode/` (golden fixtures, a seeded fuzzer, and the whole conformance corpus run through an
-artifact). The compiled-artifact **cache** that uses it is not part of this chapter yet: its rules are in
-[`../design/m12-bytecode-notes.md`](../design/m12-bytecode-notes.md) and join this chapter, with the cases that pin them, when slice 5 lands.
-The decisions behind the format, and what reading the compiler and the VM found, are in the same notes.
+artifact), and the compiled-artifact **cache** (`[bc.cache]`, slice 5) is implemented and tested the same way.
+The decisions behind the format, and what reading the compiler and the VM found, are in
+[`../design/m12-bytecode-notes.md`](../design/m12-bytecode-notes.md).
 
 **What this chapter claims, and what it does not.** An artifact is the compiled form of one source text, written down so a later run can skip
 lexing, parsing and compiling, and so a program can travel as one self-contained file. It is **a cache of a compilation, not a security
@@ -16,7 +16,9 @@ refuse; it does not specify an instruction selection, so two hosts compile the s
 **Profile.** Cases of the `bytecode` profile (`tests/conformance/cases/bytecode.json`) run only on the bytecode VM; the tree-walker and the
 self-hosted interpreter have no artifacts. A case gives either a `source` (the host writes an artifact from it, reads it back and runs it, and the
 result must be the program's own) or an `artifact` (hexadecimal bytes: the host reads that file; a refusal is the result `name: message`, status 1,
-no output). `deterministic` asks the host to check `[bc.determinism]`. A `sandbox` object, as in the `sandbox` profile, sets the engine's grants.
+no output). `deterministic` asks the host to check `[bc.determinism]`. A `sandbox` object, as in the `sandbox` profile, sets the engine's grants. A
+`cache` object (with `source`) says what the cache directory holds before the run (`entry`, `link`, `mode`), whether the embedder names the directory (`dir`) and how many
+times the program runs (`runs`); `cache_after` is what the directory holds afterwards for the program and each module: `absent`, `valid`, `unchanged` or `invalid`.
 
 ## [bc.overview] What an artifact is, and is not
 
@@ -351,3 +353,35 @@ boundary and not an authenticity check) and is why `[bc.verify]` makes hostile c
 The format is deterministic (`[bc.determinism]`), which gives an exact check at no extra cost: **recompile the embedded source and compare the bytes.** If `dump(compile(source))` equals the
 file, the code is the compilation of that source and the gate's verdict on the source is a verdict on the code. This is what `novalang.py --check-artifact FILE` does in the reference host;
 it costs a compile, so a run does not do it by default. The cache does something stronger for free: it always has the source it is about to run and compares it with the embedded one.
+
+## [bc.cache] The compiled-artifact cache
+
+A host MAY cache artifacts; the reference host does. The rules below bind a host that does.
+
+* **Entry and key.** An entry is an artifact of exactly one source text. Its file is named `<key>.novac`, where *key* is the SHA-256, as 64 lowercase hexadecimal digits, of four
+  parts in this order, each written as a `u32` length and then its bytes: the format version (the four bytes of `[bc.header]`), the opcode-set hash (32 bytes), the compiler version
+  string (UTF-8) and the source text (UTF-8). The key does not depend on the profile, the limits, the path of the file or the working directory: compiled code is independent of
+  them (`[bc.overview]`).
+* **What is cached.** A program run from a file by the command line, and every module it imports, each keyed on its own text; on the bytecode VM only. Never: a program read from
+  standard input, the REPL, code given on the command line, a program whose code objects exceed a limit of `[bc.limits]` (it is not written and runs from source), or a program
+  the type gate refuses (nothing is written before the gate has passed).
+* **Where.** A per-user directory: `$XDG_CACHE_HOME/novalang` when `XDG_CACHE_HOME` is set to an absolute path; otherwise `~/Library/Caches/novalang` on macOS and
+  `~/.cache/novalang` on other POSIX systems. The embedder may name a directory instead (`--cache-dir DIR`).
+* **When it is on.** On by default under the `trusted` profile. **Off under `restricted`** unless the embedder names a directory: a restricted program must not choose where anything
+  is written. Off with `--no-cache` and with the environment variable `NOVALANG_CACHE` set to `off`, `0`, `false` or `no`, which win over everything else. **Off on Windows,**
+  whatever is named (the host says so once, on standard error), until the owner and the access rules of a directory can be verified there. Never for the tree-walker or the
+  self-hosted interpreter.
+* **The directory.** It is created with mode 0700 when it is missing. A host MUST refuse to use a directory that is not a directory (a symbolic link is refused), is not owned by
+  the current user, or is writable by group or others; the program then runs without the cache and nothing is reported to it.
+* **Reading.** The entry is opened **without following a symbolic link**, and must be a regular file owned by the current user, not writable by group or others, of at most the
+  *artifact* limit. It is read with every check of `[bc.verify]`, given the source being run: the embedded source must be identical to it. **Any failure** (no file, an unreadable or
+  damaged one, one made for another source, another format version, another instruction set) means: ignore the file, run from the source, and replace the entry. A hit saves lexing,
+  parsing and compiling and **nothing else**: the type gate still runs on the source when the entry's flags say it has annotations or imports, the profile still gates names, the
+  limits count the same steps, and an error points at the same line.
+* **Writing.** After the type gate has passed and the program has compiled, to a temporary file in the same directory, created exclusively with mode 0600, then an atomic replace of
+  the entry. A read-only directory, a full disk or any other failure is ignored and the temporary file removed. Concurrent runs may write the same key; they write the same bytes
+  (`[bc.determinism]`).
+* **A cache never fails a program.** Every problem above is a miss or a skipped write.
+* **Trust.** An entry is as trusted as its directory. A file that passes `[bc.verify]` can do what a program can do under the running profile and no more, but it need not be the
+  compilation of its source (`[bc.provenance]`), which is why a directory others can write is refused. Nothing removes an entry in this version: the cache grows with the number of
+  distinct sources run.

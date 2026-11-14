@@ -1,8 +1,8 @@
 # M12 bytecode format: notes, decisions and the cache design
 
 The format itself is specified in [`../spec/17-bytecode.md`](../spec/17-bytecode.md) (normative, with conformance cases). This file keeps what is not
-specification: where the format's rules came from, the facts about the compiler and the VM that shaped it, the questions the owner answered, and the rules for
-the compiled-artifact **cache** (slice 5), which join the specification with their cases when the cache is built. It was the draft of that chapter until
+specification: where the format's rules came from, the facts about the compiler and the VM that shaped it, the questions the owner answered, and the compiled-artifact **cache**
+(slice 5), whose rules are now in the specification. It was the draft of that chapter until
 2026-11-14; its history is the history of this file.
 
 **Where the content comes from, so you can tell what to trust:**
@@ -17,33 +17,17 @@ the compiled-artifact **cache** (slice 5), which join the specification with the
 * **Decided by the owner on 2026-11-14 (the nine questions below):** all as recommended; Q2 (embed the source) and Q5 (no cache on Windows by default) were the owner's own.
 * **Found by reading the compiler and the VM:** the findings below.
 
-## [bc.cache] The compiled-artifact cache (slice 5; joins chapter 17 with its cases)
+## The cache, as built (slice 5)
 
-* **Key.** SHA-256 over: the format version, the opcode-set hash, the compiler version string, and the source text (as UTF-8), each preceded by its length
-  as a `u32`. Not the profile, not the limits, not the working directory, not the path of the file (M11: code is profile-independent). The file is
-  named `<key as 64 hex digits>.novac`.
-* **Where (D4).** A per-user cache directory: `$XDG_CACHE_HOME/novalang` when set, else `~/.cache/novalang` on Linux; `~/Library/Caches/novalang` on macOS;
-  `%LOCALAPPDATA%\novalang\cache` on Windows. `--cache-dir DIR` and `NOVALANG_CACHE=off` override. (The exact subdirectory was left open in the draft
-  guide; this is the proposal.)
-* **Who may write it.** The directory is created with mode 0700 and files with 0600. A loader **refuses to use** a directory that is not owned by the current
-  user or is writable by group or others (checked with `lstat`, not through a link), and never follows a symbolic link for the file.
-  **On Windows the cache is off by default** (the owner's answer to Q5) and stays off until directory ownership and ACLs can be verified reliably, in a later milestone;
-  this draft reads that as off **even with `--cache-dir`**, and the owner may say if an explicit `--cache-dir` should be allowed as an opt-in.
-* **Reading.** The size is checked against the *artifact* limit before reading; then the full `[bc.reject]` checks, with the source given, so the embedded source
-  must be identical to the source being run. **Any rejection means: ignore the file, compile from the source, and replace the entry when the directory is writable.**
-  A cache problem never fails the program.
-* **Writing.** To a temporary file in the same directory (created exclusively), then an atomic replace. A read-only directory or a full disk is ignored.
-  Concurrent runs may both write the same key; they write the same bytes (`[bc.determinism]`).
-* **Defaults.** On for `trusted` command-line runs; **off in `restricted`** unless the embedder passes a cache directory (a restricted program must not choose where
-  it is written); off for programs read from standard input and for the REPL. `--no-cache` and `NOVALANG_CACHE=off` always win.
-* **Never cached:** standard input, the REPL, and a program whose code objects exceed a limit.
-* **Size:** an entry holds the source as well as the code (about the size of the source again, plus the code); it is the same format as a standalone artifact.
-* **What it saves:** lexing, parsing and compiling, **not execution** (D4's caveat, measured: 0.1% to 5% of the proof-of-concept programs' run time;
-  7% of Nova_Stats' because it loads 21 modules). A warm start of a module-heavy program is the exit measure.
-* **Growth:** nothing removes an entry (no cache-clear command in M12). `[bc.questions]` Q6.
-* **Threat T17, a poisoned cache** (to be added to the M11 threat model with slice 5): a file another account can write is a way to inject code, which the
-  directory rule prevents; a file that gets through anyway can do what a program can do under the loader's profile, no more, because of `[bc.verify]` and
-  `[bc.constants]`; the cache stays an input the embedder keeps private.
+The rules are `[bc.cache]` of [chapter 17](../spec/17-bytecode.md). What is not specification:
+
+* The cache is `ArtifactCache` in `novalang.py`, reached from `run()` through `interpreter.artifact_cache`; `run_source` sets it for a command-line program and a module
+  import uses the same interpreter. `cache_for_run()` makes the decisions of "When it is on". `NOVALANG_CACHE_DEBUG=1` prints one line per decision to standard error
+  (`novalang cache: hit|miss|rejected|stored <12 digits of the key>`); the tests read it.
+* **Nothing evicts** (Q6, decided): the directory grows with the number of distinct sources run. A size cap and eviction are a candidate for M13.
+* **The test suite and the benchmarks turn the cache off** (`NOVALANG_CACHE=off` in `tests/run_all.py` and in `tests/benchmarks/run.py`) so they neither fill a user's directory nor
+  change a baseline; `tests/bytecode/test_cache.py` and the conformance cases name a directory of their own.
+* **Threat T17** (a poisoned cache) is a row of the [M11 threat model](m11-threat-model.md).
 
 ## [bc.findings] Facts about the current implementation that shape this chapter
 
@@ -89,6 +73,5 @@ All nine questions were answered on 2026-11-14 ("accept all" for the recommendat
    `tests/bytecode/fixtures/v1/` (19 golden artifacts that together contain every opcode, the output each printed, and 16 damaged files with the name of the error each
    must give; "v1" names this format generation, whose development-build version number is 0).
 2. The conformance harness gained the `bytecode` profile (`tests/conformance/`), and `cases/bytecode.json` cites every section of the chapter.
-3. The chapter moved to `docs/spec/17-bytecode.md` on 2026-11-14. **`[bc.cache]` stayed here:** a case is a program and its result, and a cache is a directory the host
-   reads and writes, so no case could cite it before slice 5 builds it. When it does, the section moves to the chapter and the cases that pin it are added, as the rule of
-   the conformance station requires.
+3. The chapter moved to `docs/spec/17-bytecode.md` on 2026-11-14. **`[bc.cache]` stayed here** until slice 5 built the cache: a case is a program and its result, and a cache is a directory
+   the host reads and writes, so no case could cite it before. Slice 5 built it, added the `cache` fields to the `bytecode` profile (17 cases), and moved the section into the chapter.

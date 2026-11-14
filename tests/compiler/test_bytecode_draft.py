@@ -59,8 +59,8 @@ def run(check):
     questions = set(re.findall(r"`\[bc\.questions\]` (Q\d)", notes))
     listed = set(re.findall(r"^\| (Q\d) \|", notes, flags=re.M))
     check(questions <= listed and len(listed) == 9, "bytecode draft: the notes list the nine questions, and every question they refer to is listed under [bc.questions]", str(sorted(questions - listed)))
-    check("[bc.questions]" not in text and "[bc.findings]" not in text and "[bc.cache]" not in text,
-          "bytecode draft: the chapter cites no section that is not in it (the cache, the findings and the questions are in the notes)")
+    check("[bc.questions]" not in text and "[bc.findings]" not in text,
+          "bytecode draft: the chapter cites no section that is not in it (the findings and the questions are in the notes)")
     # the table compiled into novalang.py is the table in the document, and its hash is the document's
     check([(name, kind) for _, name, kind, _ in table] == [(name, (kind if kind != "-" else "-")) for name, kind, _ in nl.ARTIFACT_TABLE],
           "bytecode draft: the opcode table in novalang.py (ARTIFACT_TABLE) lists the same opcodes and argument kinds as the document")

@@ -196,6 +196,52 @@ forged = resign(BASE[:F["body_length"][0]] + t.u32(len(other_body)) + other_body
 accepted("bytecode-code-that-is-not-the-compilation-of-its-source-is-accepted", ["bc.provenance", "bc.overview"], forged)
 
 
+# ---------------------------------------------------------------------------------------------- the cache ([bc.cache])
+POSIX = ["linux", "darwin"]
+CACHE_SOURCE = 'def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint("total", total)\n'
+
+
+def cache_case(name, spec, source, cache, after, **extra):
+    CASES.append(dict(name=name, spec=["bc.cache"] + spec, profile="bytecode", source=source, want="ok", cache=cache, cache_after=after,
+                      platforms=POSIX, **extra))
+
+
+def with_code_of(source, other):
+    """The artifact of `source` with the code of `other`: a well-formed file whose code is not the compilation of its source."""
+    a, b = nl.compile_artifact(source), nl.compile_artifact(other)
+    return resign(a[:fields(a)["body_length"][0]] + t.u32(len(b[fields(b)["body"][0]:fields(b)["body"][1]])) + b[fields(b)["body"][0]:fields(b)["body"][1]])
+
+
+SPACED = 'print("ok")\nlet padding = "so that every position of the other program is inside this source"\n'
+cache_case("bytecode-cache-cold-then-warm", ["bc.overview"], CACHE_SOURCE, {"dir": "default", "runs": 2}, ["program:valid"])
+cache_case("bytecode-cache-a-directory-the-embedder-names", [], CACHE_SOURCE, {"dir": "explicit"}, ["program:valid"])
+cache_case("bytecode-cache-a-hit-changes-no-error-and-no-line", ["bc.overview", "bc.code"], "let a = 1\nprint(a / 0)\n", {"dir": "default", "runs": 2}, ["program:valid"])
+cache_case("bytecode-cache-off-for-restricted-by-default", ["bc.profile"], CACHE_SOURCE, {"dir": "default"}, ["program:absent"], sandbox={"profile": "restricted"})
+cache_case("bytecode-cache-on-for-restricted-when-a-directory-is-named", ["bc.profile"], CACHE_SOURCE, {"dir": "explicit"}, ["program:valid"],
+           sandbox={"profile": "restricted"})
+cache_case("bytecode-cache-switched-off-by-the-environment", [], CACHE_SOURCE, {"dir": "default"}, ["program:absent"], env={"NOVALANG_CACHE": "off"})
+cache_case("bytecode-cache-a-damaged-entry-is-replaced", ["bc.reject"], CACHE_SOURCE, {"dir": "explicit", "entry": (b"not an artifact at all" * 9).hex()}, ["program:valid"])
+cache_case("bytecode-cache-an-empty-entry-is-replaced", ["bc.reject"], CACHE_SOURCE, {"dir": "explicit", "entry": ""}, ["program:valid"])
+cache_case("bytecode-cache-an-entry-made-for-another-source-is-replaced", ["bc.reject", "bc.header"], CACHE_SOURCE,
+           {"dir": "explicit", "entry": nl.compile_artifact('print("somebody else")\n').hex()}, ["program:valid"])
+good = nl.compile_artifact(CACHE_SOURCE)
+cache_case("bytecode-cache-an-entry-of-another-format-version-is-replaced", ["bc.reject", "bc.header"], CACHE_SOURCE,
+           {"dir": "explicit", "entry": mutate(good, fields(good)["format"][0], 7).hex()}, ["program:valid"])
+cache_case("bytecode-cache-an-entry-for-another-instruction-set-is-replaced", ["bc.reject", "bc.header"], CACHE_SOURCE,
+           {"dir": "explicit", "entry": mutate(good, fields(good)["opcode_hash"][0], good[fields(good)["opcode_hash"][0]] ^ 255).hex()}, ["program:valid"])
+cache_case("bytecode-cache-a-hit-is-what-runs", ["bc.provenance"], SPACED, {"dir": "explicit", "entry": with_code_of(SPACED, "print(2)\n").hex()},
+           ["program:unchanged"])
+failing = next((ROOT / "tests" / "typecheck" / "fail").glob("*.nova")).read_text(encoding="utf-8")
+cache_case("bytecode-cache-a-hit-still-runs-the-type-gate", ["bc.profile"], failing, {"dir": "explicit", "entry": nl.compile_artifact(failing).hex()},
+           ["program:unchanged"])
+cache_case("bytecode-cache-a-hit-is-still-gated-by-the-profile", ["bc.profile"], 'print(read("data.txt"))\n',
+           {"dir": "explicit", "entry": nl.compile_artifact('print(read("data.txt"))\n').hex()}, ["program:unchanged"], sandbox={"profile": "restricted"})
+cache_case("bytecode-cache-a-directory-others-can-write-is-not-used", [], CACHE_SOURCE, {"dir": "explicit", "mode": "0770"}, ["program:absent"])
+cache_case("bytecode-cache-a-symbolic-link-is-not-followed", [], SPACED, {"dir": "explicit", "link": with_code_of(SPACED, "print(2)\n").hex()}, ["program:valid"])
+cache_case("bytecode-cache-each-module-has-its-own-entry", ["bc.profile"], 'import "util.nova" as util\nprint(util.double(21))\n',
+           {"dir": "default", "runs": 2}, ["module util.nova:valid", "program:valid"], files={"util.nova": "export def double(n) { return n * 2 }\n"})
+
+
 def record_cases():
     problems = []
     cases = []
@@ -208,6 +254,8 @@ def record_cases():
             case["error"] = result["error"]
             if not __import__("re").fullmatch(extra_like, result["error"]):
                 problems.append("{}: error {!r} does not match {!r}".format(case["name"], result["error"], extra_like))
+        if "cache_after" in case and result.get("cache_after") != case["cache_after"]:
+            problems.append("{}: the cache held {!r} afterwards, wanted {!r}".format(case["name"], result.get("cache_after"), case["cache_after"]))
         label = result["error"].partition(": ")[0]
         if want == "ok":
             if label in __import__("conformance").BYTECODE_ERRORS and "artifact" in case:

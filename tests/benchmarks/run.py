@@ -17,6 +17,7 @@ What it measures, and what it does not:
   loop       steady-state execution of a tight loop on the bytecode VM and on the tree-walker, with the opcode
              work of one iteration counted as one iteration, and on the VM under the `restricted` profile so that
              the price of M11's limit checks is a number (trusted is unlimited);
+  cache      whole processes with no cache, a cold cache (a miss and a write) and a warm one (a hit), for programs that spend their time starting
   workloads  programs that do real work, in-process, trusted and restricted (see suite.py): about a dozen micro
              programs, Nova_Data, Nova_Log and Nova_Stats; --full adds the 50 MB Nova_Log benchmark
   embedding  the embedding API: creating an engine, `eval` of a cached script, `call` of a NovaLang function from
@@ -88,7 +89,7 @@ def summary(name, group, times, unit_count=None, unit="", note=""):
 
 def run_process(arguments, cwd=None):
     done = subprocess.run([sys.executable] + arguments, cwd=cwd or str(ROOT), capture_output=True, text=True,
-                          env=dict(os.environ, PYTHONUTF8="1"))
+                          env=dict(os.environ, PYTHONUTF8="1", NOVALANG_CACHE="off"))
     if done.returncode != 0:
         raise SystemExit("benchmark process failed: {}\n{}".format(arguments, done.stderr[-500:]))
 
@@ -188,8 +189,57 @@ def workloads_group(repeat):
 
 WORKLOAD_REPEAT = 5      # workloads are long; the default of 9 samples would take half an hour
 OPTIONS = {"full": False, "log_file": None}
+def cache_group(repeat):
+    """The artifact cache (docs/spec/17-bytecode.md [bc.cache]), whole processes: the same program with no cache, with a cold cache (a miss, and
+    the entry written) and with a warm one (a hit). Only start-up work can change, so the programs are the ones that spend their time starting."""
+    import shutil
+    rows = []
+    stats = ROOT / "tests" / "benchmarks" / "workloads" / "poc" / "nova_stats"
+    micro = ROOT / "tests" / "benchmarks" / "workloads" / "micro"
+    poc = ROOT / "tests" / "benchmarks" / "workloads" / "poc"
+    programs = [
+        ("empty program", None, []),
+        ("2 library modules (modules_startup)", str(micro / "modules_startup.nova"), []),
+        ("Nova_Stats: 21 modules, one tick", str(stats / "tests" / "bench.nova"), ["1"]),
+        ("Nova_Data (670 lines): its usage message", str(poc / "nova_data" / "nova_data.nova"), []),
+        ("Nova_Log (190 lines): its usage message", str(poc / "nova_log" / "nova_log.nova"), []),
+    ]
+    script = str(ROOT / "novalang.py")
+    with tempfile.TemporaryDirectory(prefix="nova-cache-bench-") as folder:
+        empty = os.path.join(folder, "empty.nova")
+        Path(empty).write_text("", encoding="utf-8")
+        for label, path, arguments in programs:
+            path = path or empty
+            cwd = str(stats) if "nova_stats" in path else None
+
+            def run(flags, env_off=False):
+                environment_ = dict(os.environ, PYTHONUTF8="1")
+                environment_.pop("NOVALANG_CACHE", None)
+                if env_off:
+                    environment_["NOVALANG_CACHE"] = "off"
+                done = subprocess.run([sys.executable, script] + flags + [path] + arguments, cwd=cwd or str(ROOT), capture_output=True, text=True,
+                                      env=environment_)
+                if done.returncode not in (0, 2):
+                    raise SystemExit("cache benchmark failed: {}\n{}".format(path, done.stderr[-400:]))
+
+            samples = max(5, repeat)
+            rows.append(summary(label + " [no cache]", "cache", sample(lambda: run([], env_off=True), samples)))
+            counter = [0]
+
+            def cold():
+                counter[0] += 1
+                run(["--cache-dir", os.path.join(folder, "cold-{}-{}".format(len(rows), counter[0]))])
+
+            rows.append(summary(label + " [cold cache: miss, then write]", "cache", sample(cold, samples)))
+            warm_dir = os.path.join(folder, "warm-{}".format(len(rows)))
+            run(["--cache-dir", warm_dir])
+            rows.append(summary(label + " [warm cache: hit]", "cache", sample(lambda: run(["--cache-dir", warm_dir]), samples)))
+            shutil.rmtree(warm_dir, ignore_errors=True)
+    return rows
+
+
 GROUPS = {"startup": None, "compile": compile_stages, "loop": loops, "embedding": embedding,
-          "workloads": workloads_group}
+          "workloads": workloads_group, "cache": cache_group}
 
 
 def environment():

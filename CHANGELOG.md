@@ -28,6 +28,14 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ### Added
 
+- **The compiled-artifact cache, M12 slice 5.** A program run from a file, and every module it imports, is compiled once: the entry (a bytecode artifact, named by the
+  SHA-256 of the format version, the opcode-set hash, the compiler version and the source text) is written to a per-user directory
+  (`$XDG_CACHE_HOME/novalang`, `~/Library/Caches/novalang` or `~/.cache/novalang`), and a later run reads it instead of lexing, parsing and compiling. **On by default under
+  `trusted`; off under `restricted` unless `--cache-dir DIR` names a directory; off with `--no-cache` or `NOVALANG_CACHE=off`; off on Windows.** The directory must be the user's and not
+  writable by others; an entry is read without following a link and refused unless it passes every check of the loader and holds the very source being run; any doubt is a miss, and a
+  cache never fails a program. A hit still runs the type gate and the profile still gates names. Writes are to a temporary file and an atomic rename. Nothing evicts yet. A warm start
+  saves 7% to 18% of a start-up-bound run (14% for Nova_Stats' 21 modules) and nothing of a run that does work. Specified in `docs/spec/17-bytecode.md` `[bc.cache]` with 17 conformance
+  cases; threat T17 added to the M11 threat model (not yet reviewed); 25 tests in `tests/bytecode/test_cache.py`. The suite and the benchmarks run with the cache off.
 - **Bytecode artifacts (`.novac`), M12 slice 4.** `novalang.py --compile program.nova -o program.novac` writes the compiled program as a
   self-contained file that **carries its source text**; `novalang.py program.novac` runs it (type gate, error lines and carets included, with no
   `.nova` file beside it) on the bytecode VM, under whatever profile the command line gives; `--check-artifact FILE` recompiles the embedded
@@ -37,7 +45,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   errors; a file that is accepted but wrong at run time ends as `InternalError`, exit status 70, never a traceback. **Development builds write
   format version 0**; the cache that uses it is not in yet. Specified in `docs/spec/17-bytecode.md` (chapter 17, with the new `bytecode` conformance profile: 72 cases that cite all twelve of its sections); 51 tests in `tests/bytecode/`
   (a station of `tests/run_all.py`): every opcode, 19 golden fixtures and 16 damaged ones, a seeded fuzzer, and the whole conformance corpus
-  (765 cases) run through an artifact with identical results.
+  (765 cases) run through an artifact with identical results; its chapter has 72 + 17 conformance cases, 89 in the `bytecode` profile.
 - **M12 benchmarks and profile.** `tests/benchmarks/run.py` gains a `workloads` group (15 micro programs and the Nova_Data, Nova_Log and Nova_Stats
   programs, trusted and restricted, with the compile share of each); `tests/benchmarks/profile_vm.py` and `op_costs.py` show where the VM's time
   goes. Results in `docs/benchmarks.md` and `docs/design/m12-vm-profile.md`.

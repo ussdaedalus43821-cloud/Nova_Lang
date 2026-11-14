@@ -149,6 +149,11 @@ It follows the owner's nine decisions (the format embeds its source; development
 
 ### Slice 5: the compiled-artifact cache
 
+**Status (2026-11-14): built.** `ArtifactCache` in `novalang.py`, `--cache-dir`, `--no-cache`, `NOVALANG_CACHE`; the rules are `[bc.cache]` of
+[chapter 17](../spec/17-bytecode.md), pinned by 17 conformance cases and 25 tests; threat T17 is in the M11 threat model (unreviewed). Measured: a warm start of Nova_Stats'
+21 modules is 14% faster (`docs/benchmarks.md`), a hit costs about 3.6 ms before it saves. Left out on purpose: eviction (Q6), the Windows cache (Q5). Not done: the cache has not run
+on Windows, Python 3.7 or PyPy.
+
 * Key: source hash, format version, opcode-set hash, compiler version. Not the profile, not the limits (M11: code is
   profile-independent), not the working directory.
 * Behaviour per D4; `--no-cache`, `--cache-dir`, `NOVALANG_CACHE`; a module import uses the cache as the main program does, keyed on

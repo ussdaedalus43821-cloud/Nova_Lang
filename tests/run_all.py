@@ -906,6 +906,7 @@ def main(argv):
         parser.error("--quick cannot be combined with --station parity")
     global QUICK
     QUICK = args.quick
+    os.environ["NOVALANG_CACHE"] = "off"      # the suite's programs must not fill the user's cache; the cache's own tests name a directory
     line = Line()
     try:
         if args.report:

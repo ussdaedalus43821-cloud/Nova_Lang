@@ -122,6 +122,23 @@ So a cache hit (slice 5) saves about two thirds of the front end, not all of it:
 size of the source because it carries the source and the code. Nova_Stats loads 21 modules (7% of its 50-tick run in the profile): at about 2.8x that is a saving of
 roughly 4.5% of that run, the largest the cache can give any of the proof-of-concept programs (D4's caveat).
 
+## The artifact cache: what a warm start saves (slice 5, 2026-11-14)
+
+Whole processes, `python3 tests/benchmarks/run.py --only cache --repeat 7`, medians of seven, CPython 3.9.6, the same machine. *No cache* is `NOVALANG_CACHE=off`; *cold* is a miss
+and the write of the entry; *warm* is a hit. The programs are the ones that spend their time starting: a measure of the cache's best case, not of programs that run.
+
+| Program | No cache | Cold (miss, write) | Warm (hit) | Warm saves |
+| --- | ---: | ---: | ---: | ---: |
+| an empty program | 84.4 ms | 87.9 ms | 88.0 ms | -3.6 ms (the cost of the cache itself) |
+| 2 library modules (`modules_startup`) | 179.6 ms | 183.7 ms | 167.3 ms | **12.4 ms (7%)** |
+| Nova_Stats: 21 modules, one tick | 303.6 ms | 319.9 ms | 262.3 ms | **41.3 ms (14%)** |
+| Nova_Data (670 lines), its usage message | 128.5 ms | 134.8 ms | 104.9 ms | **23.5 ms (18%)** |
+| Nova_Log (190 lines), its usage message | 99.2 ms | 101.8 ms | 92.6 ms | **6.6 ms (7%)** |
+
+Reading it: **a warm start of a module-heavy program is measurably faster** (the exit measure of slice 5): 14% for Nova_Stats, which loads 21 modules. A hit costs about 3.6 ms before it
+saves anything (importing `hashlib`, naming the entry, checking the directory), so the cache pays from about 10 ms of compiling upward; a cold run costs 2 to 16 ms more than no cache (the
+write). **None of this touches execution**: the Nova_Data row is its usage message, the program run on 10,000 rows takes 1.7 s, and 24 ms is 1.4% of that: D4's caveat, measured again.
+
 ## D7, first measurement: the same suite on PyPy (2026-11-14)
 
 The plan's decision D7 lists PyPy first because it can be tried in a day with no code change. This is that try: the **unmodified**

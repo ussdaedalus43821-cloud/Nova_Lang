@@ -4102,6 +4102,8 @@ class ProgramExit(Exception):
 
 
 class Interpreter:
+    artifact_cache = None            # an ArtifactCache for a command-line program and its modules ([bc.cache]); None: no cache
+
     def __init__(self, engine=None, allow_python=None, capabilities=None):
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
@@ -7000,11 +7002,23 @@ def typecheck_tool():
 
 def run(source, interpreter, path=None):
     """Lex, parse, type-gate and run `source`; (ast, value). `path` is the
-    module's absolute path when this is a module load."""
+    module's absolute path when this is a module load. When the interpreter
+    has an artifact cache (docs/spec/17-bytecode.md [bc.cache]: a command-line
+    program or a module it imports, on the bytecode VM), a hit skips lexing,
+    parsing and compiling - never the type gate - and a miss writes the entry."""
     try:
+        cache = interpreter.artifact_cache if interpreter.engine == "vm" else None
+        if cache is not None:
+            loaded = cache.lookup(source)
+            if loaded is not None and loaded is not CACHE_REJECTED:
+                program = LoadedProgram(loaded.annotated, loaded.imports, loaded.code)
+                type_gate(program, source, interpreter, path)
+                return program, run_program(program, interpreter)
         tokens = Lexer(source).tokenize()
         ast = Parser(tokens).parse()
         type_gate(ast, source, interpreter, path)
+        if cache is not None:
+            cache.store(source, ast, replacing=loaded is CACHE_REJECTED)
         return ast, run_program(ast, interpreter)
     except RecursionError:
         # A program nested too deeply to lex, parse or run: a NovaLang error, never Python's
@@ -8238,8 +8252,7 @@ def run_artifact_bytes(data, origin, script_args):
     interpreter = Interpreter()
     interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
     source = artifact.source
-    program = type("LoadedProgram", (), {})()
-    program.annotated, program.imports, program._code = artifact.annotated, artifact.imports, artifact.code
+    program = LoadedProgram(artifact.annotated, artifact.imports, artifact.code)
     try:
         type_gate(program, source, interpreter, None)
         run_program(program, interpreter)
@@ -8346,6 +8359,187 @@ def run_artifact_file(path, script_args):
     return run_artifact_bytes(data, path, script_args)
 
 
+# -- the compiled-artifact cache (M12 slice 5; docs/spec/17-bytecode.md [bc.cache]) ----------------------
+
+class LoadedProgram:
+    """What a run needs of a parse when the code comes from an artifact: whether the source has annotations or imports (so the type gate
+    runs when it must) and the code itself."""
+
+    def __init__(self, annotated, imports, code):
+        self.annotated, self.imports, self._code = annotated, imports, code
+
+
+CACHE_SETTINGS = {"disabled": False, "dir": None}       # --no-cache and --cache-dir, set by main()
+CACHE_REJECTED = object()                                # a file was there and could not be used: compile, and replace it
+_CACHES = {}
+
+
+def cache_key(source):
+    """The 64 hex digits that name the entry for `source` ([bc.cache]): SHA-256 over the format version, the opcode-set hash, the compiler
+    version and the source text, each preceded by its length as a u32. Not the profile, the limits, the path or the working directory."""
+    import hashlib
+    parts = (ARTIFACT_FORMAT.to_bytes(4, "little"), artifact_opcode_hash(), __version__.encode("utf-8"), source.encode("utf-8", "surrogatepass"))
+    return hashlib.sha256(b"".join(len(part).to_bytes(4, "little") + part for part in parts)).hexdigest()
+
+
+def default_cache_directory(environ=None):
+    """The per-user cache directory, or None where there is none ([bc.cache]). The cache is not available on Windows."""
+    environ = os.environ if environ is None else environ
+    if sys.platform == "win32":
+        return None
+    explicit = environ.get("XDG_CACHE_HOME")
+    if explicit and os.path.isabs(explicit):
+        return os.path.join(explicit, "novalang")
+    home = environ.get("HOME") or os.path.expanduser("~")
+    if not home or home == "~":
+        return None
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Caches", "novalang")
+    return os.path.join(home, ".cache", "novalang")
+
+
+def cache_switched_off(environ=None):
+    """`--no-cache` or NOVALANG_CACHE=off (also 0, false, no): the cache is off whatever else is said."""
+    environ = os.environ if environ is None else environ
+    return CACHE_SETTINGS["disabled"] or environ.get("NOVALANG_CACHE", "").strip().lower() in ("off", "0", "false", "no")
+
+
+def cache_for_run(capabilities=None, directory=None, environ=None):
+    """The ArtifactCache a command-line run uses, or None. On for the `trusted` profile; off for `restricted` unless the embedder named a
+    directory (`--cache-dir`): a restricted program must not choose where anything is written. Off with `--no-cache`, with
+    NOVALANG_CACHE=off, on Windows (directory ownership cannot be verified there yet), and when the directory is not safe ([bc.cache])."""
+    environ = os.environ if environ is None else environ
+    capabilities = DEFAULT_CAPABILITIES if capabilities is None else capabilities
+    directory = CACHE_SETTINGS["dir"] if directory is None else directory
+    if cache_switched_off(environ):
+        return None
+    if sys.platform == "win32":
+        if directory is not None and not CACHE_SETTINGS.get("warned"):
+            CACHE_SETTINGS["warned"] = True
+            print("novalang: the artifact cache is not available on Windows (the owner of a directory cannot be verified there); "
+                  "running without it", file=sys.stderr)
+        return None
+    if capabilities.restricted and directory is None:
+        return None
+    directory = directory or default_cache_directory(environ)
+    if not directory:
+        return None
+    directory = os.path.abspath(directory)
+    if directory not in _CACHES:
+        cache = ArtifactCache(directory, debug=bool(environ.get("NOVALANG_CACHE_DEBUG")))
+        _CACHES[directory] = cache if cache.prepare() else None
+        if _CACHES[directory] is None and cache.debug:
+            print("novalang cache: the directory cannot be used (it is not ours, is writable by others, or cannot be made): {}".format(directory),
+                  file=sys.stderr)
+    return _CACHES[directory]
+
+
+class ArtifactCache:
+    """A directory of artifacts named by cache_key. Nothing here can fail a program: every problem is a miss or a skipped write
+    ([bc.cache], Reading and Writing). The directory must be owned by the user and not writable by group or others; an entry is
+    read without following a link and must be a regular file of the user's, not writable by others; it is loaded with the full checks of
+    [bc.verify], with the source being run, so an entry that is for another source, damaged, or from another compiler is refused."""
+
+    def __init__(self, directory, debug=False):
+        self.directory = directory
+        self.debug = debug
+        self.counts = {"hit": 0, "miss": 0, "rejected": 0, "stored": 0}
+
+    def note(self, what, key):
+        self.counts[what] = self.counts.get(what, 0) + 1
+        if self.debug:
+            print("novalang cache: {} {}".format(what, key[:12]), file=sys.stderr)
+
+    def safe(self, status, directory):
+        import stat
+        if not (stat.S_ISDIR(status.st_mode) if directory else stat.S_ISREG(status.st_mode)):
+            return False                                    # a link, a socket, a file where a directory should be
+        if hasattr(os, "getuid") and status.st_uid != os.getuid():
+            return False
+        return not status.st_mode & 0o022                   # not writable by group or others
+
+    def prepare(self):
+        """Create the directory (mode 0700) if it is missing, and say whether it may be used."""
+        try:
+            try:
+                status = os.lstat(self.directory)
+            except FileNotFoundError:
+                os.makedirs(os.path.dirname(self.directory), exist_ok=True)
+                try:
+                    os.mkdir(self.directory, 0o700)
+                except FileExistsError:
+                    pass
+                status = os.lstat(self.directory)
+            return self.safe(status, True)
+        except OSError:
+            return False
+
+    def path(self, key):
+        return os.path.join(self.directory, key + ".novac")
+
+    def lookup(self, source):
+        """A LoadedArtifact for `source`; None for no entry; CACHE_REJECTED for an entry that must be replaced."""
+        key = cache_key(source)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(self.path(key), flags)
+        except OSError:
+            self.note("miss", key)
+            return None
+        try:
+            status = os.fstat(descriptor)
+            if not self.safe(status, False) or status.st_size > ARTIFACT_LIMITS["artifact"]:
+                raise ValueError("an entry that may not be read")
+            chunks, remaining = [], status.st_size + 1
+            while remaining > 0:
+                chunk = os.read(descriptor, min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+        except (OSError, ValueError):
+            self.note("rejected", key)
+            return CACHE_REJECTED
+        finally:
+            os.close(descriptor)
+        try:
+            loaded = load_artifact(data, source)
+        except BytecodeLoadError as refusal:
+            self.note("rejected", key)
+            if self.debug:
+                print("novalang cache: {}".format(refusal.name), file=sys.stderr)
+            return CACHE_REJECTED
+        self.note("hit", key)
+        return loaded
+
+    def store(self, source, program, replacing=False):
+        """Compile `program` (the parse of `source`) and write its entry: to a temporary file made exclusively in the directory, then an atomic
+        replace. A program too large to write, a read-only directory, a full disk: skipped, silently."""
+        key = cache_key(source)
+        code = program._code = compile_ast(program)
+        try:
+            data = dump_artifact(code, source, bytecode_flags(program))
+        except BytecodeDumpError:
+            return
+        temporary = "{}.{}.{}.tmp".format(self.path(key), os.getpid(), os.urandom(4).hex())
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0), 0o600)
+            try:
+                view = memoryview(data)
+                while view:
+                    view = view[os.write(descriptor, view):]
+            finally:
+                os.close(descriptor)
+            os.replace(temporary, self.path(key))
+            self.note("stored", key)
+        except OSError:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -8355,6 +8549,7 @@ def run_source(source, origin, script_args=None):
     global SCRIPT_ARGS
     SCRIPT_ARGS = list(script_args or [])
     interpreter = Interpreter()
+    interpreter.artifact_cache = cache_for_run(interpreter.caps)
     # A relative import in this file resolves against its own directory first.
     interpreter.file_stack.append(os.path.dirname(os.path.abspath(origin)))
     try:
@@ -8860,6 +9055,8 @@ def isolate_main(runner, forwarded, rest):
         sys.stderr.buffer.write(chunk)
         sys.stderr.buffer.flush()
 
+    if cache_switched_off() and "--no-cache" not in forwarded:
+        forwarded = forwarded + ["--no-cache"]       # the child's environment is clean: say it, or it would choose for itself
     status, killed = supervise(runner_command(forwarded, rest, memory_mb, wall_ms), runner_environment(runner.get("pass_env", ())),
                                inherit, wall_ms, output_cap, to_out, to_err)
     seen = b"".join(err).decode("utf-8", "replace")
@@ -8903,9 +9100,22 @@ def main(argv):
     sandbox = {}                            # docs/spec/16-sandbox.md [sbx.profiles]
     runner = {}                             # [sbx.runner]: --isolate and the flags that tune it
     forwarded = []                          # the flags the isolated child is given again
-    while args and (args[0] in ("--tree-walk", "--allow-python") or args[0] in SANDBOX_FLAGS
+    while args and (args[0] in ("--tree-walk", "--allow-python", "--no-cache", "--cache-dir") or args[0] in SANDBOX_FLAGS
                     or args[0] in RUNNER_FLAGS):
         flag = args[0]
+        if flag == "--no-cache":
+            CACHE_SETTINGS["disabled"] = True
+            forwarded.append(flag)
+            args = args[1:]
+            continue
+        if flag == "--cache-dir":
+            if len(args) < 2 or not args[1]:
+                print("--cache-dir needs a directory", file=sys.stderr)
+                return 2
+            CACHE_SETTINGS["dir"] = args[1]
+            forwarded.extend([flag, args[1]])
+            args = args[2:]
+            continue
         if flag in RUNNER_FLAGS:
             if flag == "--isolate":
                 runner["isolate"] = True

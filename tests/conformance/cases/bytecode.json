@@ -1135,6 +1135,471 @@
    "exit": 0,
    "host_calls": [],
    "artifact": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e30000000003a66aebdedbad3cf107d24e72a07d4b735819b1cf4020fdd922f63c0647081720c0000007072696e7428226f6b22290a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000ffb1bd6f6a91b5c8899384191668e74439fc78329b2f074793b384c613b048b4"
+  },
+  {
+   "name": "bytecode-cache-cold-then-warm",
+   "spec": [
+    "bc.cache",
+    "bc.overview"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-directory-the-embedder-names",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-changes-no-error-and-no-line",
+   "spec": [
+    "bc.cache",
+    "bc.overview",
+    "bc.code"
+   ],
+   "profile": "bytecode",
+   "source": "let a = 1\nprint(a / 0)\n",
+   "output": [],
+   "error": "NovaError: division by zero",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-off-for-restricted-by-default",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "default"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-on-for-restricted-when-a-directory-is-named",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-switched-off-by-the-environment",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "env": {
+    "NOVALANG_CACHE": "off"
+   },
+   "cache": {
+    "dir": "default"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-damaged-entry-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c6e6f7420616e20617274696661637420617420616c6c"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-empty-entry-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": ""
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-made-for-another-source-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000e650c8a0b003c68e9dbe2e0e55c16c088d2e31b7f69fe8e59412a37adbddbdbe170000007072696e742822736f6d65626f647920656c736522290a70000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e74050d000000736f6d65626f647920656c7365040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff000000002f6335d7bed60796209cb69061fb155576f37902f9b9768449656e84c9c16197"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-of-another-format-version-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0700000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000da7fbfa3472baad8e920da35dba1c499b0a1440aafb0718d604c0b7664da08ee660000006465662066286e29207b2072657475726e206e202a2032207d0a6c657420746f74616c203d20300a666f722069203d203120746f2035207b20746f74616c203d20746f74616c202b2066286929207d0a7072696e742822746f74616c222c20746f74616c290ac1010000080000003c6d6f64756c653e02000000000000000000000000000000020000000600000069406c6f6f700c0000003c6c6f6f702073746174653e00000000000000000600000007010000006601000000010000000000000001000000010000006e0000000001000000010000006e00000000000000000200000003000100000002000600000003000000000000000000103a00010000003a12000000ffffffff140000000b000000ffffffffffffffff00000000030000000000030001000000010300010000000506050000007072696e740505000000746f74616c17000000380000000008010000006600010000000805000000746f74616c00020000003300000300000033013401000000000035010000001200000004000000000705000000746f74616c070100000066030000000039010000000e0805000000746f74616c3109000000000400000000050000000705000000746f74616c39020000003a0000000000000000ffffffff1a000000ffffffff28000000ffffffff280000002800000028000000ffffffff41000000490000004b0000004a0000004700000039000000ffffffff50000000ffffffff5f00000055000000ffffffff000000002c8e87af630145ac8d26f2c62e2255c6a63220a6dfafcde216a9c927be298e1a"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-an-entry-for-another-instruction-set-is-replaced",
+   "spec": [
+    "bc.cache",
+    "bc.reject",
+    "bc.header"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a00000000b8db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000da7fbfa3472baad8e920da35dba1c499b0a1440aafb0718d604c0b7664da08ee660000006465662066286e29207b2072657475726e206e202a2032207d0a6c657420746f74616c203d20300a666f722069203d203120746f2035207b20746f74616c203d20746f74616c202b2066286929207d0a7072696e742822746f74616c222c20746f74616c290ac1010000080000003c6d6f64756c653e02000000000000000000000000000000020000000600000069406c6f6f700c0000003c6c6f6f702073746174653e00000000000000000600000007010000006601000000010000000000000001000000010000006e0000000001000000010000006e00000000000000000200000003000100000002000600000003000000000000000000103a00010000003a12000000ffffffff140000000b000000ffffffffffffffff00000000030000000000030001000000010300010000000506050000007072696e740505000000746f74616c17000000380000000008010000006600010000000805000000746f74616c00020000003300000300000033013401000000000035010000001200000004000000000705000000746f74616c070100000066030000000039010000000e0805000000746f74616c3109000000000400000000050000000705000000746f74616c39020000003a0000000000000000ffffffff1a000000ffffffff28000000ffffffff280000002800000028000000ffffffff41000000490000004b0000004a0000004700000039000000ffffffff50000000ffffffff5f00000055000000ffffffff000000008e6e3519b7313dea09b0782c376a955d6c58989adda69bc3925e660e16d3a620"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-is-what-runs",
+   "spec": [
+    "bc.cache",
+    "bc.provenance"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"ok\")\nlet padding = \"so that every position of the other program is inside this source\"\n",
+   "output": [
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000221ef7dd281410dd96e3d39631039fc79f5427c53915c51b2f7d45e4bf8056c85e0000007072696e7428226f6b22290a6c65742070616464696e67203d2022736f207468617420657665727920706f736974696f6e206f6620746865206f746865722070726f6772616d20697320696e73696465207468697320736f75726365220a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000458ff63304f0c47862f48b635cebf2c3728c8243c0a7e97287ff196370a94058"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-still-runs-the-type-gate",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"this line must never run\")\n# Built-ins with known signatures are checked like any typed function.\nlet n: int = 5\nprint(upper(n))       # T002\nprint(sqrt(\"nine\"))   # T002\nprint(len())          # T003\nprint(pad(\"x\", 2.5))  # T002\nlet count: int = len(\"abc\")\nlet root: int = sqrt(16)  # T006: sqrt gives a float\nlet whole: int = floor(2.7)\nlet back: int = abs(-3)  # abs keeps an int an int\nprint(count, whole, back, split(\"a b\"), split(\"a,b\", \",\"))\n",
+   "output": [],
+   "error": "TypeCheckError: T002 argument 1 of upper() must be a string, but this is an int\n  also line 5: T002 argument 1 of sqrt() must be a float, but this is a string\n  also line 6: T003 len() takes 1 argument but is given 0\n  also line 7: T002 argument 2 of pad() must be an int, but this is a float\n  also line 9: T006 'root' is declared int, but its value is a float",
+   "error_line": 4,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3001000000a6d0b58243f91f1508299e44706fc5dd4ef28d27d26f5778a256d1d9d6bdba15c70100007072696e74282274686973206c696e65206d757374206e657665722072756e22290a23204275696c742d696e732077697468206b6e6f776e207369676e6174757265732061726520636865636b6564206c696b6520616e792074797065642066756e6374696f6e2e0a6c6574206e3a20696e74203d20350a7072696e74287570706572286e2929202020202020202320543030320a7072696e74287371727428226e696e652229292020202320543030320a7072696e74286c656e282929202020202020202020202320543030330a7072696e7428706164282278222c20322e35292920202320543030320a6c657420636f756e743a20696e74203d206c656e282261626322290a6c657420726f6f743a20696e74203d20737172742831362920202320543030363a2073717274206769766573206120666c6f61740a6c65742077686f6c653a20696e74203d20666c6f6f7228322e37290a6c6574206261636b3a20696e74203d20616273282d332920202320616273206b6565707320616e20696e7420616e20696e740a7072696e7428636f756e742c2077686f6c652c206261636b2c2073706c6974282261206222292c2073706c69742822612c62222c20222c2229290a10030000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000001400000006050000007072696e74051800000074686973206c696e65206d757374206e657665722072756e030001000000050605000000757070657206040000007371727405040000006e696e6506030000006c656e06030000007061640501000000780400000000000004400503000000616263030001000000100605000000666c6f6f72049a99999999990540060300000061627303000100000003060500000073706c697405030000006120620503000000612c6205010000002c3c00000000000000000001000000390100000001000200000008010000006e0000000000000300000007010000006e39010000003901000000010000000000000400000000050000003901000000390100000001000000000000060000003900000000390100000001000000000000070000000008000000000900000039020000003901000000010006000000000a00000039010000000805000000636f756e740004000000000b00000039010000000804000000726f6f74000c000000000d0000003901000000080500000077686f6c65000e000000000f00000014390100000008040000006261636b00000000000705000000636f756e74070500000077686f6c6507040000006261636b001000000000110000003901000000001000000000120000000013000000390200000039050000003a00000000ffffffff05000000ffffffffffffffff69000000780000007e00000084000000830000007d000000ffffffff950000009b000000ffffffff9f0000009a000000ffffffffb2000000b8000000bb000000b7000000ffffffffcf000000d5000000ffffffffffffffffd8000000d4000000fffffffffd000000ffffffff00010000ec00000018010000ffffffff1c010000080100004e010000ffffffff530100003d01000069010000ffffffff6d0100006c010000590100008c0100009201000099010000a0010000a6010000ffffffffab010000b4010000ffffffffffffffffb901000091010000ffffffff00000000ce2ca84f83f69dbfcc0a6af78590390c8f1b36e3d707326e4de48d52a9844ab7"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-hit-is-still-gated-by-the-profile",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "print(read(\"data.txt\"))\n",
+   "output": [],
+   "error": "NovaError: undefined name 'read'",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "entry": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e300000000064048b052e63117360e249ce167be43f6af4acba0cccd6c322951c64e74151c8180000007072696e7428726561642822646174612e7478742229290a81000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e740508000000646174612e7478740600000000000000000d04000000726561640001000000390100000039010000003a0000000006000000ffffffff0a00000005000000ffffffff000000005f4a7eed90ba0159448535fc32ad899f7d2e098c44284fdaec1c6099715735c9"
+   },
+   "cache_after": [
+    "program:unchanged"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "bytecode-cache-a-directory-others-can-write-is-not-used",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "def f(n) { return n * 2 }\nlet total = 0\nfor i = 1 to 5 { total = total + f(i) }\nprint(\"total\", total)\n",
+   "output": [
+    "total 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "mode": "0770"
+   },
+   "cache_after": [
+    "program:absent"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-a-symbolic-link-is-not-followed",
+   "spec": [
+    "bc.cache"
+   ],
+   "profile": "bytecode",
+   "source": "print(\"ok\")\nlet padding = \"so that every position of the other program is inside this source\"\n",
+   "output": [
+    "ok"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "cache": {
+    "dir": "explicit",
+    "link": "4e4f5641430d0a1a0000000047db9dde28b66cbe920e15c3f75a54d69710e4f36172bb86de78829df678506005000000322e322e3000000000221ef7dd281410dd96e3d39631039fc79f5427c53915c51b2f7d45e4bf8056c85e0000007072696e7428226f6b22290a6c65742070616464696e67203d2022736f207468617420657665727920706f736974696f6e206f6620746865206f746865722070726f6772616d20697320696e73696465207468697320736f75726365220a65000000080000003c6d6f64756c653e000000000000000000000000000000000000000000000000000000000200000006050000007072696e7403000100000002040000000000000000000100000039010000003a00000000ffffffff05000000ffffffff00000000458ff63304f0c47862f48b635cebf2c3728c8243c0a7e97287ff196370a94058"
+   },
+   "cache_after": [
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
+  },
+  {
+   "name": "bytecode-cache-each-module-has-its-own-entry",
+   "spec": [
+    "bc.cache",
+    "bc.profile"
+   ],
+   "profile": "bytecode",
+   "source": "import \"util.nova\" as util\nprint(util.double(21))\n",
+   "output": [
+    "42"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "util.nova": "export def double(n) { return n * 2 }\n"
+   },
+   "cache": {
+    "dir": "default",
+    "runs": 2
+   },
+   "cache_after": [
+    "module util.nova:valid",
+    "program:valid"
+   ],
+   "platforms": [
+    "linux",
+    "darwin"
+   ]
   }
  ]
 }
