@@ -1,0 +1,48 @@
+# std:math - the numeric helpers the proof-of-concept apps wrote by hand
+# (docs/spec/09-library.md [lib.std-math]). Closes G-018, G-043 and G-045.
+#
+#   import "std:math" as math
+#   math.trunc(-2.7)                 # -2
+#   math.divmod(-7, 2)               # [-4, 1]
+#   math.round_half(2.675, 2, "half_up")   # 2.68
+#
+# Plain NovaLang: every profile, no capability, the same on all three engines.
+
+import "std:decimal" as decimal
+
+def need_number(who, role, x) {
+    if type(x) != "number" {
+        throw("the " + role + " for math." + who + "() needs a number, but got " + type(x))
+    }
+}
+
+# x without its fractional part: towards zero, so trunc(-2.7) is -2 where floor gives -3.
+export def trunc(x) {
+    need_number("trunc", "number", x)
+    if x < 0 {
+        return ceil(x)
+    }
+    return floor(x)
+}
+
+# [a // b, a % b]: the floor quotient and the remainder that goes with it (it has the sign of b),
+# so a == b * q + r. A zero b is the language's own "division by zero".
+export def divmod(a, b) {
+    need_number("divmod", "dividend", a)
+    need_number("divmod", "divisor", b)
+    return [a // b, a % b]
+}
+
+# x rounded to `places` digits after the point by `mode` (the modes of std:decimal), reading x as
+# the number its text shows: round_half(2.675, 2, "half_up") is 2.68, where round(2.675, 2) is 2.67
+# because 2.675 is not exactly representable. The result is the nearest float to that decimal.
+export def round_half(x, places, mode) {
+    need_number("round_half", "number", x)
+    return decimal.to_float(decimal.from_float(x, places, mode))
+}
+
+# e raised to x.
+export def exp(x) {
+    need_number("exp", "exponent", x)
+    return pow(E, x)
+}

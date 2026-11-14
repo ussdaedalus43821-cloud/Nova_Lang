@@ -127,16 +127,16 @@ no operator overloading, so `a + b` on decimals stays an error; adding a decimal
 | `dec.add(a, b)`, `dec.sub(a, b)`, `dec.mul(a, b)` | exact; the scale of the result is large enough for the exact answer; never rounds |
 | `dec.div(a, b, places, mode)` | `a / b` rounded to `places` digits after the point by `mode`; **places and mode are required** (no silent inexact result); division by zero is an error |
 | `dec.quantize(a, places, mode)` | `a` rounded to `places` digits |
-| `dec.neg(a)`, `dec.abs(a)`, `dec.sign(a)` | |
-| `dec.cmp(a, b)` | -1, 0 or 1; `dec.eq`, `dec.lt`, `dec.le` as conveniences |
+| `dec.negate(a)`, `dec.absolute(a)`, `dec.sign(a)` | (not `neg`, `abs`: a built-in's name cannot be exported, G-016) |
+| `dec.cmp(a, b)` | -1, 0 or 1; `dec.eq`, `dec.lt`, `dec.le` as conveniences; plus `dec.is_decimal(a)` and `dec.scale(a)` |
 | `dec.to_string(a)` | the canonical text: no exponent, the scale kept (`1.50` stays `1.50`), `-0.00` never printed |
 | `dec.to_int(a, mode)`, `dec.to_float(a)` | rounded to a whole number; the nearest float |
-| `dec.sum(list)` | exact sum |
+| `dec.total(list)` | exact sum (not `sum`: a built-in's name) |
 
 **Rounding modes** (strings): `"half_even"`, `"half_up"` (ties away from zero), `"half_down"`, `"up"` (away from zero), `"down"` (towards zero), `"floor"`, `"ceiling"`. Names, not numbers, so a
 wrong one is an error.
 
-**Bounds.** A decimal has at most 4,000 digits (the integer limit of `[port.integers]`); a scale is between -1,000 and 1,000; going over is an error, never infinity or a rounded value.
+**Bounds.** A decimal has at most 4,000 digits (the integer limit of `[port.integers]`); a scale is between 0 and 1,000 (no negative scale: nothing needed one); going over is an error, never infinity or a rounded value.
 
 **`std:math`** (also Tier 1 where it can be, native where it cannot): `math.trunc(x)` (towards zero, G-045), `math.divmod(a, b)` (the floor pair of `//` and `%`, with the sign rule written down),
 `math.round_half(x, places, mode)` for floats (G-043: `round` stays half-even, it is specified), `math.exp(x)` (G-018). They live in a module, not as global names (rule 2).
@@ -456,6 +456,17 @@ reach (and marked unreviewed until the independent review); no merge without the
 | 5 | **Packages, part 1: manifest and capabilities** | manifest 2 and the lockfile 2 (reading 1), the scan and the enforcement of 5.6, escalation protection, the first-import re-hash (R12), `init`, `add`, `audit`, `capabilities`; chapter `18-packages.md` with its cases; threat rows R3, R11, R12, R15 | 1 | M |
 | 6 | **Packages, part 2: the registry** | the archive format and the hardened extractor, the static index and its signatures (Ed25519 verifier and vectors), serial and expiry, revocation, `pack`, `publish`, `yank`, install from a directory or HTTPS registry (a hardened fetch core: HTTPS only, size and time limits, no proxy); the end-to-end test of the roadmap's exit criterion; the supply-chain table of 5.5 as tests | 5 | L |
 | 7 | **HTTP** (**moved to M14 by D6; not M13 scope**) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
+
+### Slice 2: progress (branch `m13/slice-2-decimal`; a draft until the owner has read it)
+
+| Item of the slice | State |
+| --- | --- |
+| `std:decimal` | **Built** (spec `[lib.std-decimal]`; 22 exports; every mode; pure NovaLang). Proved against Python's `decimal` on random inputs on all three engines (`tests/std/test_decimal.py`, 400 + 60 + 12 cases) and by 16 conformance cases. Deviations from the sketch above: `abs`, `sum` and `neg` cannot be exports (a built-in's name is reserved), so they are `absolute`, `total`, `negate`; scale is 0 to 1000 |
+| `std:math` | **Built** (`trunc`, `divmod`, `round_half`, `exp`; spec `[lib.std-math]`; 4 cases) |
+| `std:format` | **Built** (`fixed`, `grouped`, `pad_zero`; spec `[lib.std-format]`; 5 cases) |
+| The G-052 decision | **Decided: keep, documented** (`[lib.std-format]`) |
+| Benchmark row | **Not built yet** |
+| Nova_Data replaced by the library (the "done when") | **Not done.** That is a change in the Nova_Data repository; this repository holds the library and the oracle comparison |
 
 ### Slice 1: progress (branch `m13/slice-1-foundations`; a draft until the owner has read it)
 

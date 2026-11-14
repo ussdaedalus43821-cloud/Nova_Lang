@@ -267,3 +267,124 @@ Indexes are in code points, as `len` and slicing are.
 The module's exports are exactly the eight names above (`basename`, `ends_with`, `find`,
 `find_from`, `is_number`, `parse_number`, `splitext`, `starts_with`); anything else in its file is
 private. `chr` and `ord` (G-004, G-005) are not in this version of the module.
+
+## [lib.std-decimal] `std:decimal`
+
+```
+import "std:decimal" as dec
+```
+
+Exact base-10 arithmetic (G-043, G-044, G-045), written in NovaLang over exact integers
+(`[port.integers]`): no capability, every profile, deterministic. A **decimal** is the list
+`[unscaled, scale]` and means `unscaled / 10^scale`: `[1999, 2]` is `19.99`. Both are whole
+numbers and `scale` is 0 to 1000. A program makes decimals with this module's functions and
+reads them with its functions; the layout is **not** part of the interface (it can change in
+a minor release). Every function checks its arguments, so a list that is not a decimal is
+`decimal.add() needs a decimal for the first argument, but got [1.5, 2]`, never a wrong answer.
+There are **no operators**: `+` on two decimals joins the two lists, as it does for any lists.
+An integer that would have more than 4,000 digits is the language's own error
+(`[port.integers]`), and a result that would have a scale above 1000 is `decimal.mul() result
+would have more than 1000 digits after the point`.
+
+**Rounding modes** are strings, and a mode that is not one of them is `decimal.quantize() needs a
+rounding mode: half_even, half_up, half_down, up, down, floor, ceiling`:
+
+| Mode | A value that is not exact goes to |
+| --- | --- |
+| `half_even` | the nearest; a tie to the neighbour whose last digit is even |
+| `half_up` | the nearest; a tie away from zero |
+| `half_down` | the nearest; a tie towards zero |
+| `up` | the neighbour away from zero |
+| `down` | the neighbour towards zero |
+| `floor` | the neighbour towards negative infinity |
+| `ceiling` | the neighbour towards positive infinity |
+
+**Making and reading.**
+
+- `dec.parse(text)` is the decimal `text` writes: an optional `+` or `-`, digits, and optionally a point and
+  more digits (`.5` and `7.` are fine). The scale is the number of digits after the point, so
+  `dec.parse("1.50")` keeps its two places. Nothing else is allowed, no exponent, space or separator:
+  `decimal.parse() cannot read a decimal from "1e5"`. More than 4,000 digits, or more than 1000 after the
+  point, is the same error. A non-string is `decimal.parse() needs a string, but got number`.
+- `dec.try_parse(text)` is the same, or `nothing` when the text is not a decimal.
+- `dec.from_int(n)` is the decimal of a whole number, scale 0.
+- `dec.from_float(x, places, mode)` is a number `x` read **as the number its text shows** (what `str(x)`
+  prints, in the positional or exponent form), rounded to `places` digits after the point by `mode`:
+  `dec.from_float(0.1, 2, "half_even")` is `0.10` and `dec.from_float(2.675, 2, "half_even")` is
+  `2.68`, where `round(2.675, 2)` is `2.67` because that float is not exactly 2.675. Infinity and NaN
+  are errors. `places` is a whole number from 0 to 1000.
+- `dec.is_decimal(a)` is `true` when `a` is a decimal this module accepts; `dec.scale(a)` is its
+  number of digits after the point.
+
+**Arithmetic.**
+
+- `dec.add(a, b)`, `dec.sub(a, b)` and `dec.mul(a, b)` are exact. The scale of a sum or difference is the larger
+  of the two; the scale of a product is the sum of the two.
+- `dec.div(a, b, places, mode)` is `a / b` rounded to `places` digits after the point by `mode`. `places` and
+  `mode` are **required**: a quotient is usually not exact, and there is no default for the program to
+  forget. A zero divisor is `decimal.div() cannot divide by zero`.
+- `dec.quantize(a, places, mode)` is `a` with exactly `places` digits after the point: rounded by `mode` when
+  digits are dropped, padded with zeros when they are added (never rounded then).
+- `dec.negate(a)`, `dec.absolute(a)` and `dec.sign(a)` (`-1`, `0` or `1`). (Not `neg`, `abs`, as built-in names
+  are reserved, `[scope.reserved]`.)
+- `dec.cmp(a, b)` is `-1`, `0` or `1` by value, so `1.5` and `1.50` compare equal; `dec.eq`, `dec.lt` and
+  `dec.le` are `true` or `false`. (Comparing two decimals with `==` compares the lists, so `1.5 == 1.50` is `false`:
+  use `dec.eq`.)
+- `dec.total(list)` is the exact sum of a list of decimals; the empty list is `0`.
+
+**Out.**
+
+- `dec.to_string(a)` is the text: every digit after the point kept (`1.50` stays `1.50`), never an exponent, and a
+  minus sign only when the value is below zero (a zero is never `-0.00`).
+- `dec.to_int(a, mode)` is `a` rounded to a whole number by `mode`.
+- `dec.to_float(a)` is the nearest float to `a`.
+
+The module's exports are exactly: `absolute`, `add`, `cmp`, `div`, `eq`, `from_float`, `from_int`, `is_decimal`,
+`le`, `lt`, `mul`, `negate`, `parse`, `quantize`, `scale`, `sign`, `sub`, `to_float`, `to_int`, `to_string`,
+`total`, `try_parse`. The conformance cases pin the rules above; `tests/std/test_decimal.py` checks the
+arithmetic against Python's `decimal` module on random inputs on all three engines.
+
+## [lib.std-math] `std:math`
+
+```
+import "std:math" as math
+```
+
+Numeric helpers (G-018, G-043, G-045), in NovaLang. A non-number is `the number for math.trunc() needs a
+number, but got string`, naming the role.
+
+- `math.trunc(x)` is `x` without its fractional part, towards zero: `math.trunc(-2.7)` is `-2` (where `floor`
+  gives `-3`).
+- `math.divmod(a, b)` is the list `[a // b, a % b]`: the floor quotient and the remainder with the sign of `b`, so
+  `a == b * q + r`. A zero `b` is the language's own error, `integer division by zero`.
+- `math.round_half(x, places, mode)` is `x` rounded to `places` digits after the point by a mode of
+  `[lib.std-decimal]`, reading `x` as the number its text shows, and the nearest float to the result:
+  `math.round_half(2.675, 2, "half_up")` is `2.68`. (`round` itself is unchanged: it rounds half to even and works on the
+  binary value.)
+- `math.exp(x)` is `pow(E, x)`.
+
+The module's exports are exactly `divmod`, `exp`, `round_half`, `trunc`.
+
+## [lib.std-format] `std:format`
+
+```
+import "std:format" as fmt
+```
+
+Number to text (G-007, G-008, G-048), in NovaLang.
+
+- `fmt.fixed(x, places)` is the number `x` as text with exactly `places` digits after the point (0 to 1000), rounded half to
+  even on the number's text as `[lib.std-decimal]` `from_float` reads it, and never in exponent form:
+  `fmt.fixed(5, 2)` is `5.00`, `fmt.fixed(0.0000001, 8)` is `0.00000010` (`str` prints `1e-07`),
+  `fmt.fixed(2.5, 0)` is `2` and `fmt.fixed(3.5, 0)` is `4`. A result of zero has no minus sign:
+  `fmt.fixed(-0.001, 2)` is `0.00`.
+- `fmt.grouped(text, sep)` is the text of a number (an optional sign, digits, an optional point and digits, as `fixed`
+  makes it) with `sep` between groups of three digits of its whole part: `fmt.grouped("1234567.5", ",")` is
+  `1,234,567.5`. Text that is not a number is `format.grouped() needs the text of a number such as "1234.5", but got "abc"`.
+- `fmt.pad_zero(n, width)` is the whole number `n` as text padded on the left with zeros to `width` characters; a minus sign
+  counts towards the width and stays in front: `fmt.pad_zero(-5, 4)` is `-005`. A number already as wide is returned as is.
+  `width` is 0 to 100000.
+
+`str` of a float is **unchanged** by this module: a small float still prints as `1e-07` (G-048) and `fmt.fixed` is the way out.
+A float literal too large for a float is still infinity (G-052, decided: kept, and now documented here, because making the lexer
+refuse it would break programs that run today). The module's exports are exactly `fixed`, `grouped`, `pad_zero`.
