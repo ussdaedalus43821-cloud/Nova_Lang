@@ -471,7 +471,11 @@ is judged again for every piece, so a file replaced between two pieces is judged
 `break` in the caller or by the end of the program leaves nothing behind. (Reading the same file while it is being written
 gives whatever each piece found.)
 
-The module's exports are exactly `each_line`, `is_dir`, `is_link`, `lines`, `size`. A lazily read `for line in ...` is not
+- `files.sha256_file(path)` is the SHA-256 of the file's bytes, as 64 lower-case hexadecimal digits (what `sha256sum` prints). The file is read in pieces
+  in this one call (opened, read and closed, nothing held), the read grant is judged for the path before the call as for `size`, and the work is charged to the run
+  (four steps for every 64 KiB). A folder is `FileError: <path> is a directory, not a file`, a missing file `FileNotFoundError: <path>`.
+
+The module's exports are exactly `each_line`, `is_dir`, `is_link`, `lines`, `sha256_file`, `size`. A lazily read `for line in ...` is not
 part of this version.
 
 ## [lib.std-regex] `std:regex`
@@ -514,4 +518,64 @@ The module's exports are exactly `escape`, `find_all`, `find_n`, `match`, `match
 `sub_n`, `test`. Every function is a native of the module (`[mod.std]` 6) and its work is charged to the run as
 `[lib.regex]` says. There are no optional arguments in NovaLang, so each of `find`, `sub` and `pieces` has a second form with
 the count or limit (`find_n`, `sub_n`, `pieces_n`).
+
+## [lib.std-hash] `std:hash`
+
+```
+import "std:hash" as hash
+```
+
+`hash.sha256(text)` is the SHA-256 (FIPS 180-4) of the UTF-8 bytes of `text`, as 64 lower-case hexadecimal digits: `hash.sha256("abc")` is
+`ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`, and `hash.sha256("")` is `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+A value that is not a string is `the text for hash.sha256() needs a string, but got <kind>`; text that cannot be written as UTF-8 (a lone surrogate, which a program
+cannot normally make) is an error. The digest of a **file** is `files.sha256_file` (`[lib.std-files]`), which needs the read grant; this module reads nothing, declares no
+capability and needs no grant. It is for evidence that an input was what it was (a run receipt, a recorded hash), so it offers no MD5 or SHA-1. The module's export is
+exactly `sha256`.
+
+## [lib.std-date] `std:date`
+
+```
+import "std:date" as date
+```
+
+Civil dates and timestamps with a numeric UTC offset, **as text**, so that they store, print and compare like any other string. A **date** is written `2027-01-31`
+(four digits, `-`, two digits, `-`, two digits; ASCII digits only; a day that exists in the proleptic Gregorian calendar; years 1 to 9999). A **timestamp** is written
+`2027-01-31T13:55:36+00:00`: a date, `T`, a time of day (`00:00:00` to `23:59:59`; no leap second), and an offset written `+HH:MM` or `-HH:MM` of less than 24 hours. There is no time
+zone database and no daylight saving: an offset is a number, not a place. Whole seconds only. The module reads no clock (a program that wants "today" passes it in) and declares no
+capability. A value that is not text is `date.<function>() needs a string for the <role>, but got <kind>`; text that is not a date or a timestamp is `date.<function>() needs a date
+written 2027-01-31 for the <role>, and '<text>' is not a date of the calendar`, and the same for a timestamp. A whole number may be written `1` or `1.0`; any other number is
+`needs a whole number`, and one beyond the calendar is `out of the calendar`. A result outside the years 1 to 9999 is `gives a date outside the years 1 to 9999`.
+
+**An offset** (an argument or in a format) is `Z`, `+HH:MM` or `+HHMM` (or `-`), hours 00 to 23, minutes 00 to 59. A timestamp is always written with `+HH:MM` (`Z` is `+00:00`).
+
+| Function | Meaning |
+| --- | --- |
+| `is_date(text)`, `is_timestamp(text)` | `true` if `text` is one |
+| `make(year, month, day)` | the date, or an error if there is no such date |
+| `year(d)`, `month(d)`, `day(d)` | the parts of a date, as numbers |
+| `is_leap(year)`, `days_in_month(year, month)` | the Gregorian rule (4, but not 100, unless 400); 28 to 31 |
+| `last_day_of_month(d)` | the last date of `d`'s month |
+| `weekday(d)`, `day_of_year(d)` | Monday 1 to Sunday 7 (ISO 8601); 1 to 366 |
+| `add_days(d, n)`, `diff_days(a, b)` | `n` days later (earlier if negative); how many days `a` is after `b` |
+| `add_months(d, n)`, `add_years(d, n)` | **the month-end rule:** the same day of the month `n` months (`12 n` for years) on, or the **last day of that month** if it has no such day: `2027-01-31` plus one month is `2027-02-28`, `2028-02-29` plus one year is `2029-02-28`. Adding and then subtracting is not always the identity |
+| `compare(a, b)` | -1, 0 or 1; two dates, or two timestamps compared **as instants** (`2027-01-01T00:00:00+01:00` equals `2026-12-31T23:00:00+00:00`) |
+| `make_timestamp(year, month, day, hour, minute, second, offset)` | the timestamp |
+| `date_of(ts)`, `offset_of(ts)` | the civil date in the timestamp's own offset; its offset as `+HH:MM` |
+| `with_offset(ts, offset)`, `to_utc(ts)` | the same instant written in another offset, or at `+00:00` |
+| `add_seconds(ts, n)`, `diff_seconds(a, b)` | `n` seconds later, in the same offset; seconds `a` is after `b`, as instants |
+| `to_epoch(ts)`, `from_epoch(seconds, offset)` | seconds since `1970-01-01T00:00:00Z`; the timestamp of them, written in `offset` |
+| `format(value, fmt)` | a date or a timestamp as text |
+| `parse_date(text, fmt)` | the date `text` spells by `fmt` |
+| `parse_timestamp(text, fmt)`, `parse_timestamp_at(text, fmt, offset)` | the timestamp `text` spells by `fmt`: the first needs `%z` in the format, the second is for text with no offset in it and uses `offset` (`%z` is then an error) |
+
+**Formats.** `%Y` four digits; `%m` `%d` `%H` `%M` `%S` two digits; `%e` the day of the month, one or two digits after any spaces (written with a leading space by `format`);
+`%b` `%B` the English month name, short or full, and `%a` `%A` the weekday name (read case-insensitively; written `Oct`, `October`, `Sat`, `Saturday`; **never the
+locale's**); `%z` an offset (read as `Z`, `+HHMM` or `+HH:MM`; written `+HHMM`); `%f` one to nine digits of a fraction of a second, read and **dropped** (timestamps have whole seconds;
+it cannot be written); `%%` a percent sign. Any other character matches itself, exactly. A weekday name that is not the weekday of the date read is an error. Parsing needs the year, month
+and day, and for a timestamp the hour, minute and second; a format that lacks one says which. Anything else after `%` is `does not know the format code`. `format` of a date with a
+time-of-day code is an error.
+
+The module's exports are exactly `add_days`, `add_months`, `add_seconds`, `add_years`, `compare`, `date_of`, `day`, `day_of_year`, `days_in_month`, `diff_days`, `diff_seconds`,
+`format`, `from_epoch`, `is_date`, `is_leap`, `is_timestamp`, `last_day_of_month`, `make`, `make_timestamp`, `month`, `offset_of`, `parse_date`, `parse_timestamp`,
+`parse_timestamp_at`, `to_epoch`, `to_utc`, `weekday`, `with_offset`, `year`. Every function is a native of the module (`[mod.std]` 6).
 

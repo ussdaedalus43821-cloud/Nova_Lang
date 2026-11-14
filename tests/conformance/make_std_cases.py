@@ -228,7 +228,7 @@ case("std-files-in-the-trusted-profile", ["lib.std-files"],
      FILES + 'print(json.dumps(files.lines("data/last.txt")), files.size("data/last.txt"))',
      ['["one", "two"] 8'], profile="modules", extra={"files": {"data/last.txt": "one\ntwo\n"}})
 case("std-files-exports", ["lib.std-files", "mod.std"],
-     'import "std:files" as files\nprint(join(sorted(keys(files)), " "))', ["each_line is_dir is_link lines size"],
+     'import "std:files" as files\nprint(join(sorted(keys(files)), " "))', ["each_line is_dir is_link lines sha256_file size"],
      profile="sandbox", sandbox=GRANT)
 
 
@@ -426,6 +426,101 @@ case("std-regex-builtin-is-ungated-by-std-and-bad-pattern-is-type-error", ["lib.
 print(regex("^\\d{3}$", "123"))""",
      ["TypeError: regex(): bad pattern: missing ), unterminated group", "true"],
      profile="sandbox", sandbox=RGRANT)
+
+
+# ---- std:hash and std:date (M14 slice P1) --------------------------------------------------------
+HASH = 'import "std:hash" as hash\n'
+case("std-hash-sha256-vectors", ["lib.std-hash"],
+     HASH + r"""print(hash.sha256(""))
+print(hash.sha256("abc"))
+print(hash.sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"))
+print(hash.sha256("a" * 1000000))
+print(hash.sha256("héllo"), len(hash.sha256("x")))
+try { hash.sha256(5) } catch e { print(e) }""",
+     ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+      "__HELLO__ 64", "the text for hash.sha256() needs a string, but got number"],
+     profile="sandbox", sandbox={"profile": "restricted", "limits": {"time": 120000}})
+case("std-hash-needs-no-grant-and-exports-one-name", ["lib.std-hash", "mod.std"],
+     HASH + 'print(join(sorted(keys(hash)), " "))', ["sha256"], profile="sandbox", sandbox={"profile": "restricted"})
+case("std-files-sha256-file", ["lib.std-files"],
+     FILES + 'print(files.sha256_file("data/in.txt"))\nprint(files.sha256_file("data/empty.txt"))\ntry { files.sha256_file("data") } catch e { print(e) }\ntry { files.sha256_file("data/nothing") } catch e { print(e) }\ntry { files.sha256_file("secret.txt") } catch e { print(e) }',
+     ["__IN__", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "FileError: data is a directory, not a file", "FileNotFoundError: data/nothing",
+      "FileError: secret.txt is outside the folders this program may use"],
+     profile="sandbox", sandbox=GRANT, extra={"files": DATA})
+import hashlib as _h
+for _case in cases:
+    if _case["name"] == "std-hash-sha256-vectors":
+        _case["output"] = [line.replace("__HELLO__", _h.sha256("héllo".encode("utf-8")).hexdigest()) for line in _case["output"]]
+    if _case["name"] == "std-files-sha256-file":
+        _case["output"] = [line.replace("__IN__", _h.sha256(DATA["data/in.txt"].encode("utf-8")).hexdigest()) for line in _case["output"]]
+
+DATE = 'import "std:date" as date\n'
+RG = {"profile": "restricted"}
+case("std-date-the-month-end-rule-and-day-arithmetic", ["lib.std-date"],
+     DATE + r"""print(date.add_days("2027-01-31", 30), date.add_days("2027-03-01", -1), date.add_days("2028-02-28", 1), date.add_days("2027-12-31", 1))
+print(date.add_months("2027-01-31", 1), date.add_months("2028-01-31", 1), date.add_months("2027-03-31", -1), date.add_months("2027-01-31", 12))
+print(date.add_years("2028-02-29", 1), date.add_years("2028-02-29", 4), date.add_months(date.add_months("2027-01-31", 1), 1))
+print(date.diff_days("2027-03-01", "2027-02-01"), date.diff_days("2027-02-01", "2027-03-01"), date.diff_days("2028-03-01", "2027-03-01"))
+print(date.last_day_of_month("2027-02-10"), date.last_day_of_month("2028-02-10"), date.last_day_of_month("9999-12-01"))""",
+     ["2027-03-02 2027-02-28 2028-02-29 2028-01-01", "2027-02-28 2028-02-29 2027-02-28 2028-01-31", "2029-02-28 2032-02-29 2027-03-28",
+      "28 -28 366", "2027-02-28 2028-02-29 9999-12-31"], profile="sandbox", sandbox=RG)
+case("std-date-parts-weekdays-and-leap-years", ["lib.std-date"],
+     DATE + r"""print(date.year("2027-01-31"), date.month("2027-01-31"), date.day("2027-01-31"), date.make(2027, 1, 31), date.make(1, 1, 1))
+print(date.weekday("2026-10-10"), date.weekday("2026-10-12"), date.weekday("2026-10-11"), date.day_of_year("2028-12-31"), date.day_of_year("2027-12-31"))
+print(date.is_leap(2000), date.is_leap(1900), date.is_leap(2024), date.is_leap(2027), date.days_in_month(2028, 2), date.days_in_month(2027, 2), date.days_in_month(2027, 12))
+print(date.compare("2027-01-01", "2027-01-02"), date.compare("2027-01-01", "2027-01-01"), date.compare("2027-03-01", "2027-01-02"), "2027-01-31" < "2027-02-01")""",
+     ["2027 1 31 2027-01-31 0001-01-01", "6 1 7 366 365", "true false true false 29 28 31", "-1 0 1 true"], profile="sandbox", sandbox=RG)
+case("std-date-what-is-and-is-not-a-date", ["lib.std-date"],
+     DATE + r"""for t in ["2027-01-31", "0001-01-01", "9999-12-31", "2028-02-29", "2027-02-29", "1900-02-29", "2027-13-01", "2027-1-1", "2027/01/01", " 2027-01-01", "0000-01-01", "10000-01-01", "", "2027-01-01T00:00:00+00:00"] {
+  print(date.is_date(t))
+}
+try { date.year("2027-02-29") } catch e { print(e) }
+try { date.add_days("2027-01-01", 1.5) } catch e { print(e) }
+try { date.add_days("9999-12-31", 1) } catch e { print(e) }
+try { date.is_date(5) } catch e { print(e) }
+try { date.make(2027, 2, 30) } catch e { print(e) }""",
+     ["true", "true", "true", "true", "false", "false", "false", "false", "false", "false", "false", "false", "false", "false",
+      "date.year() needs a date written 2027-01-31 for the date, and '2027-02-29' is not a date of the calendar",
+      "date.add_days() needs a whole number for the number of days, but got a number with a fraction",
+      "date.add_days() gives a date outside the years 1 to 9999",
+      "date.is_date() needs a string, but got number",
+      "date.make() has no date for year 2027, month 2, day 30"], profile="sandbox", sandbox=RG)
+case("std-date-timestamps-offsets-and-the-epoch", ["lib.std-date"],
+     DATE + r"""let ts = "2027-01-31T13:55:36+05:30"
+print(date.to_utc(ts), date.with_offset(ts, "-0800"), date.offset_of(ts), date.date_of("2027-01-31T23:30:00-05:00"))
+print(date.to_epoch("1970-01-01T00:00:00+00:00"), date.to_epoch("2026-10-10T13:55:36+00:00"), date.from_epoch(1791640536, "+02:00"))
+print(date.diff_seconds("2027-03-01T00:00:00+00:00", "2027-02-28T23:00:00-02:00"), date.compare("2027-01-01T00:00:00+01:00", "2026-12-31T23:00:00+00:00"))
+print(date.add_seconds("2027-12-31T23:59:59+01:00", 1), date.add_seconds("2028-02-28T23:59:59-05:00", 86401), date.make_timestamp(2027, 1, 31, 13, 55, 36, "-0500"))
+print(date.is_timestamp("2027-01-31T13:55:36+00:00"), date.is_timestamp("2027-01-31T13:55:36Z"), date.is_timestamp("2027-01-31T24:00:00+00:00"), date.is_timestamp("2027-01-31"))""",
+     ["2027-01-31T08:25:36+00:00 2027-01-31T00:25:36-08:00 +05:30 2027-01-31", "0 1791640536 2026-10-10T15:55:36+02:00", "-3600 0",
+      "2028-01-01T00:00:00+01:00 2028-03-01T00:00:00-05:00 2027-01-31T13:55:36-05:00", "true false false false"], profile="sandbox", sandbox=RG)
+case("std-date-formats-read-and-write-log-timestamps", ["lib.std-date"],
+     DATE + r"""print(date.parse_timestamp("10/Oct/2026:13:55:36 +0000", "%d/%b/%Y:%H:%M:%S %z"))
+print(date.parse_timestamp("2026-10-10T13:55:36.123456Z", "%Y-%m-%dT%H:%M:%S.%f%z"))
+print(date.parse_timestamp("Sat, 10 Oct 2026 13:55:36 +0200", "%a, %d %b %Y %H:%M:%S %z"))
+print(date.parse_timestamp_at("2026 Oct  9 03:04:05", "%Y %b %e %H:%M:%S", "+01:00"))
+print(date.parse_date("10 October 2026", "%d %B %Y"), date.parse_date("100% of 2026-10-10", "100%% of %Y-%m-%d"))
+print(date.format("2026-10-10T13:55:36+02:00", "%A, %d %B %Y %H:%M:%S %z"))
+print(date.format("2026-03-04", "%e|%d|%a|%b"))""",
+     ["2026-10-10T13:55:36+00:00", "2026-10-10T13:55:36+00:00", "2026-10-10T13:55:36+02:00", "2026-10-09T03:04:05+01:00", "2026-10-10 2026-10-10",
+      "Saturday, 10 October 2026 13:55:36 +0200", " 4|04|Wed|Mar"], profile="sandbox", sandbox=RG)
+case("std-date-formats-refuse-what-does-not-fit", ["lib.std-date"],
+     DATE + r"""try { date.parse_date("2026-10-10x", "%Y-%m-%d") } catch e { print(e) }
+try { date.parse_date("2026-1-10", "%Y-%m-%d") } catch e { print(e) }
+try { date.parse_date("2026-02-30", "%Y-%m-%d") } catch e { print(e) }
+try { date.parse_date("Mon 10 Oct 2026", "%a %d %b %Y") } catch e { print(e) }
+try { date.parse_date("x", "%Q") } catch e { print(e) }
+try { date.parse_timestamp("2026-10-10 01:02:03", "%Y-%m-%d %H:%M:%S") } catch e { print(e) }
+try { date.format("2026-10-10", "%H") } catch e { print(e) }""",
+     ["date.parse_date() could not read '2026-10-10x' with the format '%Y-%m-%d': the text has more after the format ended at character 10",
+      "date.parse_date() could not read '2026-1-10' with the format '%Y-%m-%d': expected 2 digits for the month at character 5",
+      "date.parse_date() read 2026-02-30, which is not a date of the calendar",
+      "date.parse_date() read a day name that is not the weekday of 2026-10-10",
+      "date.parse_date() does not know the format code '%Q' (the codes are %Y %m %d %e %H %M %S %b %B %a %A %z %f and %%)",
+      "date.parse_timestamp() needs the format to read the offset (%z); if the text has none, use date.parse_timestamp_at() and give the offset",
+      "date.format() has %H but the value is a date, which has no time of day; give it a timestamp"],
+     profile="sandbox", sandbox=RG)
 
 json.dump  # (kept for clarity)
 doc = {"area": "std", "version": 1, "cases": cases}

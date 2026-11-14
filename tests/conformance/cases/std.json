@@ -978,7 +978,7 @@
    "profile": "sandbox",
    "source": "import \"std:files\" as files\nprint(join(sorted(keys(files)), \" \"))",
    "output": [
-    "each_line is_dir is_link lines size"
+    "each_line is_dir is_link lines sha256_file size"
    ],
    "error": "",
    "error_line": null,
@@ -1432,6 +1432,233 @@
    "sandbox": {
     "profile": "restricted",
     "regex": true
+   }
+  },
+  {
+   "name": "std-hash-sha256-vectors",
+   "spec": [
+    "lib.std-hash"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:hash\" as hash\nprint(hash.sha256(\"\"))\nprint(hash.sha256(\"abc\"))\nprint(hash.sha256(\"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\"))\nprint(hash.sha256(\"a\" * 1000000))\nprint(hash.sha256(\"héllo\"), len(hash.sha256(\"x\")))\ntry { hash.sha256(5) } catch e { print(e) }",
+   "output": [
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+    "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+    "3c48591d8d098a4538f5e013dfcf406e948eac4d3277b10bf614e295d6068179 64",
+    "the text for hash.sha256() needs a string, but got number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "time": 120000
+    }
+   }
+  },
+  {
+   "name": "std-hash-needs-no-grant-and-exports-one-name",
+   "spec": [
+    "lib.std-hash",
+    "mod.std"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:hash\" as hash\nprint(join(sorted(keys(hash)), \" \"))",
+   "output": [
+    "sha256"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-files-sha256-file",
+   "spec": [
+    "lib.std-files"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:files\" as files\nprint(files.sha256_file(\"data/in.txt\"))\nprint(files.sha256_file(\"data/empty.txt\"))\ntry { files.sha256_file(\"data\") } catch e { print(e) }\ntry { files.sha256_file(\"data/nothing\") } catch e { print(e) }\ntry { files.sha256_file(\"secret.txt\") } catch e { print(e) }",
+   "output": [
+    "47434fe2e1f8330ce00b1358ef4c7c94efbbe54ea08211991b050b7f9694c22b",
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "FileError: data is a directory, not a file",
+    "FileNotFoundError: data/nothing",
+    "FileError: secret.txt is outside the folders this program may use"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "files": {
+    "data/in.txt": "a\nb\r\nc\rd\n\ne",
+    "data/empty.txt": "",
+    "data/nl.txt": "\n",
+    "data/last.txt": "one\ntwo\n",
+    "secret.txt": "top secret",
+    "data/sub/deep.txt": "deep"
+   }
+  },
+  {
+   "name": "std-date-the-month-end-rule-and-day-arithmetic",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\nprint(date.add_days(\"2027-01-31\", 30), date.add_days(\"2027-03-01\", -1), date.add_days(\"2028-02-28\", 1), date.add_days(\"2027-12-31\", 1))\nprint(date.add_months(\"2027-01-31\", 1), date.add_months(\"2028-01-31\", 1), date.add_months(\"2027-03-31\", -1), date.add_months(\"2027-01-31\", 12))\nprint(date.add_years(\"2028-02-29\", 1), date.add_years(\"2028-02-29\", 4), date.add_months(date.add_months(\"2027-01-31\", 1), 1))\nprint(date.diff_days(\"2027-03-01\", \"2027-02-01\"), date.diff_days(\"2027-02-01\", \"2027-03-01\"), date.diff_days(\"2028-03-01\", \"2027-03-01\"))\nprint(date.last_day_of_month(\"2027-02-10\"), date.last_day_of_month(\"2028-02-10\"), date.last_day_of_month(\"9999-12-01\"))",
+   "output": [
+    "2027-03-02 2027-02-28 2028-02-29 2028-01-01",
+    "2027-02-28 2028-02-29 2027-02-28 2028-01-31",
+    "2029-02-28 2032-02-29 2027-03-28",
+    "28 -28 366",
+    "2027-02-28 2028-02-29 9999-12-31"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-date-parts-weekdays-and-leap-years",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\nprint(date.year(\"2027-01-31\"), date.month(\"2027-01-31\"), date.day(\"2027-01-31\"), date.make(2027, 1, 31), date.make(1, 1, 1))\nprint(date.weekday(\"2026-10-10\"), date.weekday(\"2026-10-12\"), date.weekday(\"2026-10-11\"), date.day_of_year(\"2028-12-31\"), date.day_of_year(\"2027-12-31\"))\nprint(date.is_leap(2000), date.is_leap(1900), date.is_leap(2024), date.is_leap(2027), date.days_in_month(2028, 2), date.days_in_month(2027, 2), date.days_in_month(2027, 12))\nprint(date.compare(\"2027-01-01\", \"2027-01-02\"), date.compare(\"2027-01-01\", \"2027-01-01\"), date.compare(\"2027-03-01\", \"2027-01-02\"), \"2027-01-31\" < \"2027-02-01\")",
+   "output": [
+    "2027 1 31 2027-01-31 0001-01-01",
+    "6 1 7 366 365",
+    "true false true false 29 28 31",
+    "-1 0 1 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-date-what-is-and-is-not-a-date",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\nfor t in [\"2027-01-31\", \"0001-01-01\", \"9999-12-31\", \"2028-02-29\", \"2027-02-29\", \"1900-02-29\", \"2027-13-01\", \"2027-1-1\", \"2027/01/01\", \" 2027-01-01\", \"0000-01-01\", \"10000-01-01\", \"\", \"2027-01-01T00:00:00+00:00\"] {\n  print(date.is_date(t))\n}\ntry { date.year(\"2027-02-29\") } catch e { print(e) }\ntry { date.add_days(\"2027-01-01\", 1.5) } catch e { print(e) }\ntry { date.add_days(\"9999-12-31\", 1) } catch e { print(e) }\ntry { date.is_date(5) } catch e { print(e) }\ntry { date.make(2027, 2, 30) } catch e { print(e) }",
+   "output": [
+    "true",
+    "true",
+    "true",
+    "true",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "false",
+    "date.year() needs a date written 2027-01-31 for the date, and '2027-02-29' is not a date of the calendar",
+    "date.add_days() needs a whole number for the number of days, but got a number with a fraction",
+    "date.add_days() gives a date outside the years 1 to 9999",
+    "date.is_date() needs a string, but got number",
+    "date.make() has no date for year 2027, month 2, day 30"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-date-timestamps-offsets-and-the-epoch",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\nlet ts = \"2027-01-31T13:55:36+05:30\"\nprint(date.to_utc(ts), date.with_offset(ts, \"-0800\"), date.offset_of(ts), date.date_of(\"2027-01-31T23:30:00-05:00\"))\nprint(date.to_epoch(\"1970-01-01T00:00:00+00:00\"), date.to_epoch(\"2026-10-10T13:55:36+00:00\"), date.from_epoch(1791640536, \"+02:00\"))\nprint(date.diff_seconds(\"2027-03-01T00:00:00+00:00\", \"2027-02-28T23:00:00-02:00\"), date.compare(\"2027-01-01T00:00:00+01:00\", \"2026-12-31T23:00:00+00:00\"))\nprint(date.add_seconds(\"2027-12-31T23:59:59+01:00\", 1), date.add_seconds(\"2028-02-28T23:59:59-05:00\", 86401), date.make_timestamp(2027, 1, 31, 13, 55, 36, \"-0500\"))\nprint(date.is_timestamp(\"2027-01-31T13:55:36+00:00\"), date.is_timestamp(\"2027-01-31T13:55:36Z\"), date.is_timestamp(\"2027-01-31T24:00:00+00:00\"), date.is_timestamp(\"2027-01-31\"))",
+   "output": [
+    "2027-01-31T08:25:36+00:00 2027-01-31T00:25:36-08:00 +05:30 2027-01-31",
+    "0 1791640536 2026-10-10T15:55:36+02:00",
+    "-3600 0",
+    "2028-01-01T00:00:00+01:00 2028-03-01T00:00:00-05:00 2027-01-31T13:55:36-05:00",
+    "true false false false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-date-formats-read-and-write-log-timestamps",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\nprint(date.parse_timestamp(\"10/Oct/2026:13:55:36 +0000\", \"%d/%b/%Y:%H:%M:%S %z\"))\nprint(date.parse_timestamp(\"2026-10-10T13:55:36.123456Z\", \"%Y-%m-%dT%H:%M:%S.%f%z\"))\nprint(date.parse_timestamp(\"Sat, 10 Oct 2026 13:55:36 +0200\", \"%a, %d %b %Y %H:%M:%S %z\"))\nprint(date.parse_timestamp_at(\"2026 Oct  9 03:04:05\", \"%Y %b %e %H:%M:%S\", \"+01:00\"))\nprint(date.parse_date(\"10 October 2026\", \"%d %B %Y\"), date.parse_date(\"100% of 2026-10-10\", \"100%% of %Y-%m-%d\"))\nprint(date.format(\"2026-10-10T13:55:36+02:00\", \"%A, %d %B %Y %H:%M:%S %z\"))\nprint(date.format(\"2026-03-04\", \"%e|%d|%a|%b\"))",
+   "output": [
+    "2026-10-10T13:55:36+00:00",
+    "2026-10-10T13:55:36+00:00",
+    "2026-10-10T13:55:36+02:00",
+    "2026-10-09T03:04:05+01:00",
+    "2026-10-10 2026-10-10",
+    "Saturday, 10 October 2026 13:55:36 +0200",
+    " 4|04|Wed|Mar"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-date-formats-refuse-what-does-not-fit",
+   "spec": [
+    "lib.std-date"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:date\" as date\ntry { date.parse_date(\"2026-10-10x\", \"%Y-%m-%d\") } catch e { print(e) }\ntry { date.parse_date(\"2026-1-10\", \"%Y-%m-%d\") } catch e { print(e) }\ntry { date.parse_date(\"2026-02-30\", \"%Y-%m-%d\") } catch e { print(e) }\ntry { date.parse_date(\"Mon 10 Oct 2026\", \"%a %d %b %Y\") } catch e { print(e) }\ntry { date.parse_date(\"x\", \"%Q\") } catch e { print(e) }\ntry { date.parse_timestamp(\"2026-10-10 01:02:03\", \"%Y-%m-%d %H:%M:%S\") } catch e { print(e) }\ntry { date.format(\"2026-10-10\", \"%H\") } catch e { print(e) }",
+   "output": [
+    "date.parse_date() could not read '2026-10-10x' with the format '%Y-%m-%d': the text has more after the format ended at character 10",
+    "date.parse_date() could not read '2026-1-10' with the format '%Y-%m-%d': expected 2 digits for the month at character 5",
+    "date.parse_date() read 2026-02-30, which is not a date of the calendar",
+    "date.parse_date() read a day name that is not the weekday of 2026-10-10",
+    "date.parse_date() does not know the format code '%Q' (the codes are %Y %m %d %e %H %M %S %b %B %a %A %z %f and %%)",
+    "date.parse_timestamp() needs the format to read the offset (%z); if the text has none, use date.parse_timestamp_at() and give the offset",
+    "date.format() has %H but the value is a date, which has no time of day; give it a timestamp"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
    }
   }
  ]

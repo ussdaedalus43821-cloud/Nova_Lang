@@ -1,0 +1,159 @@
+# std:date - civil dates and timestamps with a numeric offset (docs/spec/09-library.md [lib.std-date]).
+#
+#   import "std:date" as date
+#   date.add_days("2027-01-31", 30)                      # "2027-03-02"
+#   date.add_months("2027-01-31", 1)                     # "2027-02-28": the month-end rule
+#   date.diff_days("2027-03-01", "2027-02-01")           # 28
+#   date.parse_timestamp("10/Oct/2026:13:55:36 +0000", "%d/%b/%Y:%H:%M:%S %z")   # "2026-10-10T13:55:36+00:00"
+#
+# A date is text, "2027-01-31", and a timestamp is text, "2027-01-31T13:55:36+00:00": whole seconds and a numeric
+# offset (+HH:MM). Both are plain strings, so they store, print and compare like any other string; two dates also order
+# correctly with < and >, and two timestamps in the same offset do (compare() and diff_seconds() work for any offsets).
+# There is no time zone database and no daylight saving: an offset is a number. Years 1 to 9999. Nothing here reads the
+# clock, so the module declares no capability; a program that wants "today" passes it in (now() with the clock grant).
+# Every function is a native of the module.
+
+# true when `text` is a date written 2027-01-31 that exists in the calendar (years 1 to 9999).
+export def is_date(text) {
+    return native.is_date(text)
+}
+
+# true when `text` is a timestamp written 2027-01-31T13:55:36+00:00 (whole seconds, a numeric offset) that exists.
+export def is_timestamp(text) {
+    return native.is_timestamp(text)
+}
+
+# The date of these three whole numbers, as text; an error if there is no such date.
+export def make(year, month, day) {
+    return native.make(year, month, day)
+}
+
+# The year of a date, as a number.
+export def year(d) {
+    return native.year(d)
+}
+
+# The month of a date, 1 to 12.
+export def month(d) {
+    return native.month(d)
+}
+
+# The day of the month of a date, 1 to 31.
+export def day(d) {
+    return native.day(d)
+}
+
+# true for a leap year of the Gregorian calendar.
+export def is_leap(year) {
+    return native.is_leap(year)
+}
+
+# How many days the month has (28 to 31).
+export def days_in_month(year, month) {
+    return native.days_in_month(year, month)
+}
+
+# The last date of the month of `d`.
+export def last_day_of_month(d) {
+    return native.last_day_of_month(d)
+}
+
+# The date `n` days after `d` (before it if `n` is negative).
+export def add_days(d, n) {
+    return native.add_days(d, n)
+}
+
+# The date `n` months after `d`. If that month has no such day, the last day of it (the month-end rule): add_months("2027-01-31", 1) is "2027-02-28".
+export def add_months(d, n) {
+    return native.add_months(d, n)
+}
+
+# The date `n` years after `d`; the same month-end rule ("2028-02-29" plus one year is "2029-02-28").
+export def add_years(d, n) {
+    return native.add_years(d, n)
+}
+
+# How many days `a` is after `b` (negative if before).
+export def diff_days(a, b) {
+    return native.diff_days(a, b)
+}
+
+# The day of the week, Monday 1 to Sunday 7 (ISO 8601).
+export def weekday(d) {
+    return native.weekday(d)
+}
+
+# The day of the year, 1 to 366.
+export def day_of_year(d) {
+    return native.day_of_year(d)
+}
+
+# -1, 0 or 1 as `a` is before, the same as or after `b`: two dates, or two timestamps (compared as instants, whatever their offsets).
+export def compare(a, b) {
+    return native.compare(a, b)
+}
+
+# The timestamp of these numbers and an offset ("Z", "+01:00" or "-0500"), written with the offset as +HH:MM.
+export def make_timestamp(year, month, day, hour, minute, second, offset) {
+    return native.make_timestamp(year, month, day, hour, minute, second, offset)
+}
+
+# The civil date of a timestamp in its own offset.
+export def date_of(ts) {
+    return native.date_of(ts)
+}
+
+# The offset of a timestamp, written +HH:MM.
+export def offset_of(ts) {
+    return native.offset_of(ts)
+}
+
+# The same instant written in another offset.
+export def with_offset(ts, offset) {
+    return native.with_offset(ts, offset)
+}
+
+# The same instant written at +00:00.
+export def to_utc(ts) {
+    return native.to_utc(ts)
+}
+
+# The timestamp `n` seconds after `ts` (in its own offset).
+export def add_seconds(ts, n) {
+    return native.add_seconds(ts, n)
+}
+
+# How many seconds `a` is after `b`, as instants (negative if before).
+export def diff_seconds(a, b) {
+    return native.diff_seconds(a, b)
+}
+
+# Seconds since 1970-01-01T00:00:00Z, as a whole number.
+export def to_epoch(ts) {
+    return native.to_epoch(ts)
+}
+
+# The timestamp of this many seconds since the epoch, written in `offset`.
+export def from_epoch(seconds, offset) {
+    return native.from_epoch(seconds, offset)
+}
+
+# A date or a timestamp as text by a format of %Y %m %d %e %H %M %S %b %B %a %A %z and %% (English names; %z is +HHMM).
+export def format(value, fmt) {
+    return native.format(value, fmt)
+}
+
+# The date that `text` spells by `fmt`: the codes %Y %m %d %e %b %B %a %A (time-of-day codes may appear and are read, not kept).
+export def parse_date(text, fmt) {
+    return native.parse_date(text, fmt)
+}
+
+# The timestamp that `text` spells by `fmt`, which must read the year, month, day, hour, minute, second and an offset (%z). %f reads a fraction of a second and drops it.
+export def parse_timestamp(text, fmt) {
+    return native.parse_timestamp(text, fmt)
+}
+
+# The same, for text that has no offset in it (a syslog line): `offset` is used, and `fmt` must not have %z.
+export def parse_timestamp_at(text, fmt, offset) {
+    return native.parse_timestamp_at(text, fmt, offset)
+}

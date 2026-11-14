@@ -59,3 +59,10 @@ export def lines(path) {
     }
     return out
 }
+
+# The SHA-256 of the file's bytes as 64 hexadecimal digits, read in pieces (the file is opened, read and closed in this one
+# call, and the read grant is judged for the path before it). A folder is `FileError: <path> is a directory, not a file`, a
+# missing file `FileNotFoundError: <path>`. Equal to `sha256sum FILE`.
+export def sha256_file(path) {
+    return native.sha256_file(path)
+}

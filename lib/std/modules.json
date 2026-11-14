@@ -1,6 +1,73 @@
 {
  "_about": "The standard modules (docs/spec/08-modules.md [mod.std]). One entry per `import \"std:NAME\"`: the file lib/std/NAME.nova, the capabilities a run must have granted for the import to succeed, the tier (provisional or stable, docs/spec/STABLE.md), the release that added it, and the exports it promises. All three engines read this file, so there is one list. A module may also list `native`: the names of the Python-implemented functions (NATIVE_FUNCTIONS in novalang.py) its file reaches through the predefined global `native`, which exists only in that module's scope.",
  "modules": {
+  "date": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.4.0",
+   "exports": [
+    "add_days",
+    "add_months",
+    "add_seconds",
+    "add_years",
+    "compare",
+    "date_of",
+    "day",
+    "day_of_year",
+    "days_in_month",
+    "diff_days",
+    "diff_seconds",
+    "format",
+    "from_epoch",
+    "is_date",
+    "is_leap",
+    "is_timestamp",
+    "last_day_of_month",
+    "make",
+    "make_timestamp",
+    "month",
+    "offset_of",
+    "parse_date",
+    "parse_timestamp",
+    "parse_timestamp_at",
+    "to_epoch",
+    "to_utc",
+    "weekday",
+    "with_offset",
+    "year"
+   ],
+   "native": [
+    "add_days",
+    "add_months",
+    "add_seconds",
+    "add_years",
+    "compare",
+    "date_of",
+    "day",
+    "day_of_year",
+    "days_in_month",
+    "diff_days",
+    "diff_seconds",
+    "format",
+    "from_epoch",
+    "is_date",
+    "is_leap",
+    "is_timestamp",
+    "last_day_of_month",
+    "make",
+    "make_timestamp",
+    "month",
+    "offset_of",
+    "parse_date",
+    "parse_timestamp",
+    "parse_timestamp_at",
+    "to_epoch",
+    "to_utc",
+    "weekday",
+    "with_offset",
+    "year"
+   ]
+  },
   "decimal": {
    "capabilities": [],
    "tier": "provisional",
@@ -62,12 +129,14 @@
     "is_dir",
     "is_link",
     "lines",
+    "sha256_file",
     "size"
    ],
    "native": [
     "is_dir",
     "is_link",
     "next_lines",
+    "sha256_file",
     "size"
    ]
   },
@@ -79,6 +148,17 @@
     "fixed",
     "grouped",
     "pad_zero"
+   ]
+  },
+  "hash": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.4.0",
+   "exports": [
+    "sha256"
+   ],
+   "native": [
+    "sha256"
    ]
   },
   "math": {
