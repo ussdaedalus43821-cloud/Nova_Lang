@@ -53,6 +53,12 @@ and the reason a pattern is refused names the construct and the way to write it.
 meaning, and `$` still matches before a final line feed. This is the owner-accepted cost of decision D3 of the M13 plan
 ("the loss of backreferences and look-around"), and the changelog entry for the release must say it.
 
+**A second narrowing, for packages.** In the release that adds declared capabilities (`docs/spec/18-packages.md`), `nova.json` is read
+strictly: an unknown key is an error unless it starts with `x-`, and a package that refers to a gated name (`read`, `time`, `regex` and
+so on) must list its capability, or it is refused at install and at import. Both were silently accepted before. They are the point of
+the change (a package can no longer use more than it says, and a manifest cannot grow a hook), the message in each case names the fix,
+and the changelog entry for the release must say so.
+
 Two consequences follow. **New library functions go in `std:` modules, never in the global namespace,** because a
 new global built-in is a major change; and **a program can rely on a stable name existing for the whole life of a major
 version.**

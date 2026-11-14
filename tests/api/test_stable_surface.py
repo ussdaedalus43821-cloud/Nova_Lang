@@ -59,6 +59,8 @@ def compare(recorded, live):
             continue
         if is_provisional(path):
             other.append(path)
+        elif path == ("manifest_keys",) and set(old[path]) <= set(new.get(path, [])):
+            other.append(path)            # a key the tool now reads is an addition; a key it stopped reading is not
         elif path not in new or path in old:
             breaking.append(path)         # removed, or present before and different now
         else:

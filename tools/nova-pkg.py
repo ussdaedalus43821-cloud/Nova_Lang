@@ -5,16 +5,27 @@ nova-pkg - NovaLang's package manager (just-in-time: resolve, lock, install).
     python3 tools/nova-pkg.py install            resolve, lock and install
     python3 tools/nova-pkg.py install --frozen   install exactly nova.lock (CI)
     python3 tools/nova-pkg.py verify             check .nova_modules is intact
+    python3 tools/nova-pkg.py init [NAME]        write a nova.json (version 2) here
+    python3 tools/nova-pkg.py capabilities [PACKAGE]
+                                                 what each installed package declares and uses
+    python3 tools/nova-pkg.py install --accept-capabilities LIST
+                                                 allow a locked package to move to a version that
+                                                 declares more capabilities (LIST: names, comma-separated)
 
 Run inside a project (any directory under the one holding nova.json), or
 pass --project DIR.
 
-nova.json
+nova.json (version 2; docs/spec/18-packages.md)
     {
-      "name": "my-project",
+      "name": "my-project",                       "owner/name" for anything to be published
       "version": "1.0.0",
+      "description", "license", "authors", "repository"      optional text
+      "nova": "^2.2.0",                           the NovaLang versions it works with
       "registry": "../registry",                  optional; else $NOVA_REGISTRY
       "main": "main.nova",                        for a package: its entry file
+      "files": ["main.nova", "src/**/*.nova"],    what publishing will pack
+      "capabilities": ["files.read"],             what the package's own code uses
+      "policy": {"capabilities": ["files.read"]}, project only: the most any dependency may need
       "dependencies": {
         "math-utils": "^1.0.0",                   a version range, from the registry
         "local-lib": {"path": "../local-lib"},    a directory
@@ -41,7 +52,14 @@ refuses to import a package while those two differ, so a project whose
 nova.json or nova.lock changed after the last install cannot run on stale
 packages. .nova_modules/.gitignore keeps the installed packages out of git.
 
-Exit status: 0 on success, 1 on any problem (the message says what to do).
+Capabilities: a package lists in "capabilities" the gated functions its code uses (read, write,
+time, regex, ... - docs/spec/16-sandbox.md). install parses every .nova file of a package and
+refuses one that refers to a gated name whose capability is not listed; the interpreter makes the
+same check when the file is imported, and refuses a package whose listed capabilities the run did
+not grant. Unknown keys of nova.json are an error unless they start with "x-"; there is no key for
+scripts or hooks, and nothing is ever run at install.
+
+Exit status: 0 on success, 1 on any problem (the message says what to do), 2 on usage.
 """
 
 import hashlib
@@ -53,12 +71,20 @@ import subprocess
 import sys
 import tempfile
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = "nova.json"
 LOCKFILE = "nova.lock"
 MODULES = ".nova_modules"
 INSTALLED = ".installed.lock"
-LOCK_VERSION = 1
+LOCK_VERSION = 2
+READABLE_LOCK_VERSIONS = (1, 2)
 NAME = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
+SCOPED_NAME = re.compile(r"([a-z0-9][a-z0-9._-]*)/([a-z0-9][a-z0-9._-]*)\Z")
+RESERVED_OWNERS = ("std", "nova")
+CAPABILITIES = ("files.read", "files.write", "env", "clock", "random", "stdin", "process", "regex", "python", "net")
+MANIFEST_KEYS = ("name", "version", "description", "license", "authors", "repository", "nova", "main", "files",
+                 "capabilities", "dependencies", "policy", "registry")
+FILE_PATTERN = re.compile(r"[A-Za-z0-9._*/-]+\Z")
 VERSION = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\Z")
 
 
@@ -123,22 +149,100 @@ def read_json(path, what):
         raise PkgError("{} {} is not valid JSON: {}".format(what, path, problem))
 
 
-def read_manifest(directory, what):
+def running_version():
+    """The version of the NovaLang beside this tool (novalang.py), as a tuple."""
+    try:
+        text = open(os.path.join(os.path.dirname(HERE), "novalang.py"), encoding="utf-8").read(8000)
+        found = re.search(r'^__version__ = "(\d+)\.(\d+)\.(\d+)"', text, re.M)
+    except OSError:
+        found = None
+    return tuple(int(part) for part in found.groups()) if found else None
+
+
+def string_list(value, where, field):
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise PkgError('{}: "{}" must be a list of text'.format(where, field))
+    return value
+
+
+def capability_list(value, where, field):
+    names = string_list(value, where, field)
+    for name in names:
+        if name not in CAPABILITIES:
+            raise PkgError('{}: "{}" lists "{}", which is not a capability (the capabilities are: {})'.format(
+                where, field, name, ", ".join(CAPABILITIES)))
+    if len(set(names)) != len(names):
+        raise PkgError('{}: "{}" lists a capability twice'.format(where, field))
+    return sorted(names)
+
+
+def check_relative(value, where, field, allow_glob):
+    bad = (not isinstance(value, str) or not value or value.startswith("/") or "\\" in value or "\0" in value
+           or ".." in value.split("/") or ":" in value or (not allow_glob and "*" in value))
+    if bad or (allow_glob and not FILE_PATTERN.match(value)):
+        raise PkgError('{}: "{}" has {!r}, which is not a path inside the package (a relative path with "/", no "..", '
+                       'no drive letter)'.format(where, field, value))
+
+
+def read_manifest(directory, what, root=False):
+    """The manifest of `directory`, checked against the rules of docs/spec/18-packages.md [pkg.manifest].
+    `root` is the project being installed (it alone may name a scoped name, a policy and a registry)."""
     path = os.path.join(directory, MANIFEST)
     if not os.path.isfile(path):
         raise PkgError("{} has no {}".format(what, MANIFEST))
     manifest = read_json(path, "the manifest")
     if not isinstance(manifest, dict):
         raise PkgError("{} must be a JSON object".format(path))
+    for key in manifest:
+        if key not in MANIFEST_KEYS and not key.startswith("x-"):
+            raise PkgError('{}: unknown key "{}" - the keys are {}, and any key may start with "x-" '
+                           "(there is no key for scripts or hooks: nothing is run at install)".format(
+                               path, key, ", ".join(MANIFEST_KEYS)))
     name = manifest.get("name")
-    if not isinstance(name, str) or not NAME.match(name):
-        raise PkgError('{}: "name" must be a lowercase package name such as "math-utils", '
+    scoped = SCOPED_NAME.match(name) if isinstance(name, str) else None
+    if not isinstance(name, str) or not (NAME.match(name) or scoped):
+        raise PkgError('{}: "name" must be a lowercase package name such as "math-utils" or "owner/name", '
                        "not {!r}".format(path, name))
+    if scoped:
+        if scoped.group(1) in RESERVED_OWNERS:
+            raise PkgError('{}: "{}" is a reserved owner'.format(path, scoped.group(1)))
+        if not root:
+            raise PkgError('{}: scoped names ("owner/name") can be installed only from a registry, which a later '
+                           "version of nova-pkg adds; this package cannot be a dependency yet".format(path))
     manifest["_version"] = parse_version(manifest.get("version"), path + ' "version"')
+    for field in ("description", "license", "repository", "registry"):
+        if field in manifest and not isinstance(manifest[field], str):
+            raise PkgError('{}: "{}" must be text'.format(path, field))
+    if "authors" in manifest:
+        string_list(manifest["authors"], path, "authors")
+    if "nova" in manifest:
+        if not isinstance(manifest["nova"], str):
+            raise PkgError('{}: "nova" must be a version range such as "^2.2.0"'.format(path))
+        manifest["_nova"] = Range(manifest["nova"], path + ' "nova"')
+    if "main" in manifest:
+        check_relative(manifest["main"], path, "main", False)
+        if not manifest["main"].endswith(".nova"):
+            raise PkgError('{}: "main" must name a .nova file, not {!r}'.format(path, manifest["main"]))
+    if "files" in manifest:
+        for entry in string_list(manifest["files"], path, "files"):
+            check_relative(entry, path, "files", True)
+            last = entry.split("/")[-1]
+            if not (last in ("LICENSE", "NOTICE") or last.endswith((".nova", ".json", ".md"))):
+                raise PkgError('{}: "files" has {!r}; a package holds only .nova, .json and .md files, '
+                               "LICENSE and NOTICE".format(path, entry))
+    manifest["capabilities"] = capability_list(manifest.get("capabilities", []), path, "capabilities")
+    if "policy" in manifest:
+        policy = manifest["policy"]
+        if not isinstance(policy, dict) or set(policy) - {"capabilities"}:
+            raise PkgError('{}: "policy" has one key, "capabilities" (the most a dependency may need)'.format(path))
+        policy["capabilities"] = capability_list(policy.get("capabilities", []), path, "policy.capabilities")
     dependencies = manifest.get("dependencies", {})
     if not isinstance(dependencies, dict):
         raise PkgError('{}: "dependencies" must be an object'.format(path))
     for dep_name, spec in dependencies.items():
+        if SCOPED_NAME.match(dep_name):
+            raise PkgError("{}: {!r} is a scoped name, which can be installed only from a registry that a later "
+                           "version of nova-pkg adds".format(path, dep_name))
         if not NAME.match(dep_name):
             raise PkgError("{}: {!r} is not a valid package name".format(path, dep_name))
         check_spec(spec, "{} dependency {!r}".format(path, dep_name))
@@ -393,6 +497,94 @@ def resolve(project_dir, manifest, sources):
 
 
 # ---------------------------------------------------------------------------
+# Capabilities: what a package declares, and what its code can refer to (decision D9)
+# ---------------------------------------------------------------------------
+
+_interpreter = None
+
+
+def interpreter():
+    """novalang.py, from the folder above tools/: the scan uses the interpreter's own lexer and parser, so it
+    cannot disagree with the interpreter about what a file refers to."""
+    global _interpreter
+    if _interpreter is None:
+        sys.path.insert(0, os.path.dirname(HERE))
+        try:
+            import novalang
+        except ImportError as problem:
+            raise PkgError("cannot load novalang.py from {} to read packages: {}".format(os.path.dirname(HERE), problem))
+        _interpreter = novalang
+    return _interpreter
+
+
+def scan_package(directory):
+    """{capability: [(file, name), ...]}: every gated name each .nova file of the package refers to, found in its
+    syntax tree (a field name, a dictionary key and a declared name are not references)."""
+    nl = interpreter()
+    used = {}
+    for relative in package_files(directory):
+        if not relative.endswith(".nova"):
+            continue
+        try:
+            with open(os.path.join(directory, relative), "r", encoding="utf-8") as handle:
+                source = handle.read()
+            tree = nl.Parser(nl.Lexer(source).tokenize()).parse()
+        except (OSError, UnicodeDecodeError) as problem:
+            raise PkgError("cannot read {}: {}".format(relative, problem))
+        except nl.NovaError as problem:
+            raise PkgError("{} cannot be parsed: {}".format(relative, problem.message))
+        except RecursionError:
+            raise PkgError("{} is nested too deeply to read".format(relative))
+        for name, capability in sorted(nl.gated_references(tree).items()):
+            used.setdefault(capability, []).append((relative, name))
+    return used
+
+
+def check_capabilities(label, directory, manifest, out):
+    """Refuse a package that uses a gated name its manifest does not declare; warn about one it declares and never uses."""
+    used = scan_package(directory)
+    declared = manifest["capabilities"]
+    for capability in sorted(used):
+        if capability not in declared:
+            relative, name = used[capability][0]
+            raise PkgError("{}/{} uses {}, which needs {}, which its {} does not declare - add it to \"capabilities\" "
+                           "or stop using it".format(label, relative, name, capability, MANIFEST))
+    for capability in declared:
+        if capability not in used:
+            out("nova-pkg: warning: {} declares {}, which none of its files uses - declare only what is needed".format(
+                label, capability))
+    return used
+
+
+def check_graph(manifest, resolved, old_lock, accepted, out):
+    """The checks a resolved graph must pass before anything is installed ([pkg.install])."""
+    running = running_version()
+    allowed = manifest.get("policy", {}).get("capabilities")
+    old_packages = (old_lock or {}).get("packages", {})
+    for name, candidate in sorted(resolved.items()):
+        label = "{} {}".format(name, show(candidate.version))
+        wanted = candidate.manifest.get("_nova")
+        if wanted is not None and running is not None and not wanted.allows(running):
+            raise PkgError('package {} works with NovaLang {}, but this is NovaLang {} - choose another version '
+                           "of it".format(label, wanted.text, show(running)))
+        check_capabilities(name, candidate.directory, candidate.manifest, out)
+        declared = candidate.manifest["capabilities"]
+        if allowed is not None:
+            extra = [c for c in declared if c not in allowed]
+            if extra:
+                raise PkgError('package {} needs {}, which "policy" in {} does not allow (it allows: {}) - '
+                               "choose another version or package, or widen the policy deliberately".format(
+                                   label, ", ".join(extra), MANIFEST, ", ".join(allowed) or "nothing"))
+        previous = old_packages.get(name, {})
+        if "capabilities" in previous:
+            gained = [c for c in declared if c not in previous["capabilities"] and c not in accepted]
+            if gained:
+                raise PkgError("package {} declares {}, which the locked {} {} did not - read what it does, then "
+                               "run install --accept-capabilities {}".format(
+                                   label, ", ".join(gained), name, previous.get("version"), ",".join(gained)))
+
+
+# ---------------------------------------------------------------------------
 # The lockfile
 # ---------------------------------------------------------------------------
 
@@ -403,6 +595,7 @@ def lock_text(manifest, resolved):
             "version": show(candidate.version),
             "source": candidate.source,
             "integrity": integrity(candidate.directory),
+            "capabilities": candidate.manifest["capabilities"],
             "dependencies": candidate.manifest["dependencies"],
         }
     lock = {
@@ -427,8 +620,8 @@ def read_lock(project_dir):
     except ValueError as problem:
         raise PkgError("{} is not valid JSON ({}) - delete it and run install".format(
             LOCKFILE, problem))
-    if not isinstance(lock, dict) or lock.get("lockfile_version") != LOCK_VERSION:
-        raise PkgError("{} is not a version-{} lockfile - delete it and run install".format(
+    if not isinstance(lock, dict) or lock.get("lockfile_version") not in READABLE_LOCK_VERSIONS:
+        raise PkgError("{} is not a version-1 or version-{} lockfile - delete it and run install".format(
             LOCKFILE, LOCK_VERSION))
     packages = lock.get("packages")
     if not isinstance(packages, dict):
@@ -442,6 +635,9 @@ def read_lock(project_dir):
         source = entry.get("source")
         if not isinstance(source, dict):
             raise PkgError('{}: "source" must be an object'.format(where))
+        if "capabilities" in entry and (not isinstance(entry["capabilities"], list) or any(
+                c not in CAPABILITIES for c in entry["capabilities"])):
+            raise PkgError('{}: "capabilities" must be a list of capability names'.format(where))
         # Validate the same source fields the installer will use.
         for fields in (("registry",), ("path",), ("git", "commit")):
             if fields[0] in source:
@@ -462,8 +658,8 @@ def lock_matches(lock, manifest):
 # Commands
 # ---------------------------------------------------------------------------
 
-def install(project_dir, frozen=False, out=print):
-    manifest = read_manifest(project_dir, "the project " + project_dir)
+def install(project_dir, frozen=False, out=print, accepted=()):
+    manifest = read_manifest(project_dir, "the project " + project_dir, root=True)
     lock, text = read_lock(project_dir)
     if frozen:
         if lock is None:
@@ -486,7 +682,16 @@ def install(project_dir, frozen=False, out=print):
                         'package "{}" {} no longer matches {} (integrity {} expected, found '
                         "{}) - its source changed after it was locked".format(
                             name, show(candidate.version), LOCKFILE, expected, actual))
+            check_graph(manifest, resolved, lock, accepted, out)
+            for name, candidate in resolved.items():
+                recorded = lock["packages"][name].get("capabilities")
+                if recorded is not None and recorded != candidate.manifest["capabilities"]:
+                    raise PkgError('package "{}" declares {} now, and {} recorded {} - run install without --frozen '
+                                   "to review the change".format(name, candidate.manifest["capabilities"] or "nothing",
+                                                                 LOCKFILE, recorded or "nothing"))
             new_text = text
+            if lock.get("lockfile_version") != LOCK_VERSION and not frozen:
+                new_text = lock_text(manifest, resolved)        # a version-1 lock is read, and written as version 2
             out("installing {} package(s) from {}".format(len(resolved), LOCKFILE))
         else:
             if lock is None:
@@ -495,6 +700,7 @@ def install(project_dir, frozen=False, out=print):
                 out("{} changed since {} was written - resolving again".format(
                     MANIFEST, LOCKFILE))
             resolved = resolve(project_dir, manifest, sources)
+            check_graph(manifest, resolved, lock, accepted, out)
             new_text = lock_text(manifest, resolved)
 
         place(project_dir, resolved, new_text)
@@ -526,12 +732,12 @@ def place(project_dir, resolved, text):
 
 def verify(project_dir, out=print):
     """Problems with the installed packages, as a list of messages."""
-    read_manifest(project_dir, "the project " + project_dir)
+    read_manifest(project_dir, "the project " + project_dir, root=True)
     lock, text = read_lock(project_dir)
     if lock is None:
         return ["there is no {} - run install".format(LOCKFILE)]
     problems = []
-    manifest = read_manifest(project_dir, "the project")
+    manifest = read_manifest(project_dir, "the project", root=True)
     if not lock_matches(lock, manifest):
         problems.append("{} is out of date with {} - run install".format(LOCKFILE, MANIFEST))
     modules = os.path.join(project_dir, MODULES)
@@ -557,7 +763,61 @@ def verify(project_dir, out=print):
     return problems
 
 
-USAGE = "usage: nova-pkg.py [--project DIR] (install [--frozen] | verify)"
+def init(directory, name, out=print):
+    """Write a version-2 nova.json for a new project or package here."""
+    path = os.path.join(directory, MANIFEST)
+    if os.path.exists(path):
+        raise PkgError("{} already exists - edit it instead".format(path))
+    name = name or re.sub(r"[^a-z0-9._-]+", "-", os.path.basename(os.path.abspath(directory)).lower()).strip("-._")
+    if not (NAME.match(name) or SCOPED_NAME.match(name)):
+        raise PkgError('"{}" is not a package name - write lowercase letters, digits, ".", "_" and "-", as '
+                       '"math-utils" or "owner/name"'.format(name))
+    running = running_version()
+    manifest = {"name": name, "version": "0.1.0"}
+    if running:
+        manifest["nova"] = "^{}.{}.0".format(running[0], running[1])
+    manifest.update({"main": "main.nova", "capabilities": [], "dependencies": {}})
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(manifest, indent=2) + "\n")
+    out("wrote {} for {}".format(path, name))
+
+
+def capabilities(project_dir, only, out=print):
+    """What each installed package declares and what its files can refer to ([pkg.capabilities])."""
+    manifest = read_manifest(project_dir, "the project " + project_dir, root=True)
+    lock, _ = read_lock(project_dir)
+    if lock is None:
+        raise PkgError("there is no {} - run install".format(LOCKFILE))
+    names = sorted(lock.get("packages", {}))
+    if only is not None:
+        if only not in names:
+            raise PkgError('"{}" is not an installed package (installed: {})'.format(only, ", ".join(names) or "none"))
+        names = [only]
+    needed = set()
+    for name in names:
+        directory = os.path.join(project_dir, MODULES, name)
+        if not os.path.isdir(directory):
+            raise PkgError('package "{}" is not installed - run install'.format(name))
+        package = read_manifest(directory, 'package "{}"'.format(name))
+        used = scan_package(directory)
+        needed.update(package["capabilities"])
+        out("{} {}".format(name, lock["packages"][name].get("version")))
+        out("  declares: {}".format(", ".join(package["capabilities"]) or "nothing"))
+        if used:
+            for capability in sorted(used):
+                files = sorted({"{} in {}".format(n, f) for f, n in used[capability]})
+                out("  uses:     {} ({})".format(capability, "; ".join(files)))
+        else:
+            out("  uses:     nothing")
+        for capability in sorted(set(used) - set(package["capabilities"])):
+            out("  NOT DECLARED: {}".format(capability))
+    policy = manifest.get("policy", {}).get("capabilities")
+    out("the packages need: {}".format(", ".join(sorted(needed)) or "nothing"))
+    out("policy: {}".format("no limit" if policy is None else ", ".join(policy) or "nothing is allowed"))
+
+
+USAGE = ("usage: nova-pkg.py [--project DIR] (install [--frozen] [--accept-capabilities LIST] | verify | init [NAME] "
+         "| capabilities [PACKAGE])")
 
 
 def main(argv, out=print):
@@ -565,13 +825,34 @@ def main(argv, out=print):
     project = None
     if args[:1] == ["--project"] and len(args) >= 2:
         project, args = args[1], args[2:]
-    if args not in (["install"], ["install", "--frozen"], ["verify"]):
+    command, rest = (args[0], args[1:]) if args else (None, [])
+    frozen, accepted = False, []
+    if command == "install":
+        while rest:
+            if rest[0] == "--frozen":
+                frozen, rest = True, rest[1:]
+            elif rest[0] == "--accept-capabilities" and len(rest) >= 2:
+                accepted, rest = [c for c in rest[1].split(",") if c], rest[2:]
+            else:
+                break
+    if command not in ("install", "verify", "init", "capabilities") or (
+            command in ("install", "verify") and rest) or (command in ("init", "capabilities") and len(rest) > 1):
         print(USAGE, file=sys.stderr)
         return 2
     try:
+        if command == "init":
+            init(os.path.abspath(project or os.getcwd()), rest[0] if rest else None, out=out)
+            return 0
         project_dir = find_project(project or os.getcwd())
-        if args[0] == "install":
-            install(project_dir, frozen="--frozen" in args, out=out)
+        if command == "install":
+            for name in accepted:
+                if name not in CAPABILITIES:
+                    raise PkgError('--accept-capabilities names "{}", which is not a capability (the capabilities '
+                                   "are: {})".format(name, ", ".join(CAPABILITIES)))
+            install(project_dir, frozen=frozen, out=out, accepted=accepted)
+            return 0
+        if command == "capabilities":
+            capabilities(project_dir, rest[0] if rest else None, out=out)
             return 0
         problems = verify(project_dir)
         for problem in problems:

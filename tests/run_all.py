@@ -876,6 +876,13 @@ def station_std(line):
     line.check(done.returncode == 0, "standard module tests pass", done.stdout + done.stderr)
 
 
+def station_pkg_capabilities(line):
+    print("8b. packages, part 1: manifest 2, the declared capabilities at install and import on every engine, policy, escalation")
+    done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(HERE, "pkg"), "-p", "test_*.py"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
+    line.check(done.returncode == 0, "package capability tests pass", done.stdout + done.stderr)
+
+
 def station_api(line):
     print("0i. the stable surface: the live public surface against tests/api/stable-surface.json")
     done = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(HERE, "api"), "-p", "test_*.py"],
@@ -902,6 +909,7 @@ STATIONS = [
     ("python", station_python),
     ("types", station_types),
     ("packages", station_packages),
+    ("pkg-capabilities", station_pkg_capabilities),
     ("editor", station_editor),
     ("compiler", station_compiler),
     ("differential", station_differential),

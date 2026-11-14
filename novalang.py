@@ -4853,6 +4853,7 @@ class Interpreter:
         self.file_stack = []
         self.import_stack = []          # resolved paths currently loading
         self.modules = {}               # resolved path -> its exports dict
+        self.packages_granted = set()   # installed packages whose declared capabilities were found granted
         self.type_cache = None          # the type gate's results (a GateCache)
         self.current_exports = {}       # name -> value, for the module now loading
 
@@ -5169,6 +5170,29 @@ class Interpreter:
             position, label="ImportError",
         )
 
+    def check_package_file(self, installed, path, source, position):
+        """The two checks of an installed package's file ([pkg.capabilities]): the capabilities its nova.json
+        declares were granted to this run, and the file refers to no gated name that is not declared."""
+        directory, name = installed
+        declared = package_declared(directory, name, position)
+        if directory not in self.packages_granted:
+            for capability in declared:
+                if capability == "net" or not self.caps.has(capability):
+                    raise NovaError('package "{}" needs the \'{}\' capability, which this run did not grant'.format(
+                        name, capability), position, label="ImportError")
+            self.packages_granted.add(directory)
+        try:
+            tree = Parser(Lexer(source).tokenize()).parse()
+        except NovaError as error:
+            raise NovaError('while loading module "{}":\n{}'.format(module_label(path), indent_lines(error.render(source))),
+                            position, label="ImportError") from None
+        except RecursionError:
+            raise NovaError('package "{}": {} is nested too deeply'.format(name, module_label(path)), position, label="ImportError")
+        for used, capability in sorted(gated_references(tree).items()):
+            if capability not in declared:
+                raise NovaError('package "{}": {} uses {}, which needs the {} capability, and its nova.json does not declare it'.format(
+                    name, os.path.relpath(path, directory).replace(os.sep, "/"), used, capability), position, label="ImportError")
+
     def load_module(self, resolved_path, raw_path, position):
         """Run a file once and cache its exports, keyed by resolved path.
 
@@ -5197,6 +5221,10 @@ class Interpreter:
                 ),
                 position, label="ImportError",
             )
+
+        installed = package_of(resolved_path)
+        if installed is not None:
+            self.check_package_file(installed, resolved_path, source, position)
 
         # A module gets its own top-level scope, its own call stack and its
         # own set of exports - it is a fresh program, not a shared block.
@@ -5619,6 +5647,68 @@ PACKAGE_DIR = ".nova_modules"
 
 def is_package_import(raw_path):
     return bool(PACKAGE_NAME.match(raw_path)) and not raw_path.endswith(".nova")
+
+
+# ---------------------------------------------------------------------------
+# Declared capabilities of an installed package (docs/spec/18-packages.md, decision D9)
+#
+# A package says which capabilities its code uses in the "capabilities" list of its nova.json. The
+# check is static: the syntax tree of each of its files is searched for the gated names ([sbx.capabilities])
+# it can refer to, and a file that refers to a name whose capability is not declared is refused when it
+# is imported; a package whose declared capabilities this run did not grant is refused at the import.
+# NovaLang has no dynamic code and no reflection, so a package cannot reach a gated name it does not
+# write. This is a consent screen and a review aid: it does not stop a program from handing a gated
+# function to a package as an argument, and it is not isolation (the grants of the run remain the only
+# enforcement at run time).
+# ---------------------------------------------------------------------------
+
+PACKAGE_CAPABILITIES = ("files.read", "files.write", "env", "clock", "random", "stdin", "process", "regex", "python", "net")
+
+
+def gated_references(tree):
+    """{name: capability} for every gated name the syntax tree refers to: a variable the program reads or calls.
+    Field names (`x.read`), dictionary keys and names a function declares are not references."""
+    found = {}
+    pending = [tree]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, VarNode):
+            capability = "python" if node.name == "python" else CAPABILITY_OF.get(node.name)
+            if capability is not None:
+                found.setdefault(node.name, capability)
+        elif isinstance(node, Node):
+            pending.extend(vars(node).values())
+        elif isinstance(node, (list, tuple)):
+            pending.extend(node)
+    return found
+
+
+def package_of(path):
+    """(directory, name) of the installed package a file lies in, or None for any other file."""
+    marker = os.sep + PACKAGE_DIR + os.sep
+    if marker not in path:
+        return None
+    before, after = path.rsplit(marker, 1)
+    name = after.split(os.sep)[0]
+    return before + marker + name, name
+
+
+def package_declared(directory, name, position):
+    """The capabilities a package's nova.json declares: a list of names from the closed list, or an ImportError."""
+    try:
+        with open(os.path.join(directory, "nova.json"), "r", encoding="utf-8") as handle:
+            manifest = json_module.load(handle)
+    except (OSError, ValueError) as problem:
+        raise NovaError('package "{}" has an unreadable nova.json: {}'.format(name, problem), position, label="ImportError")
+    declared = manifest.get("capabilities", []) if isinstance(manifest, dict) else []
+    if not isinstance(declared, list) or any(not isinstance(item, str) for item in declared):
+        raise NovaError('package "{}": "capabilities" in its nova.json must be a list of names'.format(name),
+                        position, label="ImportError")
+    for item in declared:
+        if item not in PACKAGE_CAPABILITIES:
+            raise NovaError('package "{}": nova.json declares "{}", which is not a capability (the capabilities are: {})'.format(
+                name, item, ", ".join(PACKAGE_CAPABILITIES)), position, label="ImportError")
+    return declared
 
 
 # The standard modules (docs/spec/08-modules.md [mod.std]): `import "std:text"` loads
