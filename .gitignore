@@ -4,7 +4,8 @@ editors/vscode/node_modules/
 *.vsix
 coverage-output/
 
-# Private planning documents: kept on disk, never committed
-docs/vision/
-docs/governance/
+# Private planning documents: never committed. They live in iCloud and are symlinked here, and a pattern with a
+# trailing slash does not match a symlink, so these have none.
+docs/vision
+docs/governance
 docs/AI_WORKFLOW.md
