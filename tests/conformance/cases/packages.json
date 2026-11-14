@@ -1,0 +1,466 @@
+{
+ "area": "packages",
+ "version": 1,
+ "cases": [
+  {
+   "name": "pkg-undeclared-gated-name-is-refused-at-import",
+   "spec": [
+    "pkg.capabilities",
+    "sbx.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"\nprint(lib.load(\"nova.json\"))",
+   "output": [],
+   "error": "ImportError: package \"lib\": main.nova uses read, which needs the files.read capability, and its nova.json does not declare it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-declared-gated-name-runs",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"\nprint(len(lib.load(\"nova.json\")) > 0)",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"files.read\"]}",
+    ".nova_modules/lib/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-every-file-of-a-package-is-checked-when-it-is-imported",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \".nova_modules/lib/src/inner.nova\" as inner\nprint(inner.go())",
+   "output": [],
+   "error": "ImportError: package \"lib\": src/inner.nova uses time, which needs the clock capability, and its nova.json does not declare it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n",
+    ".nova_modules/lib/src/inner.nova": "export def go() {\n  return time()\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-package-file-imported-by-path-is-checked-like-one-imported-by-name",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \".nova_modules/lib/main.nova\" as direct\nprint(direct.twice(4))",
+   "output": [
+    "8"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def twice(x) {\n  return x * 2\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-name-inside-an-f-string-is-a-reference",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"\nprint(lib.go(\"x\"))",
+   "output": [],
+   "error": "ImportError: package \"lib\": main.nova uses read, which needs the files.read capability, and its nova.json does not declare it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def go(path) {\n  return f\"{read(path)}\"\n}\n"
+   }
+  },
+  {
+   "name": "pkg-field-names-keys-and-parameters-are-not-references",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"\nprint(lib.go({read: 1, time: 2}), lib.named(3, 4))",
+   "output": [
+    "3 7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def go(table) {\n  return table.read + table[\"time\"]\n}\nexport def named(read_count, env_count) {\n  return read_count + env_count\n}\n"
+   }
+  },
+  {
+   "name": "pkg-the-first-undeclared-name-in-alphabetical-order-is-named",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"",
+   "output": [],
+   "error": "ImportError: package \"lib\": main.nova uses env, which needs the env capability, and its nova.json does not declare it",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def go() {\n  return [time(), env(\"HOME\")]\n}\n"
+   }
+  },
+  {
+   "name": "pkg-declared-capabilities-must-be-granted-at-the-import",
+   "spec": [
+    "pkg.capabilities",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib\"\nprint(lib.load(\"nova.json\"))",
+   "output": [],
+   "error": "ImportError: package \"lib\" needs the 'files.read' capability, which this run did not grant",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "."
+    ]
+   },
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"files.read\"]}",
+    ".nova_modules/lib/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-declared-and-granted-runs-in-the-restricted-profile",
+   "spec": [
+    "pkg.capabilities",
+    "sbx.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib\"\nprint(len(lib.load(\"nova.json\")) > 0)",
+   "output": [
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "."
+    ],
+    "read": [
+     "."
+    ]
+   },
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"files.read\"]}",
+    ".nova_modules/lib/main.nova": "export def load(path) {\n  return read(path)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-package-that-declares-nothing-needs-no-grant",
+   "spec": [
+    "pkg.capabilities",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib\"\nprint(lib.twice(21))",
+   "output": [
+    "42"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "."
+    ]
+   },
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def twice(x) {\n  return x * 2\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-capability-that-is-not-on-the-list-is-refused",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"",
+   "output": [],
+   "error": "ImportError: package \"lib\": nova.json declares \"everything\", which is not a capability (the capabilities are: files.read, files.write, env, clock, random, stdin, process, regex, python, net)",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"everything\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"everything\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"everything\"]}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-net-is-not-granted-in-this-version",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"",
+   "output": [],
+   "error": "ImportError: package \"lib\" needs the 'net' capability, which this run did not grant",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"net\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"net\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"net\"]}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-the-grant-is-checked-before-any-code-of-the-package-runs",
+   "spec": [
+    "pkg.capabilities"
+   ],
+   "profile": "sandbox",
+   "source": "import \"lib\"",
+   "output": [],
+   "error": "ImportError: package \"lib\" needs the 'files.read' capability, which this run did not grant",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "import_from": [
+     "."
+    ],
+    "clock": true
+   },
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [\n        \"files.read\"\n      ],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"capabilities\": [\"files.read\"]}",
+    ".nova_modules/lib/main.nova": "print(\"ran\")\nexport let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-a-bare-name-binds-the-name-with-dashes-and-dots-made-underscores",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "import \"lib-two.x\"\nprint(lib_two_x.twice(4))",
+   "output": [
+    "8"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib-two.x\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib-two.x\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib-two.x\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib-two.x\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib-two.x\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib-two.x/nova.json": "{\"name\": \"lib-two.x\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib-two.x/main.nova": "export def twice(x) {\n  return x * 2\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-package-is-found-walking-up-from-the-importing-file",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "import \"sub/deep/b.nova\" as b\nprint(b.go())",
+   "output": [
+    "42"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export def twice(x) {\n  return x * 2\n}\n",
+    "sub/deep/b.nova": "import \"lib\"\nexport def go() {\n  return lib.twice(21)\n}\n"
+   }
+  },
+  {
+   "name": "pkg-a-package-that-is-not-installed-names-where-it-looked",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"missing\"\n} catch e {\n  print(e[0:55])\n}",
+   "output": [
+    "ImportError: cannot find package \"missing\" - looked in:"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-packages-are-not-used-when-the-install-is-stale",
+   "spec": [
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"lib\"\n} catch e {\n  print(split(e, \"cannot be used: \")[1])\n}",
+   "output": [
+    "they were not installed from the current nova.lock - run `python3 tools/nova-pkg.py install`"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\"}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-the-entry-file-is-the-main-of-the-manifest",
+   "spec": [
+    "pkg.manifest",
+    "pkg.layout"
+   ],
+   "profile": "modules",
+   "source": "import \"lib\"\nprint(lib.where())",
+   "output": [
+    "entry"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"main\": \"src/entry.nova\"}",
+    ".nova_modules/lib/main.nova": "export def where() {\n  return \"wrong\"\n}\n",
+    ".nova_modules/lib/src/entry.nova": "export def where() {\n  return \"entry\"\n}\n"
+   }
+  },
+  {
+   "name": "pkg-main-must-name-a-nova-file-and-the-file-must-exist",
+   "spec": [
+    "pkg.manifest"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"lib\"\n} catch e {\n  print(e)\n}",
+   "output": [
+    "ImportError: package \"lib\": \"main\" in its nova.json must name a .nova file"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"main\": \"main.txt\"}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  },
+  {
+   "name": "pkg-a-missing-entry-file-is-an-import-error",
+   "spec": [
+    "pkg.manifest"
+   ],
+   "profile": "modules",
+   "source": "try {\n  import \"lib\"\n} catch e {\n  print(e)\n}",
+   "output": [
+    "ImportError: package \"lib\" has no entry file gone.nova"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "nova.json": "{\"name\": \"app\", \"version\": \"1.0.0\", \"dependencies\": {\"lib\": \"*\"}}",
+    "nova.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/.installed.lock": "{\n  \"lockfile_version\": 2,\n  \"packages\": {\n    \"lib\": {\n      \"capabilities\": [],\n      \"dependencies\": {},\n      \"integrity\": \"sha256-x\",\n      \"source\": {\n        \"path\": \"../lib\"\n      },\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"requires\": {\n    \"lib\": \"*\"\n  }\n}\n",
+    ".nova_modules/lib/nova.json": "{\"name\": \"lib\", \"version\": \"1.0.0\", \"main\": \"gone.nova\"}",
+    ".nova_modules/lib/main.nova": "export let x = 1\n"
+   }
+  }
+ ]
+}

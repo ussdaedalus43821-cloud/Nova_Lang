@@ -6,8 +6,8 @@ or something that stands in for one, so every case in this chapter is in the
 `modules` profile (`README.md`).
 
 Packages (`import "name"` with a bare name and no `.nova`, found in
-`.nova_modules` through `nova.json` and `nova.lock`) are the business of the
-package tool and are not specified here yet.
+`.nova_modules` through `nova.json` and `nova.lock`) are specified in
+`18-packages.md`.
 
 ## [mod.import] `import`
 

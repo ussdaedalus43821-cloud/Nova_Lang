@@ -3494,6 +3494,125 @@ def module_label(path, pos) {
     return basename(path)
 }
 
+# ---------------------------------------------------------------------------
+# The declared capabilities of an installed package (docs/spec/18-packages.md, decision D9): the same
+# two checks as the host's check_package_file.
+# ---------------------------------------------------------------------------
+
+let PACKAGE_CAPABILITIES = ["files.read", "files.write", "env", "clock", "random", "stdin", "process", "regex", "python", "net"]
+let PACKAGES_GRANTED = {}
+
+# The gated names a syntax tree refers to, as {name: capability}: a variable the program reads or calls.
+# Field names, dictionary keys and the names a function declares are not references.
+def gated_references(tree) {
+    let found = {}
+    let pending = [tree]
+    while len(pending) > 0 {
+        let node = pop(pending)
+        let kind = type(node)
+        if kind == "dict" {
+            if "kind" in node and node["kind"] == "Var" {
+                let name = node["name"]
+                if name == "python" {
+                    found[name] = "python"
+                } else if name in CAPABILITY_OF {
+                    found[name] = CAPABILITY_OF[name]
+                }
+            }
+            for key in keys(node) {
+                let inner = type(node[key])
+                if inner == "dict" or inner == "list" {
+                    append(pending, node[key])
+                }
+            }
+        } else if kind == "list" {
+            for item in node {
+                let inner = type(item)
+                if inner == "dict" or inner == "list" {
+                    append(pending, item)
+                }
+            }
+        }
+    }
+    return found
+}
+
+# [directory, name] of the installed package a file lies in, or [] for any other file.
+def package_of(path) {
+    let sep = "/"
+    if platform() == "Windows" {
+        sep = "\\"
+    }
+    let marker = sep + ".nova_modules" + sep
+    let at = -1
+    let i = 0
+    while i + len(marker) <= len(path) {
+        if path[i:i + len(marker)] == marker {
+            at = i
+        }
+        i = i + 1
+    }
+    if at < 0 {
+        return []
+    }
+    let rest = path[at + len(marker):]
+    let name = split(rest, sep)[0]
+    return [path[:at + len(marker)] + name, name]
+}
+
+def package_declared(directory, name, pos) {
+    let manifest = {}
+    try {
+        manifest = json.loads(read(directory + "/nova.json"))
+    } catch problem {
+        import_error("package \"" + name + "\" has an unreadable nova.json: " + str(problem), pos)
+    }
+    let declared = []
+    if type(manifest) == "dict" and "capabilities" in manifest {
+        declared = manifest["capabilities"]
+    }
+    if type(declared) != "list" {
+        import_error("package \"" + name + "\": \"capabilities\" in its nova.json must be a list of names", pos)
+    }
+    for item in declared {
+        if type(item) != "string" {
+            import_error("package \"" + name + "\": \"capabilities\" in its nova.json must be a list of names", pos)
+        }
+        if not (item in PACKAGE_CAPABILITIES) {
+            import_error("package \"" + name + "\": nova.json declares \"" + item + "\", which is not a capability (the capabilities are: " + join(PACKAGE_CAPABILITIES, ", ") + ")", pos)
+        }
+    }
+    return declared
+}
+
+# Run before an installed package's file is: its declared capabilities were granted, and it refers to no
+# gated name that is not declared.
+def check_package_file(installed, path, source, pos) {
+    let directory = installed[0]
+    let name = installed[1]
+    let declared = package_declared(directory, name, pos)
+    if not (directory in PACKAGES_GRANTED) {
+        for capability in declared {
+            if capability == "net" or not cap_has(capability) {
+                import_error("package \"" + name + "\" needs the '" + capability + "' capability, which this run did not grant", pos)
+            }
+        }
+        PACKAGES_GRANTED[directory] = true
+    }
+    let used = gated_references(parse_program(source))
+    let names = sorted(keys(used))
+    for used_name in names {
+        if not (used[used_name] in declared) {
+            let sep = "/"
+            if platform() == "Windows" {
+                sep = "\\"
+            }
+            let shown = replace_all(path[len(directory) + 1:], sep, "/")
+            import_error("package \"" + name + "\": " + shown + " uses " + used_name + ", which needs the " + used[used_name] + " capability, and its nova.json does not declare it", pos)
+        }
+    }
+}
+
 def run_module(resolved_path, raw_path, pos) {
     if resolved_path in MODULE_CACHE {
         return MODULE_CACHE[resolved_path]
@@ -3517,6 +3636,11 @@ def run_module(resolved_path, raw_path, pos) {
     }
 
     let source = read(resolved_path)
+
+    let installed = package_of(resolved_path)
+    if len(installed) > 0 {
+        check_package_file(installed, resolved_path, source, pos)
+    }
 
     append(MODULE_LOADING, resolved_path)
     append(FILE_STACK, dirname(resolved_path))

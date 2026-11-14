@@ -1,10 +1,10 @@
 # NovaLang language specification
 
-Status: **draft.** Written for milestone M9 from 2026-11-08 and extended since to seventeen chapters. It covers
+Status: **draft.** Written for milestone M9 from 2026-11-08 and extended since to eighteen chapters. It covers
 lexical rules, values, expressions, scoping, statements, the error catalogue, the security properties of the
 language, the rules a portable host must follow, modules, the core and host libraries, embedding and the Python
-bridge, the policy dialect (chapters 12 to 15), the `restricted` profile (chapter 16) and the bytecode artifact (chapter 17). Still to come: type
-annotations and the type gate, packages (`import "name"`, found through `nova.json` and `nova.lock`), and the
+bridge, the policy dialect (chapters 12 to 15), the `restricted` profile (chapter 16), the bytecode artifact (chapter 17) and packages (chapter 18). Still to come: type
+annotations and the type gate, and the
 tools (formatter, linter, language server). Where an implementation does not follow the text, the disagreement is in
 [`DIVERGENCES.md`](DIVERGENCES.md).
 
@@ -85,6 +85,7 @@ the corpus carries one. The profiles so far:
 | [`15-policy-reactor.md`](15-policy-reactor.md) | `pol.*`: the reactor game's host: the inputs a policy is given, the eight host functions and their effects, the scram latch between ticks, and the 900-step trace |
 | [`16-sandbox.md`](16-sandbox.md) | `sbx.*`: the sandbox profile: capabilities, path rules, limits, error shapes and exactly what is claimed (owner- and architect-reviewed, pending independent third-party audit) |
 | [`17-bytecode.md`](17-bytecode.md) | `bc.*`: the artifact (`.novac`): header, constants, code objects, the instruction table, what the loader verifies, the named rejections, limits, determinism, the profiles and the type gate |
+| [`18-packages.md`](18-packages.md) | `pkg.*`: `nova.json` version 2, version ranges, the folders, `nova.lock` version 2, the declared capabilities of a package and the static check at import and install, what `install` checks |
 | [`DIVERGENCES.md`](DIVERGENCES.md) | Where an implementation does not yet follow this text |
 
 ## The conformance corpus

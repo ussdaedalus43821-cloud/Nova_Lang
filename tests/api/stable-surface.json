@@ -343,9 +343,14 @@
   "time"
  ],
  "manifest_keys": [
+  "authors",
+  "capabilities",
   "dependencies",
+  "files",
   "main",
   "name",
+  "nova",
+  "policy",
   "registry",
   "version"
  ],
