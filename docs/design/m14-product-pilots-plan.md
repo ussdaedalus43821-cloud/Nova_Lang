@@ -4,8 +4,8 @@
 | --- | --- |
 | Status | **Draft for the project owner, revised 2026-11-14. Nothing here is decided and nothing is built.** Written after M13 closed (v2.3.0) |
 | Scope | The charters of two products that are built to use what M11 (the security model) and M13 (the libraries) made possible: **NovaLedger**, a financial tool for prosumers and small businesses, and **NovaAudit**, an enterprise log analyzer built on `std:regex`; what NovaLang must still provide for them; how their cores are built; the slices that get each to a first pilot. **Not** the other M14 products, **not** a go-to-market plan |
-| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md). The owner's product and go-to-market planning documents are private and are not in this repository; this plan does not link to them |
-| Names | **NovaLedger** is the financial product (renamed from an earlier working name), **NovaAudit** the log analyzer. A module in the owner's private finance design already uses the name NovaLedger: see decision D-P4 |
+| Reads with | [`ROADMAP.md`](../ROADMAP.md) M14 (the charter rule), [`m13-libraries-and-registry-plan.md`](m13-libraries-and-registry-plan.md), [`m11-threat-model.md`](m11-threat-model.md). See the private Nova_Vision repository for the Master Plan. |
+| Names | **NovaLedger** is the financial product (renamed from an earlier working name), **NovaAudit** the log analyzer. The module of the finance design that used the same name is now called NovaBalances |
 
 ## 1. What changed from the first draft
 
@@ -210,7 +210,7 @@ Both follow the form of the M11 and M13 models: assets, actors, then **what is n
 | D-P1 | **Product owners and repositories** | One repository per product (`NovaLedger`, `NovaAudit`), each with its own tests and CI on Windows 3.7 and 3.12 and Linux from the first commit | The roadmap requires a named owner; M13 showed that the rows nobody watches are where failures appear |
 | D-P2 | **Which first** | **NovaAudit**, then NovaLedger | Section 9: the closest precedent, the heaviest use of M13, no regulatory exposure, the smaller date need. The owner may well have a customer conversation that changes this |
 | D-P3 | **The audiences** (section 5) | Treat both as hypotheses, and run P0 before P2 and P3 | The plan does not know the customer. Building a product for an audience that was assumed is the mistake the consumer draft was in danger of making |
-| D-P4 | **The name collision inside the owner's private finance design**: a module there is already called NovaLedger | Rename the module (for example to "NovaBooks"), keep the product name | Two things with one name is the confusion this rename was meant to remove; I have not renamed the module because only the owner chooses names |
+| D-P4 | **The name collision between the product and a module of the finance design** | **Decided by the owner, 2026-11-14:** the module is renamed NovaBalances; the product stays NovaLedger | Two things with one name is the confusion the rename was meant to remove |
 | D-P5 | **Order of work: libraries first or product first** | **Libraries first (P1)**, then the products | M13's own lesson: Nova_Data's hand-written helpers were the cost of building the product before the library |
 | D-P6 | **Missing values** (L4) | A `std:` function over dictionaries (additive, a minor change), not a new reserved global | A new global built-in is a **major** change by `STABLE.md` |
 | D-P7 | **How much speed NovaAudit promises, and whether to build a faster matcher** | State the measured ceiling (tens of megabytes a run, one file per process) in the first pilot, and **decide on a faster matcher after P0 says what volume customers have** | A faster matcher is a large security-sensitive piece of code (the current one is unreviewed); building it on a guess about volume would be the wrong order |
