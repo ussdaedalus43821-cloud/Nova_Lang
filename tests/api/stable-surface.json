@@ -378,6 +378,26 @@
   "--seed"
  ],
  "std_modules": {
+  "csv": {
+   "capabilities": [],
+   "exports": [
+    "format",
+    "format_row",
+    "parse",
+    "parse_lines",
+    "parse_with",
+    "records"
+   ],
+   "native": [
+    "format",
+    "format_row",
+    "parse",
+    "parse_lines",
+    "parse_with",
+    "records"
+   ],
+   "tier": "provisional"
+  },
   "date": {
    "capabilities": [],
    "exports": [
@@ -490,6 +510,18 @@
     "to_string",
     "total",
     "try_parse"
+   ],
+   "tier": "provisional"
+  },
+  "dict": {
+   "capabilities": [],
+   "exports": [
+    "get",
+    "get_path"
+   ],
+   "native": [
+    "get",
+    "get_path"
    ],
    "tier": "provisional"
   },

@@ -1,0 +1,19 @@
+# std:dict - a missing value (docs/spec/09-library.md [lib.std-dict]; decision D-P6).
+#
+#   import "std:dict" as dict
+#   dict.get(line, "status", "-")                        # line["status"], or "-" when line has no "status"
+#   dict.get_path(event, ["user", "geo", "country"], "") # the nested field, or "" when any step is missing
+#
+# NovaLang has no `nothing` literal and no global get(): reading a key that is absent is an error, and these functions are
+# how a program says what it wants instead. The fallback is returned only when the key is ABSENT; a key that is present
+# gives its value whatever it is (0, "", false, an empty list). Every function is a native of the module.
+
+# d[key] if `d` has the key, else `fallback`.
+export def get(d, key, fallback) {
+    return native.get(d, key, fallback)
+}
+
+# The value reached from `d` by the keys of `path` in turn, or `fallback` when a key is absent or a step is not a dictionary.
+export def get_path(d, path, fallback) {
+    return native.get_path(d, path, fallback)
+}

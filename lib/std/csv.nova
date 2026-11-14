@@ -1,0 +1,46 @@
+# std:csv - RFC 4180 records (docs/spec/09-library.md [lib.std-csv]).
+#
+#   import "std:csv" as csv
+#   csv.parse("name,amount\r\n\"Smith, J\",12.50\r\n")    # [["name", "amount"], ["Smith, J", "12.50"]]
+#   csv.records(csv.parse(text))                         # [{name: "Smith, J", amount: "12.50"}]
+#   csv.format([["a", "b,c"]])                           # "a,\"b,c\"\r\n"
+#
+# A field is unquoted (no delimiter, quote or line end in it) or quoted: "...", a quote inside written twice, line ends
+# inside kept as they are. A record ends at CRLF, LF or CR; a line with nothing on it is not a record; a byte order mark at
+# the very start is dropped. Every field is read as a string: the program converts numbers and dates itself (std:decimal,
+# std:date), so nothing is guessed. Anything else - an unclosed quote, text after a closing quote, a quote inside an
+# unquoted field, more fields than the limit - is an error that names the line. The module reads no file and declares no
+# capability: a file is read with std:files (files.lines) under the read grant and handed to parse_lines(). Every function
+# is a native of the module.
+
+# The records of `text`, each a list of strings; the delimiter is a comma and a record may have up to 10000 fields.
+export def parse(text) {
+    return native.parse(text)
+}
+
+# The same with options: {delimiter: ";"} (one character, not a quote or a line end), {max_fields: 50}.
+export def parse_with(text, options) {
+    return native.parse_with(text, options)
+}
+
+# The records of a list of lines, as the lines of a file joined by line ends (a quoted field may span lines); errors name
+# the line by its place in the list, from 1.
+export def parse_lines(lines) {
+    return native.parse_lines(lines)
+}
+
+# A dictionary for each row after the first, keyed by the names in the first (the header); a row of another length, or a
+# name that appears twice in the header, is an error.
+export def records(rows) {
+    return native.records(rows)
+}
+
+# One record as text, without a line end: strings and numbers, a field quoted only when it needs it.
+export def format_row(fields) {
+    return native.format_row(fields)
+}
+
+# The records as text, each ended by CRLF (RFC 4180).
+export def format(rows) {
+    return native.format(rows)
+}

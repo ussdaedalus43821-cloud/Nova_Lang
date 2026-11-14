@@ -41,7 +41,16 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   format (`%Y %m %d %e %H %M %S %b %B %a %A %z %f %%`) that reads the combined-log, ISO and syslog forms. Years 1 to 9999, whole seconds, no time zone database and no daylight saving; the
   module reads no clock and declares no capability. Specified in `docs/spec/09-library.md` `[lib.std-date]`; checked against Python's `datetime` for every day from 1900 to 2100.
 - **`std:hash`**: `hash.sha256(text)`, and **`files.sha256_file(path)`** in `std:files` (the file's SHA-256, read in pieces under the read grant). NIST vectors and `sha256sum` agree.
-- Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change. `std:dict.get()` (decision D-P6) is next.
+- **`std:csv`** (L2): RFC 4180 records. `parse`, `parse_with` (a `delimiter` and a `max_fields` limit, 10000 by default), `parse_lines` (a list of lines, so a file read with
+  `files.lines` under the read grant), `records` (dictionaries keyed by the header), `format_row` and `format` (minimal quoting, CRLF). Quoted fields keep their commas, doubled quotes
+  and line ends; CRLF, LF and CR all end a record; a leading byte order mark is dropped; a blank line is not a record; every field stays a string. An unclosed quote, text after a
+  closing quote, a quote inside an unquoted field and too many fields are errors **that name the line**. Specified in `[lib.std-csv]`; a seeded fuzzer checks it against Python's
+  `csv` module (what `csv.writer` writes reads back, and 20,000 random texts are read the same or refused for the documented reason). The module reads no file and declares no capability.
+- **`std:dict`** (L4, decision D-P6): `dict.get(d, key, fallback)` and `dict.get_path(d, path, fallback)`, for a missing value without a new global name or a `nothing` literal. The
+  fallback is used only when the key is absent. Specified in `[lib.std-dict]`.
+- **`sorted(list, key)` and `sorted(list, key, descending)`** (L3, G-038): ordering by a key function, **stable** in both directions on all three engines (checked against Python's
+  `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
+- Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
 
 ## [2.3.0] - 2026-11-14 — The standard library, a declared stable surface, safer packages and a registry (M12 and M13)
 

@@ -2117,7 +2117,7 @@ let VARIABLE_ARITY = {
     range: [1, 3, "range() takes 1, 2 or 3 numbers"],
     split: [1, 2, "split() takes a string and an optional separator"],
     round: [1, 2, "round() takes a number and an optional digit count"],
-    sorted: [1, 2, "sorted() takes a list and an optional true or false"],
+    sorted: [1, 3, "sorted() takes a list and an optional true or false"],
     reduce: [2, 3, "reduce() takes a function, a list and an optional starting value"],
     "assert": [1, 2, "assert() takes a condition and an optional message"],
     exit: [0, 1, "exit() takes an optional status code and nothing else"],
@@ -2486,6 +2486,12 @@ def call_builtin_raw(name, call_args, pos) {
         return reverse(call_args[0])
     }
     if name == "sorted" {
+        if len(call_args) >= 2 and is_target_function(call_args[1]) {
+            return target_sorted_by(call_args, pos)
+        }
+        if len(call_args) == 3 {
+            raise_error("sorted() takes a list and an optional true or false", pos)
+        }
         if len(call_args) == 1 {
             return sorted(call_args[0])
         }
@@ -2557,6 +2563,102 @@ def target_filter(fn, items, pos) {
         if keep {
             append(out, item)
         }
+    }
+    return out
+}
+
+# sorted(list, key) and sorted(list, key, descending) (2.4.0, [lib.collections]): the key function is called once for each
+# item, in order, through call_target_value; the items are then ordered by their keys with a merge sort that is stable in
+# both directions (equal keys keep their order), as the host's sort is. A boolean key counts as 0 or 1.
+def target_sorted_by(call_args, pos) {
+    let items = call_args[0]
+    if type(items) != "list" {
+        type_error("sorted() needs a list, but got " + type_phrase(items), pos)
+    }
+    let descending = false
+    if len(call_args) == 3 {
+        if type(call_args[2]) != "boolean" {
+            type_error("sorted()'s third argument must be true or false", pos)
+        }
+        descending = call_args[2]
+    }
+    let key_values = []
+    for item in items {
+        append(key_values, call_target_value(call_args[1], [item], pos))
+    }
+    let numbers = 0
+    let texts = 0
+    let ranks = []
+    for k in key_values {
+        let kind = type(k)
+        if kind == "boolean" {
+            numbers = numbers + 1
+            if k {
+                append(ranks, 1)
+            } else {
+                append(ranks, 0)
+            }
+        } else if kind == "number" {
+            if k != k {
+                type_error("sorted()'s key function must return values that can be compared with each other", pos)
+            }
+            numbers = numbers + 1
+            append(ranks, k)
+        } else if kind == "string" {
+            texts = texts + 1
+            append(ranks, k)
+        } else {
+            type_error("sorted()'s key function must return values that can be compared with each other", pos)
+        }
+    }
+    if numbers > 0 and texts > 0 {
+        type_error("sorted()'s key function must return values that can be compared with each other", pos)
+    }
+    let order = []
+    let i = 0
+    while i < len(items) {
+        append(order, i)
+        i = i + 1
+    }
+    let out = []
+    for index in merge_sorted_indexes(order, ranks, descending) {
+        append(out, items[index])
+    }
+    return out
+}
+
+# The indexes in `order`, ordered by ranks[index]: a right-hand index goes first only when its rank strictly precedes, so
+# equal ranks keep their order.
+def merge_sorted_indexes(order, ranks, descending) {
+    if len(order) <= 1 {
+        return order
+    }
+    let middle = floor(len(order) / 2)
+    let left = merge_sorted_indexes(order[0:middle], ranks, descending)
+    let right = merge_sorted_indexes(order[middle:len(order)], ranks, descending)
+    let out = []
+    let a = 0
+    let b = 0
+    while a < len(left) and b < len(right) {
+        let first = ranks[right[b]] < ranks[left[a]]
+        if descending {
+            first = ranks[right[b]] > ranks[left[a]]
+        }
+        if first {
+            append(out, right[b])
+            b = b + 1
+        } else {
+            append(out, left[a])
+            a = a + 1
+        }
+    }
+    while a < len(left) {
+        append(out, left[a])
+        a = a + 1
+    }
+    while b < len(right) {
+        append(out, right[b])
+        b = b + 1
     }
     return out
 }
