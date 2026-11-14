@@ -850,7 +850,10 @@ def check_file_graph(path, allow=None):
 def display_path(path):
     """A module's path relative to the current directory when it is inside
     it, absolute otherwise."""
-    relative = os.path.relpath(path)
+    try:
+        relative = os.path.relpath(path)
+    except ValueError:
+        return path         # Windows: the module (a standard module, say) is on another drive than the current directory
     return path if relative.startswith("..") else relative
 
 
