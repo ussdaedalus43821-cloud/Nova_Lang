@@ -115,3 +115,42 @@ the first line is a report whose layout belongs to the host (a source excerpt,
 for example): only the first line and the message inside it are the language's.
 A syntax error in the module is found when it is imported, not before the
 importing program starts, so a `try` can catch it.
+
+## [mod.std] Standard modules
+
+```
+import "std:text"                        # binds  text
+import "std:text" as t                   # binds  t
+import "std:text" with find, ends_with   # binds  find  and  ends_with
+```
+
+A path that starts with `std:` names a **standard module**: a module that ships with
+the interpreter and is written once for every engine. A version of NovaLang defines a
+fixed set of them (this version: `std:text`, `[lib.std-text]`). Everything else in this
+chapter holds for them (`[mod.import]` for the three forms and the name that is bound,
+`[mod.export]`, `[mod.cache]`, `[mod.scope]`, `[mod.errors]`), with these differences:
+
+1. **The name is looked up in the set, never in the file system.** A name outside it is
+   `ImportError: there is no standard module "std:nope" - the standard modules are:
+   std:text`, listing every standard module in alphabetical order, separated by a comma
+   and a space. The name is never joined to a path, so `std:../x` is such an error too.
+2. **No grant is needed to find one.** A standard module is part of the interpreter, so a
+   `restricted` program with no `import` grant may import it, and the folders of
+   `[sbx.paths]` do not apply to it. `import "std:text"` and a program with no file system
+   at all work alike (the cases are in the `core` profile, not `modules`).
+3. **A standard module declares the capabilities it needs** (the names of
+   `[sbx.capabilities]`), and importing one when the run did not grant every one of them
+   is `ImportError: std:NAME needs the 'CAPABILITY' capability, which this run did not
+   grant`, at the `import`, not later as `undefined name 'read'`. A module that declares
+   none, as `std:text` does, can be imported in every profile. *No standard module
+   declares a capability in this version, so no conformance case exercises this rule yet:
+   it is checked by `tests/std/test_modules.py` on the host engines, and it becomes
+   normative for a module's engines when the first module that declares one has its cases.*
+4. **A standard module adds no global name.** The name it is bound to is the importer's
+   (`as`), the default `text` is an ordinary variable that can be shadowed, and a built-in's
+   name is still refused as a module name (`[mod.import]`, `[scope.reserved]`).
+5. **A standard module runs under the limits of the run that imports it**: its steps, its
+   output and its sizes count like the importer's own.
+
+The tier of each standard module (`provisional` or `stable`) and what it means is in
+[STABLE.md](STABLE.md).

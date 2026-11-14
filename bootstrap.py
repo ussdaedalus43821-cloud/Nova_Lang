@@ -130,6 +130,8 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
         return 1
 
     program = engine_source
+    # Where the engine finds the standard modules (`import "std:..."`), the one place it needs the host's layout.
+    program += "\nSTD[\"dir\"] = {}\n".format(nova_string_literal(novalang.STD_DIR))
     if configured:
         program += "\nconfigure_sandbox({})\n".format(nova_literal(sandbox_config(sandbox)))
     program += "\nrun_file({})\n".format(nova_string_literal(target_path))

@@ -230,3 +230,40 @@ MUST be a boolean (`TypeError: assert() needs true or false, but got a number`),
 when it fails the message MUST be a string (`the message for assert() needs a
 string, but got a number`); a message is not looked at when the condition holds.
 A caught assertion reads `AssertionError: boom`.
+
+## [lib.std-text] `std:text`
+
+```
+import "std:text" as text
+```
+
+Small text and path helpers (G-002, G-006, G-031, G-037, G-039), written in NovaLang over the
+built-ins every profile has: no capability, every profile, deterministic. Every function takes
+strings where it says `s`, `target`, `prefix`, `suffix` and `path`; anything else is
+`the text for text.find() needs a string, but got number` (`boolean`, `list`, ... for other types, as `type` names them), naming the role (`text`, `target`,
+`prefix`, `suffix`, `path`), the function and the type of the value, with the label `Error`.
+Indexes are in code points, as `len` and slicing are.
+
+- `text.find(s, target)` is the index of the first occurrence of `target` in `s`, or `-1`. An
+  empty `target` is found at `0`.
+- `text.find_from(s, target, start)` is the same looking from index `start` on, and the index
+  is in `s`: `text.find_from("abcabc", "b", 2)` is `4`. A `start` below `0` is `0` and one
+  past the end is the length, so `text.find_from("abc", "", 99)` is `3`. `start` MUST be a
+  whole number: `the start for text.find_from() needs a whole number`.
+- `text.starts_with(s, prefix)` and `text.ends_with(s, suffix)` are `true` when `s` begins or ends
+  with the text; an empty one always matches and one longer than `s` never does.
+- `text.is_number(s)` is `true` exactly when `num(s)` would succeed, and
+  `text.parse_number(s, fallback)` is `num(s)`, or `fallback` when `num(s)` would fail.
+  (`num` itself is unchanged and still raises.)
+- `text.basename(path)` is what follows the last `/` or `\` in `path`, or `path` when it has
+  neither; `text.basename("a/b/")` is `""`. Both separators end a part on every platform, so
+  the result does not depend on where the program runs.
+- `text.splitext(path)` is a list `[root, extension]` with `root + extension == path`. The
+  extension is the last `.` of the last part of the path and what follows it, provided a
+  character other than `.` comes before that dot in the part: `text.splitext("a/b/c.tar.gz")` is
+  `["a/b/c.tar", ".gz"]`, and `.bashrc`, `a.b/c`, `..x` have no extension (`""`) while `x.` has
+  the extension `"."`.
+
+The module's exports are exactly the eight names above (`basename`, `ends_with`, `find`,
+`find_from`, `is_number`, `parse_number`, `splitext`, `starts_with`); anything else in its file is
+private. `chr` and `ord` (G-004, G-005) are not in this version of the module.

@@ -103,3 +103,4 @@ Each row becomes cases in the corpus and a cell of the coverage matrix
 | Project owner and architect | 2026-11-08 | This document and `16-sandbox.md` | **Reviewed** (owner and architect). |
 | Independent third party | none | none | **Pending.** No "security boundary" wording before this row has an outcome. |
 | (none yet) | 2026-11-14 | Threat T17, added after the review above | **Not reviewed.** Written with the compiled-artifact cache (M12 slice 5); the reviewer of M11 is also asked to read the loader. |
+| (none yet) | 2026-11-13 | `replace_all` moved out of the `regex` capability (G-050; M13 slice 1) and the capability rule for standard modules (`[mod.std]`) | **Not reviewed.** A relaxation of `[sbx.capabilities]`: `replace_all` is a plain substring replacement that was grouped with `regex` by mistake, and the string limit already bounds it. The reviewer of M11 is asked to read both. |

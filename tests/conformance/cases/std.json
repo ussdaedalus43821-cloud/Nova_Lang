@@ -1,0 +1,259 @@
+{
+ "area": "std",
+ "version": 1,
+ "cases": [
+  {
+   "name": "std-import-binds-the-name-after-the-prefix",
+   "spec": [
+    "mod.std",
+    "mod.import"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\"\nprint(type(text), sorted(keys(text)))",
+   "output": [
+    "dict [\"basename\", \"ends_with\", \"find\", \"find_from\", \"is_number\", \"parse_number\", \"splitext\", \"starts_with\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-import-as-and-with-forms",
+   "spec": [
+    "mod.std",
+    "mod.import"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as t\nprint(t.find(\"hello\", \"ll\"))\nimport \"std:text\" with find, ends_with\nprint(find(\"abc\", \"c\"), ends_with(\"abc\", \"bc\"))",
+   "output": [
+    "2",
+    "2 true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-unknown-module-is-an-import-error",
+   "spec": [
+    "mod.std"
+   ],
+   "profile": "core",
+   "source": "import \"std:nope\" as n",
+   "output": [],
+   "error": "ImportError: there is no standard module \"std:nope\" - the standard modules are: std:text",
+   "error_line": 1,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "std-name-is-never-a-path",
+   "spec": [
+    "mod.std"
+   ],
+   "profile": "core",
+   "source": "try { import \"std:../text\" as t } catch e { print(e) }\ntry { import \"std:\" as t } catch e { print(e) }",
+   "output": [
+    "ImportError: there is no standard module \"std:../text\" - the standard modules are: std:text",
+    "ImportError: there is no standard module \"std:\" - the standard modules are: std:text"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-module-is-one-shared-module",
+   "spec": [
+    "mod.std",
+    "mod.cache"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as a\nimport \"std:text\" as b\na.marker = 7\nprint(b.marker)",
+   "output": [
+    "7"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-adds-no-global-name",
+   "spec": [
+    "mod.std",
+    "scope.reserved"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\ntry { print(find(\"a\", \"a\")) } catch e { print(e) }\nlet starts_with = 3\nprint(starts_with)",
+   "output": [
+    "undefined name 'find'",
+    "3"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-needs-no-import-grant-in-restricted",
+   "spec": [
+    "mod.std",
+    "sbx.profiles"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:text\" as text\nprint(text.find(\"restricted\", \"ric\"), text.basename(\"a/b.txt\"))",
+   "output": [
+    "4 b.txt"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  },
+  {
+   "name": "std-runs-under-the-importers-limits",
+   "spec": [
+    "mod.std",
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "import \"std:text\" as text\nlet i = 0\nwhile i < 100 {\n  text.find(\"hello\", \"l\")\n  i = i + 1\n}\nprint(i)",
+   "output": [],
+   "error": "LimitError: step budget of 500 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 500,
+     "time": 120000
+    }
+   },
+   "error_like": "^LimitError: step budget of 500 steps exhausted - is there a loop that never ends\\?$"
+  },
+  {
+   "name": "std-text-find",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.find(\"hello\", \"ll\"), text.find(\"hello\", \"he\"), text.find(\"hello\", \"x\"), text.find(\"hello\", \"\"), text.find(\"\", \"\"), text.find(\"aXbX\", \"X\"))\nprint(text.find(\"héllo\", \"l\"))",
+   "output": [
+    "2 0 -1 0 0 1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-find-from",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.find_from(\"abcabc\", \"b\", 2), text.find_from(\"abc\", \"c\", -5), text.find_from(\"abc\", \"\", 99), text.find_from(\"abc\", \"a\", 1), text.find_from(\"abc\", \"a\", 0))",
+   "output": [
+    "4 2 3 -1 0"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-starts-and-ends-with",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.starts_with(\"hello\", \"he\"), text.starts_with(\"he\", \"hello\"), text.starts_with(\"a\", \"\"), text.starts_with(\"\", \"\"), text.starts_with(\"hello\", \"lo\"))\nprint(text.ends_with(\"hello\", \"llo\"), text.ends_with(\"lo\", \"hello\"), text.ends_with(\"a\", \"\"), text.ends_with(\"\", \"\"), text.ends_with(\"hello\", \"he\"))",
+   "output": [
+    "true false true true false",
+    "true false true true false"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-is-number-and-parse-number",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.is_number(\"12\"), text.is_number(\"-3.5\"), text.is_number(\"abc\"), text.is_number(\"\"))\nprint(text.parse_number(\"7\", 0), text.parse_number(\"x\", -1), text.parse_number(\"2.5\", 0))\nprint(text.is_number(\"12\") == (num(\"12\") == 12))",
+   "output": [
+    "true true false false",
+    "7 -1 2.5",
+    "true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-basename",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.basename(\"a/b/c.txt\"), text.basename(\"c.txt\"), text.basename(\"a\\\\b.txt\"), text.basename(\"a/b/\") == \"\", text.basename(\"\") == \"\")",
+   "output": [
+    "c.txt c.txt b.txt true true"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-splitext",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\nprint(text.splitext(\"a/b/c.tar.gz\"))\nprint(text.splitext(\".bashrc\"), text.splitext(\"a.b/c\"), text.splitext(\"..x\"), text.splitext(\"x.\"))\nprint(text.splitext(\"noext\"), text.splitext(\"a/b.c/d.e\"))",
+   "output": [
+    "[\"a/b/c.tar\", \".gz\"]",
+    "[\".bashrc\", \"\"] [\"a.b/c\", \"\"] [\"..x\", \"\"] [\"x\", \".\"]",
+    "[\"noext\", \"\"] [\"a/b.c/d\", \".e\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "std-text-wrong-argument-types",
+   "spec": [
+    "lib.std-text"
+   ],
+   "profile": "core",
+   "source": "import \"std:text\" as text\ntry { text.find(5, \"a\") } catch e { print(e) }\ntry { text.find(\"a\", 5) } catch e { print(e) }\ntry { text.starts_with([], \"a\") } catch e { print(e) }\ntry { text.is_number(5) } catch e { print(e) }\ntry { text.basename(true) } catch e { print(e) }\ntry { text.find_from(\"a\", \"a\", 1.5) } catch e { print(e) }\ntry { text.find_from(\"a\", \"a\", \"1\") } catch e { print(e) }",
+   "output": [
+    "the text for text.find() needs a string, but got number",
+    "the target for text.find() needs a string, but got number",
+    "the text for text.starts_with() needs a string, but got list",
+    "the text for text.is_number() needs a string, but got number",
+    "the path for text.basename() needs a string, but got boolean",
+    "the start for text.find_from() needs a whole number",
+    "the start for text.find_from() needs a whole number"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}

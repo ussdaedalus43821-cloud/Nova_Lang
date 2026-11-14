@@ -161,7 +161,7 @@ float literal is infinity) is decided here: the lexer keeps accepting it, and th
 * **G-050:** `replace_all` moves out of `CAPABILITY_OF`: it becomes available in every profile. This is a **relaxation**, so it is additive; the matrix cell `regex:deny` for `replace_all` is removed and a
   case "a restricted program with no grants calls it" is added on all three engines. The name was already reserved, so nothing else changes.
 * **`std:text`** (Tier 1 unless noted, optional scope D10): `text.find(s, sub, start)` -> index or -1, `text.starts_with`, `text.ends_with` (G-006, G-037), `text.is_number(s)` and `text.parse_number(s, default)`
-  (G-002, G-039: `num` keeps throwing), `text.chr(n)` and `text.ord(s)` (native; G-004, G-005: the way to write an escape character, with the output-injection note that a terminal program that prints an
+  (G-002, G-039: `num` keeps throwing), `text.chr(n)` and `text.ord(s)` (native, so **moved to slice 3**; G-004, G-005: the way to write an escape character, with the output-injection note that a terminal program that prints an
   `ESC` can do what the terminal lets it do), `text.splitext(path)` and `text.basename(path)` (G-031).
 
 ### 4.5 Streaming reads: `std:files` (Tier 2, slice 3)
@@ -449,13 +449,27 @@ reach (and marked unreviewed until the independent review); no merge without the
 
 | # | Slice | Contents | Depends | Size |
 | ---: | --- | --- | --- | --- |
-| 1 | **Foundations** | `std:` import and the capability-declaring module descriptor (4.0); `replace_all` out of the `regex` capability (G-050); `std:text` (G-002, G-006, G-031, G-037, G-039, G-004/5); **the explicit nesting counter** in the parser, compiler, tree-walker and artifact loader (G-051: a registry puts untrusted source in front of the parser); the embedding fixes G-015 and G-017; the stable-surface file and test (6.1), the deprecation mechanism and its cases (6.3); `docs/spec/STABLE.md` | M12 | M |
+| 1 | **Foundations** | `std:` import and the capability-declaring module descriptor (4.0); `replace_all` out of the `regex` capability (G-050); `std:text` (G-002, G-006, G-031, G-037, G-039; G-004/5 moved to slice 3); **the explicit nesting counter** in the parser, compiler, tree-walker and artifact loader (G-051: a registry puts untrusted source in front of the parser); the embedding fixes G-015 and G-017; the stable-surface file and test (6.1), the deprecation mechanism and its cases (6.3); `docs/spec/STABLE.md` | M12 | M |
 | 2 | **Decimal, math and formatting** | `std:decimal`, `std:math` (`trunc`, `divmod`, `round_half`, `exp`), `std:format` (G-007, G-008), the G-052 decision; benchmark rows | 1 | M |
 | 3 | **Streaming and files** | `std:files` (`lines`, `size`, `is_dir`, `is_link`, `read_chunk`), the line source in `ITER_PREP` on all three engines, the path re-check per chunk, the deterministic-time decision (D5) | 1 | L |
 | 4 | **Regular expressions** | the dialect in `[lib.regex]`, the Pike VM with step accounting, `std:regex`, the `regex` builtin on the new matcher, the differential fuzzer, the time tests | 1 | L |
 | 5 | **Packages, part 1: manifest and capabilities** | manifest 2 and the lockfile 2 (reading 1), the scan and the enforcement of 5.6, escalation protection, the first-import re-hash (R12), `init`, `add`, `audit`, `capabilities`; chapter `18-packages.md` with its cases; threat rows R3, R11, R12, R15 | 1 | M |
 | 6 | **Packages, part 2: the registry** | the archive format and the hardened extractor, the static index and its signatures (Ed25519 verifier and vectors), serial and expiry, revocation, `pack`, `publish`, `yank`, install from a directory or HTTPS registry (a hardened fetch core: HTTPS only, size and time limits, no proxy); the end-to-end test of the roadmap's exit criterion; the supply-chain table of 5.5 as tests | 5 | L |
 | 7 | **HTTP** (**moved to M14 by D6; not M13 scope**) | the `net` capability and its limits, `std:http` on the fetch core of slice 6, the matrix cells, the SSRF corpus, the amendment of `[sbx.capabilities]` | 6 | M |
+
+### Slice 1: progress (branch `m13/slice-1-foundations`; a draft until the owner has read it)
+
+Nothing below is marked implemented in the roadmap: slice 1 is not done until every item of its row in the table above is.
+
+| Item of the slice | State |
+| --- | --- |
+| `std:` import, the module list (`lib/std/modules.json`), the capability declaration and its check at the import | **Built on all three engines.** Spec `[mod.std]`; 8 conformance cases; `tests/std/` proves the capability rule on all three engines with a throw-away module (no standard module declares a capability yet, so no conformance case can; the spec says so) |
+| `replace_all` out of the `regex` capability (G-050) | **Built on all three engines.** `[sbx.capabilities]` amended (marked unreviewed in the threat model's review log); the denial cases that expected it undefined now expect it to work; the matrix is still 201 of 201 |
+| `std:text` | **Built** (`find`, `find_from`, `starts_with`, `ends_with`, `is_number`, `parse_number`, `basename`, `splitext`; spec `[lib.std-text]`; 7 conformance cases). **`chr` and `ord` (G-004, G-005) are not in it:** they need a native function, and the native module tier does not exist until slice 3, so they move to slice 3 |
+| The stable-surface file and test | **Built** (`tests/api/`, `docs/spec/STABLE.md`): the surface is read from the source; a removal or change fails unless the major version moved; any other change fails until the record is rewritten |
+| The deprecation mechanism (the warning, `--warnings`, the embedding callback) | **Not built.** The policy and an empty `DEPRECATIONS.md` exist; nothing is deprecated, so nothing is owed yet |
+| The explicit nesting counter (G-051) | **Not built.** It touches the parser, the compiler, the tree-walker and the artifact loader, and needs PyPy to verify; it should be its own pull request |
+| The embedding fixes (G-015, G-017) | **Not built** |
 
 Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different people; **slice 4 and slice 6 carry the security weight of the milestone** and each ends with a request that the independent reviewer (D-review of M11) read them. The close of the milestone (a version number, the README's numbers, the changelog) follows slice 6 (slice 7 is M14's, by D6).
 
@@ -542,7 +556,7 @@ its signatures (slice 6).
 | G-001 | Big integers are exact | PASS: the basis of `std:decimal` |
 | G-002 | `num()` throws on text | Slice 1: `text.is_number`, `text.parse_number(s, default)` (`num` keeps throwing: stable) |
 | G-003 | `regex()` returns only true or false | **Slice 4** |
-| G-004, G-005 | No escape character, no `chr`/`ord` | Slice 1: `text.chr`, `text.ord` (a reserved global name would break programs) |
+| G-004, G-005 | No escape character, no `chr`/`ord` | Slice 3: `text.chr`, `text.ord` (moved from slice 1: they need a native function and the native module tier starts in slice 3; a global name would break programs) |
 | G-006 | No `find`, `startswith`, `endswith` | Slice 1: `std:text` |
 | G-007, G-008 | No thousands separator, no number formatting | Slice 2: `std:format` (D10) |
 | G-009 | No null; a missing key is an error | Deferred: needs a decision on missing values in the language (`nothing`), not a library |

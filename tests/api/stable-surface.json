@@ -1,0 +1,392 @@
+{
+ "builtins": {
+  "abs": {
+   "arity": 1,
+   "capability": null
+  },
+  "abspath": {
+   "arity": 1,
+   "capability": "process"
+  },
+  "append": {
+   "arity": 2,
+   "capability": null
+  },
+  "args": {
+   "arity": 0,
+   "capability": "process"
+  },
+  "assert": {
+   "arity": null,
+   "capability": null
+  },
+  "byte_length": {
+   "arity": 1,
+   "capability": null
+  },
+  "ceil": {
+   "arity": 1,
+   "capability": null
+  },
+  "choice": {
+   "arity": 1,
+   "capability": "random"
+  },
+  "copy": {
+   "arity": 2,
+   "capability": "files.write"
+  },
+  "cos": {
+   "arity": 1,
+   "capability": null
+  },
+  "cwd": {
+   "arity": 0,
+   "capability": "process"
+  },
+  "dirname": {
+   "arity": 1,
+   "capability": null
+  },
+  "env": {
+   "arity": 1,
+   "capability": "env"
+  },
+  "exists": {
+   "arity": 1,
+   "capability": "files.read"
+  },
+  "exit": {
+   "arity": null,
+   "capability": "process"
+  },
+  "filter": {
+   "arity": 2,
+   "capability": null
+  },
+  "floor": {
+   "arity": 1,
+   "capability": null
+  },
+  "format_time": {
+   "arity": 2,
+   "capability": "clock"
+  },
+  "input": {
+   "arity": null,
+   "capability": "stdin"
+  },
+  "join": {
+   "arity": 2,
+   "capability": null
+  },
+  "keys": {
+   "arity": 1,
+   "capability": null
+  },
+  "len": {
+   "arity": 1,
+   "capability": null
+  },
+  "listdir": {
+   "arity": 1,
+   "capability": "files.read"
+  },
+  "ln": {
+   "arity": 1,
+   "capability": null
+  },
+  "log": {
+   "arity": null,
+   "capability": null
+  },
+  "log10": {
+   "arity": 1,
+   "capability": null
+  },
+  "lower": {
+   "arity": 1,
+   "capability": null
+  },
+  "map": {
+   "arity": 2,
+   "capability": null
+  },
+  "max": {
+   "arity": null,
+   "capability": null
+  },
+  "min": {
+   "arity": null,
+   "capability": null
+  },
+  "mkdir": {
+   "arity": 1,
+   "capability": "files.write"
+  },
+  "monotonic": {
+   "arity": 0,
+   "capability": "clock"
+  },
+  "now": {
+   "arity": 0,
+   "capability": "clock"
+  },
+  "num": {
+   "arity": 1,
+   "capability": null
+  },
+  "pad": {
+   "arity": 2,
+   "capability": null
+  },
+  "pad_left": {
+   "arity": 2,
+   "capability": null
+  },
+  "platform": {
+   "arity": 0,
+   "capability": "process"
+  },
+  "pop": {
+   "arity": null,
+   "capability": null
+  },
+  "pow": {
+   "arity": 2,
+   "capability": null
+  },
+  "print": {
+   "arity": null,
+   "capability": null
+  },
+  "randint": {
+   "arity": 2,
+   "capability": "random"
+  },
+  "random": {
+   "arity": 0,
+   "capability": "random"
+  },
+  "range": {
+   "arity": null,
+   "capability": null
+  },
+  "read": {
+   "arity": 1,
+   "capability": "files.read"
+  },
+  "realpath": {
+   "arity": 1,
+   "capability": "process"
+  },
+  "reduce": {
+   "arity": null,
+   "capability": null
+  },
+  "regex": {
+   "arity": 2,
+   "capability": "regex"
+  },
+  "remove": {
+   "arity": 1,
+   "capability": "files.write"
+  },
+  "rename": {
+   "arity": 2,
+   "capability": "files.write"
+  },
+  "replace_all": {
+   "arity": 3,
+   "capability": null
+  },
+  "reverse": {
+   "arity": 1,
+   "capability": null
+  },
+  "round": {
+   "arity": null,
+   "capability": null
+  },
+  "shuffle": {
+   "arity": 1,
+   "capability": "random"
+  },
+  "sin": {
+   "arity": 1,
+   "capability": null
+  },
+  "sleep": {
+   "arity": 1,
+   "capability": "clock"
+  },
+  "sorted": {
+   "arity": null,
+   "capability": null
+  },
+  "split": {
+   "arity": null,
+   "capability": null
+  },
+  "split_lines": {
+   "arity": 1,
+   "capability": null
+  },
+  "sqrt": {
+   "arity": 1,
+   "capability": null
+  },
+  "str": {
+   "arity": 1,
+   "capability": null
+  },
+  "sum": {
+   "arity": null,
+   "capability": null
+  },
+  "tan": {
+   "arity": 1,
+   "capability": null
+  },
+  "time": {
+   "arity": 0,
+   "capability": "clock"
+  },
+  "trim": {
+   "arity": 1,
+   "capability": null
+  },
+  "type": {
+   "arity": 1,
+   "capability": null
+  },
+  "upper": {
+   "arity": 1,
+   "capability": null
+  },
+  "values": {
+   "arity": 1,
+   "capability": null
+  },
+  "write": {
+   "arity": 2,
+   "capability": "files.write"
+  }
+ },
+ "capabilities": [
+  "clock",
+  "env",
+  "files.read",
+  "files.write",
+  "import",
+  "process",
+  "python",
+  "random",
+  "regex",
+  "stdin"
+ ],
+ "embedding": {
+  "class": "Nova",
+  "constructor": "(self, engine=None, allow_python=False, profile='trusted', **settings)",
+  "methods": {
+   "call": "(self, name, *args)",
+   "compile": "(self, code)",
+   "eval": "(self, code)",
+   "exec": "(self, code)",
+   "expose": "(self, name, value)",
+   "expose_global": "(self, name, value)",
+   "expose_module": "(self, module)",
+   "load_file": "(self, path)"
+  }
+ },
+ "json_members": [
+  "dumps",
+  "loads",
+  "pretty"
+ ],
+ "keywords": [
+  "and",
+  "as",
+  "break",
+  "catch",
+  "continue",
+  "def",
+  "delete",
+  "downto",
+  "else",
+  "export",
+  "false",
+  "finally",
+  "for",
+  "if",
+  "import",
+  "in",
+  "let",
+  "not",
+  "or",
+  "return",
+  "step",
+  "throw",
+  "to",
+  "true",
+  "try",
+  "while",
+  "with"
+ ],
+ "limits": [
+  "depth",
+  "dict",
+  "list",
+  "output",
+  "steps",
+  "string",
+  "time"
+ ],
+ "manifest_keys": [
+  "dependencies",
+  "main",
+  "name",
+  "registry",
+  "version"
+ ],
+ "predefined": [
+  "E",
+  "PI",
+  "json",
+  "python"
+ ],
+ "sandbox_flags": [
+  "--allow-clock",
+  "--allow-env",
+  "--allow-import",
+  "--allow-process",
+  "--allow-python-module",
+  "--allow-random",
+  "--allow-read",
+  "--allow-regex",
+  "--allow-stdin",
+  "--allow-write",
+  "--clock-start",
+  "--deterministic",
+  "--limit",
+  "--profile",
+  "--seed"
+ ],
+ "std_modules": {
+  "text": {
+   "capabilities": [],
+   "exports": [
+    "basename",
+    "ends_with",
+    "find",
+    "find_from",
+    "is_number",
+    "parse_number",
+    "splitext",
+    "starts_with"
+   ],
+   "tier": "provisional"
+  }
+ },
+ "version": "2.2.0"
+}

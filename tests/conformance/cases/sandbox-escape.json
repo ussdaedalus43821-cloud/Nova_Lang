@@ -79,7 +79,7 @@
     "sbx.errors"
    ],
    "profile": "sandbox",
-   "source": "try { print([read]) } catch e { print(e) }\ntry { print([write]) } catch e { print(e) }\ntry { print([exists]) } catch e { print(e) }\ntry { print([listdir]) } catch e { print(e) }\ntry { print([mkdir]) } catch e { print(e) }\ntry { print([remove]) } catch e { print(e) }\ntry { print([rename]) } catch e { print(e) }\ntry { print([copy]) } catch e { print(e) }\ntry { print([env]) } catch e { print(e) }\ntry { print([sleep]) } catch e { print(e) }\ntry { print([time]) } catch e { print(e) }\ntry { print([monotonic]) } catch e { print(e) }\ntry { print([now]) } catch e { print(e) }\ntry { print([format_time]) } catch e { print(e) }\ntry { print([random]) } catch e { print(e) }\ntry { print([randint]) } catch e { print(e) }\ntry { print([choice]) } catch e { print(e) }\ntry { print([shuffle]) } catch e { print(e) }\ntry { print([regex]) } catch e { print(e) }\ntry { print([replace_all]) } catch e { print(e) }\ntry { print([input]) } catch e { print(e) }\ntry { print([exit]) } catch e { print(e) }\ntry { print([args]) } catch e { print(e) }\ntry { print([cwd]) } catch e { print(e) }\ntry { print([platform]) } catch e { print(e) }\ntry { print([abspath]) } catch e { print(e) }\ntry { print([realpath]) } catch e { print(e) }",
+   "source": "try { print([read]) } catch e { print(e) }\ntry { print([write]) } catch e { print(e) }\ntry { print([exists]) } catch e { print(e) }\ntry { print([listdir]) } catch e { print(e) }\ntry { print([mkdir]) } catch e { print(e) }\ntry { print([remove]) } catch e { print(e) }\ntry { print([rename]) } catch e { print(e) }\ntry { print([copy]) } catch e { print(e) }\ntry { print([env]) } catch e { print(e) }\ntry { print([sleep]) } catch e { print(e) }\ntry { print([time]) } catch e { print(e) }\ntry { print([monotonic]) } catch e { print(e) }\ntry { print([now]) } catch e { print(e) }\ntry { print([format_time]) } catch e { print(e) }\ntry { print([random]) } catch e { print(e) }\ntry { print([randint]) } catch e { print(e) }\ntry { print([choice]) } catch e { print(e) }\ntry { print([shuffle]) } catch e { print(e) }\ntry { print([regex]) } catch e { print(e) }\ntry { print([input]) } catch e { print(e) }\ntry { print([exit]) } catch e { print(e) }\ntry { print([args]) } catch e { print(e) }\ntry { print([cwd]) } catch e { print(e) }\ntry { print([platform]) } catch e { print(e) }\ntry { print([abspath]) } catch e { print(e) }\ntry { print([realpath]) } catch e { print(e) }",
    "output": [
     "undefined name 'read'",
     "undefined name 'write'",
@@ -100,7 +100,6 @@
     "undefined name 'choice'",
     "undefined name 'shuffle'",
     "undefined name 'regex'",
-    "undefined name 'replace_all'",
     "undefined name 'input'",
     "undefined name 'exit'",
     "undefined name 'args'",
@@ -2775,7 +2774,7 @@
    "source": "try { print(regex(\"(a+)+$\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\")) } catch e { print(e) }\ntry { print(replace_all(\"aaaa\", \"a+\", \"b\")) } catch e { print(e) }\ntry { print([regex, replace_all]) } catch e { print(e) }\ntry { print(regex) } catch e { print(e) }",
    "output": [
     "undefined name 'regex'",
-    "undefined name 'replace_all'",
+    "aaaa",
     "undefined name 'regex'",
     "undefined name 'regex'"
    ],

@@ -28,6 +28,7 @@
   "print",
   "range",
   "reduce",
+  "replace_all",
   "reverse",
   "round",
   "sin",

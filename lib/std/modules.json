@@ -1,0 +1,11 @@
+{
+ "_about": "The standard modules (docs/spec/08-modules.md [mod.std]). One entry per `import \"std:NAME\"`: the file lib/std/NAME.nova, the capabilities a run must have granted for the import to succeed, the tier (provisional or stable, docs/spec/STABLE.md), the release that added it, and the exports it promises. All three engines read this file, so there is one list.",
+ "modules": {
+  "text": {
+   "capabilities": [],
+   "tier": "provisional",
+   "since": "2.3.0",
+   "exports": ["basename", "ends_with", "find", "find_from", "is_number", "parse_number", "splitext", "starts_with"]
+  }
+ }
+}
