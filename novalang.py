@@ -1866,9 +1866,11 @@ def reject_null_byte(path, position):
 # (docs/design/m11-threat-model.md N5). The guard is for the restricted profile only: the trusted profile
 # has no grant to escape and has always followed links, so nothing there changes.
 #
-# Windows has no O_NOFOLLOW. There the file is opened and its real identity is then read back from the open
-# handle (GetFinalPathNameByHandleW): a handle that no longer resolves inside the grant is the swap, and the
-# file is refused (_verify_final_path).
+# Windows has no O_NOFOLLOW. There the final component is refused with os.path.islink before the open, so a
+# terminal symbolic link is never followed and a write never truncates its target -- matching O_NOFOLLOW,
+# which refuses the terminal link whether it points inside or outside the grant. A link swapped in after that
+# check is then caught by the open handle's real identity (GetFinalPathNameByHandleW): a handle that no
+# longer resolves inside the grant is the swap, and the file is refused (_verify_final_path).
 
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
@@ -1923,6 +1925,12 @@ def _verify_final_path(descriptor, path, position, interpreter, kind):
 
 def _open_guarded(path, mode, position, interpreter, kind):
     """open(path, mode) for the restricted profile with the final-component symlink closed."""
+    if not _NOFOLLOW and os.path.islink(path):
+        # Windows has no O_NOFOLLOW: refuse a final-component symbolic link before the open, so the link is
+        # never followed (a write never truncates its target). O_NOFOLLOW refuses the terminal link whether
+        # it points inside or outside the grant, so this must too -- the handle check below only catches a
+        # link that escapes the grant. A link swapped in after this check is caught there (_verify_final_path).
+        raise symlink_refusal(path, position)
     flags = _OPEN_FLAGS[mode] | _NOFOLLOW | _CLOEXEC
     try:
         descriptor = os.open(path, flags, 0o666)
