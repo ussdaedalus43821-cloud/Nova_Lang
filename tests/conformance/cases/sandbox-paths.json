@@ -261,15 +261,15 @@
    }
   },
   {
-   "name": "sbx-paths-symlink-inside-the-folder-works",
+   "name": "sbx-paths-a-parent-symlink-inside-the-folder-works",
    "spec": [
     "sbx.paths",
     "sbx.capabilities"
    ],
    "profile": "sandbox",
-   "source": "print(read(\"data/inlink.txt\"))",
+   "source": "print(read(\"data/sublink/deep.txt\"))",
    "output": [
-    "hello"
+    "deep"
    ],
    "error": "",
    "error_line": null,
@@ -290,7 +290,7 @@
     "secret.txt": "top secret"
    },
    "symlinks": {
-    "data/inlink.txt": "in.txt"
+    "data/sublink": "sub"
    }
   },
   {
@@ -396,6 +396,44 @@
    "files": {
     "lib/ok.nova": "export let y = 1",
     "other/bad.nova": "export let x: float = \"not a number\""
+   }
+  },
+  {
+   "name": "sbx-toctou-final-component-symlink-is-refused",
+   "spec": [
+    "sbx.toctou",
+    "sbx.paths"
+   ],
+   "profile": "sandbox",
+   "source": "try { print(read(\"data/link.txt\")) } catch e { print(e) }",
+   "output": [
+    "FileError: data/link.txt: the final path component is a symbolic link; the restricted profile refuses to follow it (a link may be swapped in after the path is checked -- docs/spec/16-sandbox.md [sbx.toctou])"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "read": [
+     "data"
+    ]
+   },
+   "files": {
+    "data/real.txt": "in grant"
+   },
+   "symlinks": {
+    "data/link.txt": "real.txt"
+   },
+   "divergences": {
+    "bootstrap": {
+     "id": "D-047",
+     "output": [
+      "in grant"
+     ],
+     "error": "",
+     "exit": 0
+    }
    }
   }
  ]

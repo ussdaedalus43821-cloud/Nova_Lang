@@ -9,7 +9,7 @@
 # inside kept as they are. A record ends at CRLF, LF or CR; a line with nothing on it is not a record; a byte order mark at
 # the very start is dropped. Every field is read as a string: the program converts numbers and dates itself (std:decimal,
 # std:date), so nothing is guessed. Anything else - an unclosed quote, text after a closing quote, a quote inside an
-# unquoted field, more fields than the limit - is an error that names the line. The module reads no file and declares no
+# unquoted field, a null byte in a field, more fields than the limit - is an error that names the line. The module reads no file and declares no
 # capability: a file is read with std:files (files.lines) under the read grant and handed to parse_lines(). Every function
 # is a native of the module.
 

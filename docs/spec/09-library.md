@@ -610,8 +610,10 @@ fields.
 These are errors, and each names the line: a quoted field that is never closed (`csv.parse() found a quoted field that is never closed; it starts on line 2`); text
 after the closing quote of a field (`found text after the closing quote of a field on line 2; a quoted field must end at the delimiter or the end of the line`); a quote
 inside a field that does not start with one (`found a quote inside a field that does not start with one on line 2; quote the whole field and write the quote twice`;
-Python's `csv` module, which accepts it, reads the same records in every other case); and a record with more fields than the limit (`found more than 10000 fields in the
-record on line 2 (the max_fields limit)`). The result is bounded like any list and its strings like any string (`[sbx.limits]`), and reading is charged to the run.
+Python's `csv` module, which accepts it, reads the same records in every other case); a record with more fields than the limit (`found more than 10000 fields in the
+record on line 2 (the max_fields limit)`); and a **null byte** in a field (`found a null byte in a field on line 2; a null byte is not text, so the input is not a CSV
+record`), since a NUL in the input is text that is not text — a truncated binary or the wrong encoding — and is refused rather than carried through as a field character
+(G-053). The result is bounded like any list and its strings like any string (`[sbx.limits]`), and reading is charged to the run.
 
 | Function | Meaning |
 | --- | --- |

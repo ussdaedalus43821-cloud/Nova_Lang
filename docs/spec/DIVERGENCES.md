@@ -728,6 +728,25 @@ clock, so a clock set back during a run lengthens the run. Neither is a way past
 Fix: a host function for the byte length of a text, and a monotonic clock for the self-hosted engine's own use.
 
 Resolved 2026-11-09 (M11 slice 3b): two new host functions, `byte_length(text)` (`[lib.text]`) and `monotonic()` (`[host.time]`, capability `clock`), added to all three engines; the self-hosted interpreter counts output with the first and times a run with the second. A case counts non-ASCII output in bytes.
+
+### D-047 — The self-hosted interpreter does not apply the final-component TOCTOU guard
+
+Status: open
+Class: known limitation
+Engines: self-hosted
+Spec: `[sbx.toctou]`
+
+Every file open in the `restricted` profile on the bytecode VM and the tree-walker opens the final
+path component with `O_NOFOLLOW`, so a terminal symbolic link is refused even when it points inside
+the grant — the check-then-open race (`[sbx.toctou]`, G-054). The self-hosted interpreter reaches
+files through the host's natives on a *trusted* host (its own sandbox is a separate simulation), so
+the guard is not applied: an in-grant final-component symbolic link is **followed** on the
+self-hosted engine where the Python engines refuse it. An *out-of-grant* link is refused on every
+engine — the path gate (`[sbx.paths]`) catches it before the open — so only the in-grant link, which
+is the swap's shape, diverges.
+
+Fix: a self-hosted open that refuses a terminal symbolic link (an `openat`/`O_NOFOLLOW`-style walk), taken with the Phase 6 parent-component work that hardens the self-hosted sandbox's own opens.
+
 ## Not divergences, but worth knowing
 
 The bytecode VM and the tree-walker agree on every corpus case, which is the

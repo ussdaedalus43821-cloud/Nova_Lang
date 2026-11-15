@@ -120,6 +120,127 @@ class Restricted(unittest.TestCase):
                     self.assertNotIn("LEAK", done.stdout)
                     self.assertEqual(done.stdout.splitlines(), ["FileError: data/link.txt is outside the folders this program may use"] * 4)
 
+    @unittest.skipIf(sys.platform == "win32", "symbolic links need privileges on Windows")
+    def test_a_symbolic_link_at_the_final_component_is_refused_even_within_the_grant(self):
+        """The check-then-open race (G-054, docs/spec/16-sandbox.md [sbx.toctou]): check_path resolves a
+        path with realpath and approves it, then another process swaps the final name for a symbolic
+        link before the open follows it. O_NOFOLLOW refuses a terminal symbolic link in the open itself,
+        so a link at the final component is refused *even when it points inside the grant* -- the kernel
+        cannot tell the attacker's swap from an honest in-grant link, and refusing both closes the race.
+        The guard is a host native, so it protects the VM and tree-walk engines (the embedding API and
+        --profile restricted); the self-hosted engine's own sandbox is a separate matter (threat-model
+        N5), so --bootstrap is not asserted here."""
+        with tempfile.TemporaryDirectory() as folder:
+            os.mkdir(os.path.join(folder, "data"))
+            with open(os.path.join(folder, "data", "real.txt"), "w") as handle:
+                handle.write("in grant\n")
+            # a link whose target is itself inside the grant: still refused, because it is a link
+            os.symlink(os.path.join(folder, "data", "real.txt"), os.path.join(folder, "data", "link.txt"))
+            program = ('import "std:files" as files\n'
+                       'print(read("data/real.txt")[0:8])\n'                       # the real file still reads
+                       'try { read("data/link.txt") } catch e { print(e) }\n'
+                       'try { files.lines("data/link.txt") } catch e { print(e) }\n'
+                       'try { files.sha256_file("data/link.txt") } catch e { print(e) }\n'
+                       'try { write("data/link.txt", "x") } catch e { print(e) }\n'
+                       'try { append("data/link.txt", "x") } catch e { print(e) }\n')
+            refusal = "FileError: data/link.txt: the final path component is a symbolic link"
+            for flags in ([], ["--tree-walk"]):
+                with self.subTest(flags=flags):
+                    done = nova(["--profile", "restricted", "--allow-read", "data", "--allow-write", "data"] + flags, program, folder)
+                    self.assertEqual(done.returncode, 0, done.stderr[-1500:])
+                    lines = done.stdout.splitlines()
+                    self.assertEqual(lines[0], "in grant")
+                    for line in lines[1:]:
+                        self.assertTrue(line.startswith(refusal), line)
+                    self.assertEqual(len(lines), 6)
+                    # the swap never reached the target: its bytes are not "x"
+                    with open(os.path.join(folder, "data", "real.txt")) as check:
+                        self.assertEqual(check.read(), "in grant\n")
+
+
+LIMIT_MESSAGE = "a string cannot grow beyond 1000000 characters"
+
+
+def peak_mb(flags, program, folder):
+    """Run the program in a fresh child and return (completed process, that child's peak memory in MB).
+    A clean Python sits between this process and novalang, so RUSAGE_CHILDREN holds the one child.
+    ru_maxrss is bytes on macOS and KiB on Linux."""
+    path = os.path.join(folder, "main.nova")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(program)
+    probe = ("import resource, subprocess, sys\n"
+             "done = subprocess.run(sys.argv[1:], capture_output=True, text=True)\n"
+             "sys.stdout.write(done.stdout); sys.stderr.write(done.stderr)\n"
+             "rss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss\n"
+             "sys.stderr.write('\\nPEAK %d\\n' % (rss // (1 << 20) if sys.platform == 'darwin' else rss // 1024))\n"
+             "sys.exit(done.returncode)\n")
+    argv = [sys.executable, "-c", probe, os.path.join(ROOT, "novalang.py")] + flags + [path]
+    done = subprocess.run(argv, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL,
+                          cwd=folder, env=dict(os.environ, NOVALANG_CACHE="off"))
+    return done, int(done.stderr.rsplit("PEAK ", 1)[1])
+
+
+@unittest.skipIf(sys.platform == "win32", "ru_maxrss and the restricted profile are measured on POSIX")
+class MemoryBounds(unittest.TestCase):
+    """The restricted profile's string limit is a memory bound, not only a size check: read() and the
+    line readers must refuse a hostile file *without first loading it whole*, or a multi-GB file is a
+    denial of service (docs/spec/16-sandbox.md [sbx.limits], a security fix in the CHANGELOG). These are
+    relative, machine-independent assertions: restricted uses far less than trusted on the same file,
+    and the line readers' peak does not grow with the line's length."""
+
+    # One file size over the limit is enough; a few hundred MB makes the difference impossible to miss.
+    READ_MB = int(os.environ.get("NOVA_FILES_MEM_MB", "120"))
+    SMALL_LINE_MB, BIG_LINE_MB = 60, 200
+
+    def write_lines_file(self, path, mb):
+        with open(path, "wb") as handle:                      # one unbroken line of `mb` MB: no line feed at all
+            for _ in range(mb):
+                handle.write(b"x" * (1 << 20))
+
+    def test_read_does_not_load_the_whole_file_into_memory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "big.txt")
+            with open(path, "wb") as handle:                  # many short lines, comfortably over the limit
+                handle.write((b"x" * 99 + b"\n") * (self.READ_MB * 10000))
+            size_mb = os.path.getsize(path) >> 20
+            trusted, trusted_peak = peak_mb([], 'print(len(read("big.txt")))', folder)
+            self.assertEqual(trusted.returncode, 0, trusted.stderr[-800:])
+            restricted, restricted_peak = peak_mb(
+                ["--profile", "restricted", "--allow-read", ".", "--allow-clock"],
+                'try { read("big.txt") } catch e { print(e) }', folder)
+            self.assertEqual(restricted.returncode, 0, restricted.stderr[-800:])
+            self.assertEqual(restricted.stdout.strip(), LIMIT_MESSAGE)
+            # Trusted loads the whole file (about two bytes of memory per byte of file); restricted stops
+            # at the limit. The gap is enormous (measured ~50 MB vs ~2x the file), so half is a safe line.
+            self.assertLess(restricted_peak, trusted_peak * 0.5,
+                            "restricted read of a %d MB file peaked at %d MB, trusted at %d MB: read() is "
+                            "not bounding memory" % (size_mb, restricted_peak, trusted_peak))
+
+    def test_a_single_endless_line_does_not_grow_memory_with_its_length(self):
+        with tempfile.TemporaryDirectory() as folder:
+            peaks = {}
+            for mb in (self.SMALL_LINE_MB, self.BIG_LINE_MB):
+                path = os.path.join(folder, "line.txt")
+                self.write_lines_file(path, mb)               # one line of `mb` MB, no line feed at all
+                for engine in ([], ["--tree-walk"]):
+                    program = ('import "std:files" as files\n'
+                               'try { let all = files.lines("line.txt")\nprint(len(all)) } catch e { print(e) }\n')
+                    done, peak = peak_mb(["--profile", "restricted", "--allow-read", ".", "--allow-clock"] + engine,
+                                         program, folder)
+                    with self.subTest(mb=mb, engine=engine or "vm"):
+                        self.assertEqual(done.returncode, 0, done.stderr[-800:])
+                        self.assertEqual(done.stdout.strip(), LIMIT_MESSAGE)
+                    peaks[(mb, tuple(engine))] = peak
+            # The big line is more than three times the small one. If the reader grew its buffer with the
+            # line, the peak would grow by that difference (well over 100 MB); bounded, it barely moves.
+            for engine in ([], ["--tree-walk"]):
+                small = peaks[(self.SMALL_LINE_MB, tuple(engine))]
+                big = peaks[(self.BIG_LINE_MB, tuple(engine))]
+                self.assertLess(big - small, 60,
+                                "a %d MB line peaked at %d MB and a %d MB line at %d MB (%s): the line reader "
+                                "is growing memory with the line" % (self.SMALL_LINE_MB, small, self.BIG_LINE_MB,
+                                                                     big, engine or "vm"))
+
 
 class Natives(unittest.TestCase):
     def test_every_listed_native_exists_and_every_native_is_listed(self):
