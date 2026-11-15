@@ -235,6 +235,10 @@ D-P1 to D-P11 were answered as follows; the recommendations of the table above s
 | D-P8 | **Approved.** Encryption is the host's job, not the language's |
 | D-P9, D-P10, D-P11 | **Approved as written** |
 
+**D-P3 amendment (2026-11-14):** The engine (parse, rules, detect, report, receipt) is universal infrastructure and may be built before P0. The rules — the specific patterns and thresholds — are deferred until P0 returns customer input. The engine is built so that rules are data, not code, so a P0 pivot requires no engine rewrite.
+
+*Why this keeps D-P3 rather than reversing it (the Architect's reasons, recorded with the amendment):* the engine carries no assumption about the audience (section 6.4 already makes a rule data and the engine a small interpreter over rules); a working engine is a better instrument for P0 than a description of one (a prospective customer can run it on their own logs and say which rules they want); and a P0 answer then becomes a rule file, not an engine change. Consequences: P2 builds the engine, its seeded generator and its oracle, with only example rules in `examples/`; no production rule file is written until P0 has an answer.
+
 ### P1: progress (branch `m14/p1-libraries`; version 2.4.0 in development; a draft until the owner has read it)
 
 | Item | State |
