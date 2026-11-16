@@ -44,13 +44,56 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 - **`std:csv`** (L2): RFC 4180 records. `parse`, `parse_with` (a `delimiter` and a `max_fields` limit, 10000 by default), `parse_lines` (a list of lines, so a file read with
   `files.lines` under the read grant), `records` (dictionaries keyed by the header), `format_row` and `format` (minimal quoting, CRLF). Quoted fields keep their commas, doubled quotes
   and line ends; CRLF, LF and CR all end a record; a leading byte order mark is dropped; a blank line is not a record; every field stays a string. An unclosed quote, text after a
-  closing quote, a quote inside an unquoted field and too many fields are errors **that name the line**. Specified in `[lib.std-csv]`; a seeded fuzzer checks it against Python's
+  closing quote, a quote inside an unquoted field, **a null byte in a field** (not text: a truncated binary or the wrong encoding, G-053) and too many fields are errors **that name
+  the line**. Specified in `[lib.std-csv]`; a seeded fuzzer checks it against Python's
   `csv` module (what `csv.writer` writes reads back, and 20,000 random texts are read the same or refused for the documented reason). The module reads no file and declares no capability.
 - **`std:dict`** (L4, decision D-P6): `dict.get(d, key, fallback)` and `dict.get_path(d, path, fallback)`, for a missing value without a new global name or a `nothing` literal. The
   fallback is used only when the key is absent. Specified in `[lib.std-dict]`.
 - **`sorted(list, key)` and `sorted(list, key, descending)`** (L3, G-038): ordering by a key function, **stable** in both directions on all three engines (checked against Python's
   `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
 - Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
+
+### Security (M14: the restricted profile's string limit is now a memory bound on file reads)
+
+- **`std:files` no longer loads a whole file, or a whole line, into memory before the `restricted` string limit refuses it.** The 1,000,000-character
+  limit of the `restricted` profile (`docs/spec/16-sandbox.md` `[sbx.limits]`) was a size check applied *after* the value was built, so a read of a
+  hostile multi-gigabyte file cost memory in proportion to the file (about two bytes per byte of file) before the clean refusal — a denial of service
+  the limit was meant to prevent. Now the limit bounds the memory:
+  - **`read(path)`** reads at most one character past the limit and refuses there, so an over-limit file costs a bounded amount of memory (measured ~50 MB
+    for a 300 MB file, where it was ~620 MB), whatever the file's size — and a read of a growing file or a pipe is bounded too, which a `stat()` of the path could not do.
+  - **`files.lines(path)` / `files.each_line(path, fn)`** bound a single endless line to the string limit's worth of bytes (a character is at most four UTF-8
+    bytes, so the chunk reader stops at 4 × the limit) instead of growing it to the 16 MiB chunk ceiling first. A single line's peak memory no longer grows
+    with the line's length (measured a constant ~179 MB for a 100 MB line and for a 400 MB line).
+- **The break this closes (authorized as a minor by `docs/spec/STABLE.md`, row 44: a fix that must change stable behaviour to close a resource-limit hole
+  in the `restricted` profile is a minor change with a `security` entry that names it).** Under `restricted`, a single line longer than **16 MiB** used to
+  refuse with `FileError: a line is longer than 16777216 bytes`; it now refuses with the string-limit error `a string cannot grow beyond 1000000 characters`,
+  the same error an over-limit line already gave once it was built. Every file that read before still reads, and every file refused before is still refused,
+  with the same exit status; only that one line-too-long message, under `restricted`, changed. `trusted` runs (no string limit) are unchanged: the 16 MiB
+  chunk ceiling and its message still stand. The self-hosted engine, which applies its limit to the returned value rather than to the chunk, gives the same
+  answers on every engine.
+
+### Security (M14: the restricted profile refuses a symbolic link swapped in for the final path component — TOCTOU Part A)
+
+- **The final component of every file open in `restricted` is now opened with `O_NOFOLLOW`, so a symbolic link swapped in for the final name between the
+  path check and the open is refused instead of followed** (`docs/spec/16-sandbox.md` `[sbx.toctou]`; closes the final-component half of G-054). `[sbx.paths]`
+  resolves the real path and the function then opens it, as two steps; a process that can write the granted folder could swap the checked name for a link out
+  of the grant in the gap, and a plain open would follow it. `read`, `write`, `append`, `copy` (both ends), `files.lines`/`files.each_line` and
+  `files.sha256_file` are covered; `remove` and `rename` act on the final name itself with `lstat`, never on a link's target. On Windows, which has no
+  `O_NOFOLLOW`, the file is opened and the handle's real path is read back with `GetFinalPathNameByHandleW`, and a handle that no longer resolves inside the
+  grant is refused. The guard is a host native, so it protects the bytecode VM and the tree-walker (the embedding API and `--profile restricted`); the
+  self-hosted engine runs its sandbox as a simulation on a trusted host and does not apply it (divergence D-047).
+- **Measured.** A committed chaos probe that swaps an in-grant name for an out-of-grant link under a stopwatch read the secret out of the grant **590 times/min**
+  and wrote outside it **825 times/min** before the fix, and **0/min** after it.
+- **The break this closes (authorized as a minor by `docs/spec/STABLE.md`, row 44: a fix that must change stable behaviour to close a hole in the `restricted`
+  profile's capability gating is a minor change with a `security` entry that names it).** Under `restricted`, `read`/`write`/`append`/`copy`/`files.lines`/
+  `files.each_line`/`files.sha256_file` on a path **whose final component is a symbolic link** used to follow the link (and succeed when its target resolved
+  inside the grant); they now refuse with `FileError: <path>: the final path component is a symbolic link; the restricted profile refuses to follow it (a link
+  may be swapped in after the path is checked -- docs/spec/16-sandbox.md [sbx.toctou])`. A link at a *parent* component, and a path whose final component is a
+  regular file, are unchanged, so a grant reached through a symlinked parent directory still reads and writes. `trusted` runs are unchanged (no grant to escape;
+  links are always followed).
+- **Residual (Part B, Phase 6).** A parent directory swapped for a link is not closed by a final-component guard; that race, and the rest of threat-model N5,
+  stay open. Static attacks are refused. Concurrent modification of the granted directory by another process is mitigated by O_NOFOLLOW (final component) but
+  remains vulnerable to parent-component races until Phase 6.
 
 ## [2.3.0] - 2026-11-14 — The standard library, a declared stable surface, safer packages and a registry (M12 and M13)
 

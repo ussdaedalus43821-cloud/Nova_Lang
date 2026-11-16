@@ -16,6 +16,12 @@ FORBIDDEN = [
     r"security boundary", r"sandbox guarantee", r"secure sandbox", r"safe to run", r"fully secure", r"escape[- ]proof",
     r"bullet[- ]?proof", r"unhackable", r"guarantees? isolation", r"isolated from the host", r"is (?:a )?sandbox\b",
     r"(?:restricted|sandbox|profile)\b[^.]{0,60}\b(?:is|are) (?:safe|secure)\b",
+    # The TOCTOU fix closes the final-component swap, not every race (parent components remain, Phase 6).
+    # No document may call the sandbox "race-free" or the file operations "atomic" (ADR 0005, [sbx.toctou]).
+    # Scoped to the claim: "atomic groups" (a regex feature) and "atomic rename" (a mechanism) are untouched.
+    r"race[- ]?free",
+    r"(?:restricted|sandbox|profile|the open|opens?|file operations?|operations?|the check|use of the path)\b"
+    r"[^.\n]{0,60}\b(?:is|are|become[sd]?|remains?|stays?|made|now)\b[^.\n]{0,25}\batomic\b",
 ]
 NEGATION = re.compile(r"\b(?:not|no|never|nor|neither|without|until|cannot|may not|must not)\b|n't", re.I)
 # Files that talk about the words themselves, or quote a historical sentence, are read with the same rule but may name the
@@ -73,6 +79,13 @@ class Wording(unittest.TestCase):
         self.assertFalse(list(claims_in("This is not a security boundary.")))
         self.assertFalse(list(claims_in('No document may say "security boundary" until the review is done.')))
         self.assertFalse(list(claims_in("capability gating and resource limits")))
+        # the TOCTOU wording rule ([sbx.toctou], ADR 0005)
+        self.assertTrue(list(claims_in("The restricted profile is race-free.")))
+        self.assertTrue(list(claims_in("File operations are atomic.")))
+        self.assertTrue(list(claims_in("The open is now atomic against a swap.")))
+        self.assertFalse(list(claims_in("Regex refuses atomic groups and possessive quantifiers.")))
+        self.assertFalse(list(claims_in("Writes are to a temporary file and an atomic rename.")))
+        self.assertFalse(list(claims_in("The open is not atomic across the parent path.")))
 
     def test_the_documents_carry_the_review_label(self):
         for name in LABELLED:
@@ -89,6 +102,14 @@ class Wording(unittest.TestCase):
         text = (ROOT / "docs/design/m11-review-package.md").read_text(encoding="utf-8")
         for needle in ("D-045", "N2", "N11", "N12", "RLIMIT_AS", "TOCTOU"):
             self.assertIn(needle, text)
+
+    def test_the_sandbox_spec_states_the_toctou_wording_exactly(self):
+        """[sbx.toctou], ADR 0005: the one sentence every document must use for the TOCTOU posture, so
+        no edit can quietly upgrade "mitigated" to "closed" or "race-free"."""
+        text = (ROOT / "docs/spec/16-sandbox.md").read_text(encoding="utf-8")
+        self.assertIn("Static attacks are refused.", text)
+        self.assertIn("mitigated by O_NOFOLLOW (final component)", text)
+        self.assertIn("remains vulnerable to parent-component races until Phase 6", text)
 
 
 if __name__ == "__main__":

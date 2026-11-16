@@ -158,8 +158,33 @@ Each rule is a cell of the coverage matrix, and needs a case on every engine:
 | `paths.same-error` | a denied path gives the same error whether or not it exists |
 | `paths.import` | `import` follows the same grant |
 
-The check and the use are two steps. A path that another process can change between them is
-not defended (`[sbx.claims]`, threat model N5).
+### [sbx.toctou] The check-then-open race
+
+The check and the use are two steps: `[sbx.paths]` resolves the real path, and the function then
+opens it. Between the two, another process that can write the granted folder may swap the final
+name for a symbolic link that points out of the grant — the check saw the real file, and a plain
+open would follow the new link.
+
+The **final component** of every file open in the restricted profile is opened with `O_NOFOLLOW`,
+which makes the kernel refuse a terminal symbolic link in the open itself, so the swapped link is
+refused (`FileError: … the final path component is a symbolic link`) instead of followed. Because
+the kernel cannot tell an attacker's swap from an honest link, a symbolic link at the final
+component is refused **even when it points inside the grant**. `read`, `write`, `append`, `copy`
+(both ends), `files.lines`/`files.each_line` and `files.sha256_file` are covered; `remove` and
+`rename` act on the final name itself, never on a link's target, and need no open. On Windows,
+which has no `O_NOFOLLOW`, the file is opened and the open handle's real path is read back with
+`GetFinalPathNameByHandleW`; a handle that no longer resolves inside the grant is the swap, and it
+is refused. The guard is a host native, so it protects the bytecode VM and the tree-walker (the
+embedding API and `--profile restricted`); the self-hosted engine's own sandbox is a separate
+matter (threat model N5).
+
+The exact and only posture a document may state (ADR 0005):
+
+> **Static attacks are refused. Concurrent modification of the granted directory by another process is mitigated by O_NOFOLLOW (final component) but remains vulnerable to parent-component races until Phase 6.**
+
+A parent directory swapped for a symbolic link is not closed by a final-component guard; that race,
+and the rest of N5, stay open (`[sbx.claims]`, threat model N5). No document may call the sandbox
+race-free or its file operations atomic.
 
 ## [sbx.limits] Limits
 

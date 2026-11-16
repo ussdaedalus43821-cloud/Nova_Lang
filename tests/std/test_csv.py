@@ -96,7 +96,6 @@ class Reading(unittest.TestCase):
 
     def test_spaces_are_part_of_the_field(self):
         self.assertEqual(parse(" a , b "), [[" a ", " b "]])
-        self.assertEqual(parse("a\0b,\0"), [["a\0b", "\0"]])
 
     def test_another_delimiter(self):
         self.assertEqual(call("parse_with", "a;b\n1;2", {"delimiter": ";"}), [["a", "b"], ["1", "2"]])
@@ -125,6 +124,16 @@ class Errors(unittest.TestCase):
     def test_lines_count_inside_quoted_fields(self):
         fails(self, "parse", ['"x\r\ny\nz",1\r\nbad"\n'], "on line 4")
         fails(self, "parse_lines", [['"x', 'y"', 'q"']], "on line 3")
+
+    def test_a_null_byte_in_a_field_is_refused_and_names_the_line(self):
+        # A NUL byte is not text (a truncated binary, the wrong encoding): refuse it rather than let it ride
+        # through as part of a field (G-053). Named by the line it is on, like the other malformed-input errors.
+        message = fails(self, "parse", ["name,amount\r\ngood,1\r\nb\0ad,2\r\n"], "null byte in a field")
+        self.assertIn("on line 3", message)
+        fails(self, "parse_with", ["x\0y", {"delimiter": ";"}], "on line 1")
+        fails(self, "parse_lines", [["ok", "a", "b\0c"]], "on line 3")
+        # a NUL inside a quoted field is caught just the same
+        fails(self, "parse", ['"a\0b",1\n'], "null byte in a field")
 
     def test_the_field_limit(self):
         self.assertEqual(call("parse_with", "a,b,c", {"max_fields": 3}), [["a", "b", "c"]])
@@ -185,7 +194,7 @@ class Writing(unittest.TestCase):
         self.assertEqual(parse(call("format", rows)), rows)
 
 
-ALPHABET = ["a", "b", "Z", "1", " ", ",", ";", '"', "\r", "\n", "\r\n", "é", "日", "﻿", "\t"]          # no NUL: some Pythons' csv refuse it; [lib.std-csv] reads it as a character (Reading)
+ALPHABET = ["a", "b", "Z", "1", " ", ",", ";", '"', "\r", "\n", "\r\n", "é", "日", "﻿", "\t"]          # no NUL: std:csv refuses it (G-053, Errors) and some Pythons' csv does too, so it is not a fuzzing character
 
 
 class Fuzz(unittest.TestCase):

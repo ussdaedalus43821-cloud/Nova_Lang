@@ -704,7 +704,7 @@
    ]
   },
   {
-   "name": "esc-symlinks-a-link-inside-still-works",
+   "name": "esc-symlinks-a-parent-link-inside-still-works",
    "spec": [
     "sbx.capabilities",
     "sbx.paths",
@@ -712,9 +712,8 @@
     "sbx.errors"
    ],
    "profile": "sandbox",
-   "source": "print(read(\"data/inlink\"))\nprint(read(\"data/self/in.txt\"))\nprint(read(\"data/sub/up/in.txt\"))",
+   "source": "print(read(\"data/self/in.txt\"))\nprint(read(\"data/sub/up/in.txt\"))",
    "output": [
-    "hello",
     "hello",
     "hello"
    ],

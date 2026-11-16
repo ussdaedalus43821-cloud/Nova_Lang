@@ -102,10 +102,12 @@ import bisect
 import decimal
 import hashlib
 import importlib
+import errno
 import json as json_module
 import math
 import os
 import platform
+import stat as stat_module
 import random
 import re
 import shutil
@@ -1819,13 +1821,13 @@ def builtin_values(args, position):
     return list(dict_argument(args[0], "values()", position).values())
 
 
-def builtin_append(args, position):
+def builtin_append(args, position, interpreter=None):
     """append(list, value) grows a list; append(path, text) grows a file."""
     target, value = args
 
     if isinstance(target, str):
         text = text_argument(value, "the text appended to a file", position)
-        with open_file(target, "a", position) as handle:
+        with open_file(target, "a", position, interpreter, "write") as handle:
             handle.write(text)
         return NOTHING
 
@@ -1851,8 +1853,107 @@ def reject_null_byte(path, position):
     return path
 
 
-def open_file(path, mode, position):
-    """Open a file, turning the operating system's complaint into a NovaError."""
+# -- the final-component swap: closing the check-then-open race (docs/spec/16-sandbox.md [sbx.toctou]) ----
+#
+# Capabilities.check_path resolves a path with realpath -- following every symbolic link -- and approves
+# it when the real file lies inside a grant. Check and open are two syscalls on the same name, so between
+# them another process can replace the final name with a symbolic link that points out of the grant: the
+# check saw the real file, the open follows the new link. That is G-054, the TOCTOU.
+#
+# O_NOFOLLOW makes the kernel refuse to open a symbolic link at the FINAL component, atomically with the
+# open, so the swapped link is refused instead of followed. It guards only the last component; a parent
+# directory swapped for a symbolic link is a race this does not close, left to Phase 6
+# (docs/design/m11-threat-model.md N5). The guard is for the restricted profile only: the trusted profile
+# has no grant to escape and has always followed links, so nothing there changes.
+#
+# Windows has no O_NOFOLLOW. There the final component is refused with os.path.islink before the open, so a
+# terminal symbolic link is never followed and a write never truncates its target -- matching O_NOFOLLOW,
+# which refuses the terminal link whether it points inside or outside the grant. A link swapped in after that
+# check is then caught by the open handle's real identity (GetFinalPathNameByHandleW): a handle that no
+# longer resolves inside the grant is the swap, and the file is refused (_verify_final_path).
+
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+_OPEN_FLAGS = {
+    "r": os.O_RDONLY, "rb": os.O_RDONLY,
+    "w": os.O_WRONLY | os.O_CREAT | os.O_TRUNC, "wb": os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+    "a": os.O_WRONLY | os.O_CREAT | os.O_APPEND, "ab": os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+}
+
+
+def running_restricted(interpreter):
+    """Is this call running under the restricted profile? A self-hosted host view carries no
+    Capabilities, so the answer there is no and the trusted behaviour is kept unchanged."""
+    caps = getattr(interpreter, "caps", None)
+    return bool(getattr(caps, "restricted", False))
+
+
+def symlink_refusal(path, position):
+    return NovaError(
+        "{}: the final path component is a symbolic link; the restricted profile refuses to follow it "
+        "(a link may be swapped in after the path is checked -- docs/spec/16-sandbox.md "
+        "[sbx.toctou])".format(path), position, label="FileError")
+
+
+def _verify_final_path(descriptor, path, position, interpreter, kind):
+    """Windows has no O_NOFOLLOW: read the opened handle's real path and refuse it unless it still
+    resolves inside the grant the path was checked against (the final name was swapped for a reparse
+    point after the check). POSIX never reaches here -- O_NOFOLLOW has already refused the link."""
+    try:
+        import msvcrt, ctypes
+        handle = msvcrt.get_osfhandle(descriptor)
+        get_final = ctypes.windll.kernel32.GetFinalPathNameByHandleW
+        length = get_final(handle, None, 0, 0)
+        if not length:
+            raise OSError("the file's real path cannot be read")
+        buffer = ctypes.create_unicode_buffer(length)
+        get_final(handle, buffer, length, 0)
+        final = buffer.value
+        if final.startswith("\\\\?\\"):
+            final = final[4:]
+    except OSError:
+        raise symlink_refusal(path, position)
+    caps = getattr(interpreter, "caps", None)
+    roots = caps.roots.get(kind, ()) if (caps is not None and kind) else ()
+    real = real_path(final)
+    if real is None or not any(inside_folder(real, root) for root in roots):
+        raise NovaError(
+            "{}: the open file is not inside the folders this program may use (its real path is {} -- "
+            "the final name may have been swapped after the check, docs/spec/16-sandbox.md "
+            "[sbx.toctou])".format(path, final), position, label="FileError")
+
+
+def _open_guarded(path, mode, position, interpreter, kind):
+    """open(path, mode) for the restricted profile with the final-component symlink closed."""
+    if not _NOFOLLOW and os.path.islink(path):
+        # Windows has no O_NOFOLLOW: refuse a final-component symbolic link before the open, so the link is
+        # never followed (a write never truncates its target). O_NOFOLLOW refuses the terminal link whether
+        # it points inside or outside the grant, so this must too -- the handle check below only catches a
+        # link that escapes the grant. A link swapped in after this check is caught there (_verify_final_path).
+        raise symlink_refusal(path, position)
+    flags = _OPEN_FLAGS[mode] | _NOFOLLOW | _CLOEXEC
+    try:
+        descriptor = os.open(path, flags, 0o666)
+    except OSError as problem:
+        if _NOFOLLOW and problem.errno in (errno.ELOOP, errno.EMLINK):
+            raise symlink_refusal(path, position)
+        raise                               # mapped by open_file's own handler
+    try:
+        if not _NOFOLLOW:                    # Windows: verify by the handle's real identity
+            _verify_final_path(descriptor, path, position, interpreter, kind)
+        if "b" in mode:
+            return os.fdopen(descriptor, mode)
+        return os.fdopen(descriptor, mode, encoding="utf-8", newline="" if "r" not in mode else None)
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def open_file(path, mode, position, interpreter=None, kind=None):
+    """Open a file, turning the operating system's complaint into a NovaError. In the restricted profile
+    the final path component is opened without following a terminal symbolic link, closing the
+    check-then-open race (docs/spec/16-sandbox.md [sbx.toctou]); `kind` ("read"/"write") is the grant the
+    path was checked against, which the Windows verification needs."""
     reject_null_byte(path, position)
     if os.path.isdir(path):
         # Asked first, because Linux and Windows word this refusal differently
@@ -1860,6 +1961,10 @@ def open_file(path, mode, position):
         raise NovaError("{} is a directory, not a file".format(path), position,
                         label="FileError")
     try:
+        if running_restricted(interpreter):
+            return _open_guarded(path, mode, position, interpreter, kind)
+        if "b" in mode:
+            return open(path, mode)
         # Written text is never translated: a line feed is one byte on every
         # platform (open() would write the platform's line end on Windows).
         return open(path, mode, encoding="utf-8", newline="" if mode != "r" else None)
@@ -1875,10 +1980,23 @@ def open_file(path, mode, position):
         )
 
 
-def builtin_read(args, position):
+def builtin_read(args, position, interpreter):
     path = text_argument(args[0], "read()", position)
-    with open_file(path, "r", position) as handle:
+    # A bounded read: when a string limit is in force (the restricted profile), never pull more than
+    # the limit into memory. read() used to build the whole string and only then have it refused by
+    # the result-size check, so a 500 MB file cost 500 MB of memory before the clean refusal -- a
+    # denial of service the limit was meant to stop (docs/spec/16-sandbox.md [sbx.limits]; a security
+    # fix, CHANGELOG). handle.read(n) on a text handle reads about n characters, decoding as it goes,
+    # so it never loads the whole file; reading limit+1 is enough to know the string is too long. This
+    # also bounds a read from a pipe or a growing file, which a stat() of the path could not.
+    limit = interpreter.limits.string if interpreter.counting else 0
+    with open_file(path, "r", position, interpreter, "read") as handle:
         try:
+            if limit:
+                text = handle.read(limit + 1)
+                if len(text) > limit:
+                    raise interpreter.string_too_long(position)
+                return text
             return handle.read()
         except (OSError, UnicodeDecodeError) as problem:
             raise NovaError(
@@ -1886,10 +2004,10 @@ def builtin_read(args, position):
             )
 
 
-def builtin_write(args, position):
+def builtin_write(args, position, interpreter=None):
     path = text_argument(args[0], "the file name for write()", position)
     text = text_argument(args[1], "the text for write()", position)
-    with open_file(path, "w", position) as handle:
+    with open_file(path, "w", position, interpreter, "write") as handle:
         handle.write(text)
     return NOTHING
 
@@ -2840,8 +2958,13 @@ def builtin_mkdir(args, position):
 
 def builtin_remove(args, position):
     path = reject_null_byte(text_argument(args[0], "remove()", position), position)
+    # The dir-or-file decision is made with lstat, which does not follow a terminal symbolic link, so a
+    # name swapped for a link between the decision and the call cannot turn remove() against the link's
+    # target: os.rmdir and os.remove both act on the name itself, never on what a final link points to
+    # (docs/spec/16-sandbox.md [sbx.toctou]; os.path.isdir would have followed the link).
     try:
-        if os.path.isdir(path):
+        info = os.lstat(path)
+        if stat_module.S_ISDIR(info.st_mode):
             os.rmdir(path)
         else:
             os.remove(path)
@@ -2864,11 +2987,27 @@ def builtin_rename(args, position):
     return NOTHING
 
 
-def builtin_copy(args, position):
+def builtin_copy(args, position, interpreter=None):
     src = reject_null_byte(text_argument(args[0], "the source for copy()", position), position)
     dst = reject_null_byte(text_argument(args[1], "the destination for copy()", position), position)
+    if not running_restricted(interpreter):
+        try:
+            shutil.copy2(src, dst)
+        except OSError as problem:
+            raise NovaError("copy(): {}".format(problem.strerror or problem), position, label="FileError")
+        return NOTHING
+    # Restricted: open both ends without following a terminal symbolic link, so neither the source read
+    # nor the destination write can be turned against a file outside the grant by a name swapped in after
+    # the path check (docs/spec/16-sandbox.md [sbx.toctou]). copy(file, folder) writes folder/<name of
+    # file>, the path check_copy_destination already judged, so a directory destination resolves the same.
+    target = os.path.join(dst, os.path.basename(src)) if os.path.isdir(dst) else dst
     try:
-        shutil.copy2(src, dst)
+        with open_file(src, "rb", position, interpreter, "read") as source, \
+                open_file(target, "wb", position, interpreter, "write") as sink:
+            shutil.copyfileobj(source, sink)
+        shutil.copystat(src, target, follow_symlinks=False)
+    except NovaError:
+        raise
     except OSError as problem:
         raise NovaError("copy(): {}".format(problem.strerror or problem), position, label="FileError")
     return NOTHING
@@ -3758,7 +3897,7 @@ def builtin_reduce(args, position, interpreter):
 BUILTINS = {
     "print": BuiltinFunction("print", None, builtin_print, needs_interpreter=True),
     "len": BuiltinFunction("len", 1, builtin_len),
-    "append": BuiltinFunction("append", 2, builtin_append),
+    "append": BuiltinFunction("append", 2, builtin_append, needs_interpreter=True),
     "pop": BuiltinFunction("pop", None, builtin_pop),
     "range": BuiltinFunction("range", None, builtin_range),
     "upper": BuiltinFunction("upper", 1, builtin_upper),
@@ -3771,8 +3910,8 @@ BUILTINS = {
     "type": BuiltinFunction("type", 1, builtin_type),
     "keys": BuiltinFunction("keys", 1, builtin_keys),
     "values": BuiltinFunction("values", 1, builtin_values),
-    "read": BuiltinFunction("read", 1, builtin_read, paths=((0, "read"),)),
-    "write": BuiltinFunction("write", 2, builtin_write, paths=((0, "write"),)),
+    "read": BuiltinFunction("read", 1, builtin_read, needs_interpreter=True, paths=((0, "read"),)),
+    "write": BuiltinFunction("write", 2, builtin_write, needs_interpreter=True, paths=((0, "write"),)),
     "exists": BuiltinFunction("exists", 1, builtin_exists, paths=((0, "read"),)),
     "listdir": BuiltinFunction("listdir", 1, builtin_listdir, paths=((0, "read"),)),
     "input": BuiltinFunction("input", None, builtin_input, needs_interpreter=True),
@@ -3813,7 +3952,7 @@ BUILTINS = {
     "mkdir": BuiltinFunction("mkdir", 1, builtin_mkdir, paths=((0, "write"),)),
     "remove": BuiltinFunction("remove", 1, builtin_remove, paths=((0, "write"),)),
     "rename": BuiltinFunction("rename", 2, builtin_rename, paths=((0, "write"), (1, "write"))),
-    "copy": BuiltinFunction("copy", 2, builtin_copy, paths=((0, "read"), (1, "write"))),
+    "copy": BuiltinFunction("copy", 2, builtin_copy, needs_interpreter=True, paths=((0, "read"), (1, "write"))),
     "regex": BuiltinFunction("regex", 2, builtin_regex, needs_interpreter=True),
     "replace_all": BuiltinFunction("replace_all", 3, builtin_replace_all),
     "split_lines": BuiltinFunction("split_lines", 1, builtin_split_lines),
@@ -6123,25 +6262,37 @@ def native_files_is_link(args, position):
     return os.path.islink(file_path_argument(args[0], "files.is_link()", position))
 
 
-def native_files_next_lines(args, position):
+def native_files_next_lines(args, position, interpreter=None):
     """[lines, next_offset, at_end]: the whole lines in the next chunk of `path` from byte `offset`.
 
     The file is opened, read and closed in this one call (no handle outlives it), and the caller's
     grant was checked for this very call. A chunk ends at its last line feed, so a "\\r\\n" is never
-    cut in two; a line longer than the chunk makes the chunk grow, up to FILE_CHUNK_LIMIT bytes."""
+    cut in two; a line longer than the chunk makes the chunk grow, up to a cap.
+
+    The cap is FILE_CHUNK_LIMIT (16 MiB), except that when a string limit is in force (the restricted
+    profile) a single line is bounded by that limit's worth of memory, not 16 MiB: a line of more than
+    `limit` characters needs more than `limit` bytes, and a character is at most four UTF-8 bytes, so
+    4*`limit` bytes with no line feed is already over the limit. A 500 MB line is then refused at ~4 MB
+    with the string-limit message, instead of being grown to 16 MiB first (docs/spec/16-sandbox.md
+    [sbx.limits]; a security fix, CHANGELOG). The self-hosted engine keeps the 16 MiB cap (its own limit
+    is applied to the result instead); the answers are the same on every engine."""
     path = file_path_argument(args[0], "files.next_lines()", position)
     offset, size = decimal_whole(args[1]), decimal_whole(args[2])
     if offset is None or offset < 0 or size is None or size < 1:
         raise native_error("files.next_lines() needs a path, a byte offset and a chunk size", position)
     if os.path.isdir(path):
         raise NovaError("{} is a directory, not a file".format(path), position, label="FileError")
+    limit = interpreter.limits.string if interpreter is not None and interpreter.counting else 0
+    cap = min(FILE_CHUNK_LIMIT, 4 * limit) if limit else FILE_CHUNK_LIMIT
     try:
-        with open(path, "rb") as handle:
+        with open_file(path, "rb", position, interpreter, "read") as handle:
             handle.seek(offset)
             data = handle.read(size)
             at_end = len(data) < size
             while not at_end and b"\n" not in data:
-                if len(data) >= FILE_CHUNK_LIMIT:
+                if len(data) >= cap:
+                    if cap < FILE_CHUNK_LIMIT:
+                        raise interpreter.string_too_long(position)
                     raise NovaError("{}: a line is longer than {} bytes".format(path, FILE_CHUNK_LIMIT), position, label="FileError")
                 more = handle.read(size)
                 at_end = len(more) < size
@@ -6379,7 +6530,7 @@ def native_files_sha256_file(args, position, interpreter):
     meter = regex_meter(interpreter, position)
     digest = hashlib.sha256()
     try:
-        with open(path, "rb") as handle:
+        with open_file(path, "rb", position, interpreter, "read") as handle:
             while True:
                 piece = handle.read(HASH_CHUNK)
                 if not piece:
@@ -6893,6 +7044,10 @@ def csv_read(who, text, delimiter, max_fields, interpreter, position):
         unquoted = _CSV_UNQUOTED[delimiter] = re.compile('[^"\r\n' + re.escape(delimiter) + "]*")
     if text.startswith("﻿"):
         text = text[1:]
+    nul = text.find("\0")                                        # a NUL is not text: it usually means the bytes are not CSV
+    if nul >= 0:                                                 # (a truncated binary, a wrong encoding). Refuse it and name
+        csv_fail(who, "found a null byte in a field on line {}; a null byte is not text, so the input is not a CSV "
+                      "record".format(1 + _line_ends(text[:nul])), position)   # the line, as the other malformed-input errors do.
     rows, i, n, line = [], 0, len(text), 1
     while i < n:
         if text[i] in "\r\n":                                        # a line with nothing on it is not a record
@@ -7146,7 +7301,7 @@ NATIVE_FUNCTIONS = {
         "size": (1, native_files_size, READ_PATH), "is_dir": (1, native_files_is_dir, READ_PATH),
         "is_link": (1, native_files_is_link, READ_PATH), "next_lines": (3, native_files_next_lines, READ_PATH),
         "sha256_file": (1, native_files_sha256_file, READ_PATH),
-    }, metered=("sha256_file",)),
+    }, metered=("sha256_file", "next_lines")),
 }
 
 
