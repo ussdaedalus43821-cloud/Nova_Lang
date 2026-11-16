@@ -121,7 +121,9 @@ source text ──Lexer──▶ tokens ──Parser──▶ AST ──type gat
      instruction, every slot and constant exists, and the stack depth
      agrees wherever two paths meet.
 
-   `python3 novalang.py --dis file.nova` prints the bytecode. A parsed
+   `python3 novalang.py --dis file.nova` prints the bytecode, and
+   [`docs/BYTECODE.md`](docs/BYTECODE.md) explains how to compile a program
+   to a `.novac` file and how the automatic cache works. A parsed
    program is compiled once and the result kept on its AST, so a
    `Nova.compile()` script, or a source string `eval()`/`exec()` has
    already seen, is never compiled again.
