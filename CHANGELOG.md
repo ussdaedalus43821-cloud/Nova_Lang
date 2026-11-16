@@ -58,6 +58,19 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
 - Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
 
+### Added and Fixed (M14 L6, item 1 of the 2.3.x patch list: the embedding fixes G-015 and G-017)
+
+- **Added: `Nova(args=[...])`** (G-015). An embedded script can now be given its own `args()`: a list of strings, held by that engine alone, copied when it is made and
+  returned as a new list on every call. Without it `args()` is an empty list, as it was for an embedded engine before; it is never the host's own command line. A command-line run
+  is unchanged (the words after the file). Under `restricted`, `args` is still one of the names the `process` capability grants. Specified in `docs/spec/11-embedding.md`
+  `[emb.args]`; four conformance cases (the harness's `embedding` fixture takes an `args` list; the self-hosted engine has no embedding host, so these cases do not run on it) and nine unit tests.
+  *Recorded surface:* the constructor's signature in `tests/api/stable-surface.json` gains one optional parameter (`args=None`, before `**settings`); a new optional argument is a **minor** change
+  (`docs/spec/STABLE.md`), and no call that was valid is refused.
+- **Fixed: a lone `novalang.py` no longer ends in a Python traceback** (G-017). A program with an `import` or a type annotation needs `tools/nova-typecheck.py`, `tools/nova_ast.py` and
+  `tools/nova_scope.py` (the type check that runs before it), and `import "std:..."` needs `lib/std/modules.json` and the module's file. When one is missing the program now ends with
+  `ImportError: ... needs <files>, which are missing from <folder> (copy the tools folder next to novalang.py)` and exit status 1. A program with no import and no annotation needs nothing, as before.
+  The README and `[emb.model]` say which files an installation must contain. (The M13 plan counted four Python files; measured, the type check needs three, and the fourth was not found.) Seven unit tests.
+
 ### Security (M14: the restricted profile's string limit is now a memory bound on file reads)
 
 - **`std:files` no longer loads a whole file, or a whole line, into memory before the `restricted` string limit refuses it.** The 1,000,000-character

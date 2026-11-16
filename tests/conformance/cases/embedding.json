@@ -1520,6 +1520,109 @@
     "m.nova": "python.import(\"math\")\nexport let root = python.call(\"math.sqrt\", 9)"
    },
    "allow_python": true
+  },
+  {
+   "name": "emb-args-is-empty-unless-the-host-gives-it",
+   "spec": [
+    "emb.args"
+   ],
+   "profile": "embedding",
+   "source": "print(args())",
+   "output": [
+    "[]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {},
+   "results": []
+  },
+  {
+   "name": "emb-args-are-the-hosts-strings",
+   "spec": [
+    "emb.args"
+   ],
+   "profile": "embedding",
+   "source": "print(args())\nprint(len(args()))\nprint(args()[1])",
+   "output": [
+    "[\"alpha\", \"beta\"]",
+    "2",
+    "beta"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "args": [
+     "alpha",
+     "beta"
+    ]
+   },
+   "results": []
+  },
+  {
+   "name": "emb-args-belong-to-one-engine",
+   "spec": [
+    "emb.args"
+   ],
+   "profile": "embedding",
+   "source": "let mine = args()",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "args": [
+     "only-here"
+    ],
+    "after": [
+     [
+      "eval",
+      "args()"
+     ]
+    ],
+    "other_engine_after": [
+     [
+      "eval",
+      "args()"
+     ]
+    ]
+   },
+   "results": [
+    {
+     "value": [
+      "only-here"
+     ]
+    },
+    {
+     "value": []
+    }
+   ]
+  },
+  {
+   "name": "emb-args-hands-out-a-copy",
+   "spec": [
+    "emb.args"
+   ],
+   "profile": "embedding",
+   "source": "let first = args()\nappend(first, \"added\")\nprint(args())\nprint(first)",
+   "output": [
+    "[\"x\"]",
+    "[\"x\", \"added\"]"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "embedding": {
+    "args": [
+     "x"
+    ]
+   },
+   "results": []
   }
  ]
 }

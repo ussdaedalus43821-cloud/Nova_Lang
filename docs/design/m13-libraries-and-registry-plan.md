@@ -537,7 +537,7 @@ Nothing below is marked implemented in the roadmap: slice 1 is not done until ev
 | The stable-surface file and test | **Built** (`tests/api/`, `docs/spec/STABLE.md`): the surface is read from the source; a removal or change fails unless the major version moved; any other change fails until the record is rewritten |
 | The deprecation mechanism (the warning, `--warnings`, the embedding callback) | **Not built.** The policy and an empty `DEPRECATIONS.md` exist; nothing is deprecated, so nothing is owed yet |
 | The explicit nesting counter (G-051) | **Not built.** It touches the parser, the compiler, the tree-walker and the artifact loader, and needs PyPy to verify; it should be its own pull request |
-| The embedding fixes (G-015, G-017) | **Not built** |
+| The embedding fixes (G-015, G-017) | **Built 2026-11-16** (M14 L6, item 1; branch `m14/l6-embedding`): `Nova(args=[...])` and an `ImportError` that names the missing installation files; spec `[emb.args]` and `[emb.model]`, 4 conformance cases, 16 unit tests |
 
 Slices 2, 3 and 4 depend only on slice 1 and could run in parallel by different people; **slice 4 and slice 6 carry the security weight of the milestone** and each ends with a request that the independent reviewer (D-review of M11) read them. The close of the milestone (a version number, the README's numbers, the changelog) follows slice 6 (slice 7 is M14's, by D6).
 
@@ -632,9 +632,9 @@ its signatures (slice 6).
 | G-011 | A line starting with `+` is a new statement | Deferred: a parser diagnostic; the linter can warn first |
 | G-012, G-013 | No disk I/O rates, Wi-Fi, sensors | Out of scope: outside what a scripting language reaches |
 | G-014 | Time zones | Deferred: needs a time-zone database (Python 3.7 has no `zoneinfo`); with dates (G-046) |
-| G-015 | Embedding cannot give a program its `args()` | Slice 1 |
+| G-015 | Embedding cannot give a program its `args()` | Slice 1; **built in M14 L6 (2026-11-16)** |
 | G-016 | Natural names are reserved | **Policy** (rule 2): namespaces; the surface test counts reserved names |
-| G-017 | `import` needs four undocumented Python files | Slice 1: the interpreter names what it needs; documentation |
+| G-017 | `import` needs four undocumented Python files | Slice 1: the interpreter names what it needs; documentation; **built in M14 L6 (2026-11-16)** (three Python files measured, plus `lib/std/`) |
 | G-018 | No `exp()`, no power operator | Slice 2: `math.exp`; the operator is syntax (deferred) |
 | G-019 | Two engines word one error differently | Conformance (D-001); not an M13 item |
 | G-020 | The self-hosted interpreter is 31x slower | M12 residue; not an M13 item |

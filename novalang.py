@@ -2493,8 +2493,11 @@ def builtin_exit(args, position, interpreter):
     sys.exit(code)
 
 
-def builtin_args(args, position):
-    return list(SCRIPT_ARGS)
+def builtin_args(args, position, interpreter):
+    """The program's own arguments. An engine made by the embedding API has its own ([emb.args]); a command-line run
+    reads the module's, which main() and run_source() set from the words after the file."""
+    own = interpreter.script_args
+    return list(SCRIPT_ARGS if own is None else own)
 
 
 def builtin_platform(args, position):
@@ -3946,7 +3949,7 @@ BUILTINS = {
     "sum": BuiltinFunction("sum", None, builtin_sum),
     "env": BuiltinFunction("env", 1, builtin_env, needs_interpreter=True),
     "exit": BuiltinFunction("exit", None, builtin_exit, needs_interpreter=True),
-    "args": BuiltinFunction("args", 0, builtin_args),
+    "args": BuiltinFunction("args", 0, builtin_args, needs_interpreter=True),
     "platform": BuiltinFunction("platform", 0, builtin_platform),
     "cwd": BuiltinFunction("cwd", 0, builtin_cwd),
     "mkdir": BuiltinFunction("mkdir", 1, builtin_mkdir, paths=((0, "write"),)),
@@ -5026,6 +5029,7 @@ class Interpreter:
         self.modules = {}               # resolved path -> its exports dict
         self.packages_granted = set()   # installed packages whose declared capabilities were found granted
         self.type_cache = None          # the type gate's results (a GateCache)
+        self.script_args = None         # args() of an embedded engine ([emb.args]); None: the command line's (SCRIPT_ARGS)
         self.current_exports = {}       # name -> value, for the module now loading
 
     python_override = None              # the self-hosted engine's grant (bootstrap.py)
@@ -5889,7 +5893,8 @@ def package_declared(directory, name, position):
 # lib/std/text.nova, one of the files listed in lib/std/modules.json. The list is the only way
 # in: the name after `std:` is looked up, never joined to a path.
 STD_PREFIX = "std:"
-STD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib", "std")
+INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))     # where novalang.py is; its tools/ and lib/ are looked for here
+STD_DIR = os.path.join(INSTALL_DIR, "lib", "std")
 _std_registry = None
 
 
@@ -5897,10 +5902,27 @@ def is_std_import(raw_path):
     return raw_path.startswith(STD_PREFIX)
 
 
-def std_registry():
+def missing_installation_files(base, names):
+    """The names (relative to `base`) of the files an installation must have and does not."""
+    return [name for name in names if not os.path.isfile(os.path.join(base, *name.split("/")))]
+
+
+def installation_error(what, base, missing, remedy, position=None):
+    """The ImportError for an installation that lacks files the interpreter needs ([emb.files], G-017): it names
+    the files, where they were looked for and what to copy, so a lone novalang.py does not end in a Python traceback."""
+    return NovaError("{} needs {}, which {} missing from {} ({})".format(
+        what, ", ".join(missing), "is" if len(missing) == 1 else "are", base, remedy),
+        position, label="ImportError")
+
+
+def std_registry(position=None):
     """{name: descriptor} read once from lib/std/modules.json."""
     global _std_registry
     if _std_registry is None:
+        missing = missing_installation_files(INSTALL_DIR, ["lib/std/modules.json"])
+        if missing:
+            raise installation_error('importing a standard module ("std:...")', INSTALL_DIR,
+                                     ["lib/std/modules.json"], "copy the lib/std folder next to novalang.py", position)
         with open(os.path.join(STD_DIR, "modules.json"), "r", encoding="utf-8") as handle:
             _std_registry = json_module.load(handle)["modules"]
     return _std_registry
@@ -5909,12 +5931,15 @@ def std_registry():
 def resolve_std(raw_path, position):
     """(file, descriptor) of the standard module `raw_path` names, or an ImportError."""
     name = raw_path[len(STD_PREFIX):]
-    registry = std_registry()
+    registry = std_registry(position)
     if name not in registry:
         raise NovaError(
             'there is no standard module "{}" - the standard modules are: {}'.format(
                 raw_path, ", ".join(STD_PREFIX + known for known in sorted(registry))),
             position, label="ImportError")
+    if not os.path.isfile(os.path.join(STD_DIR, name + ".nova")):
+        raise installation_error('importing "{}"'.format(raw_path), INSTALL_DIR,
+                                 ["lib/std/{}.nova".format(name)], "copy the lib/std folder next to novalang.py", position)
     return os.path.join(STD_DIR, name + ".nova"), registry[name]
 
 
@@ -9433,8 +9458,16 @@ def type_gate(ast, source, interpreter, path=None):
 _TYPECHECK = []
 
 
+TYPECHECK_FILES = ("tools/nova-typecheck.py", "tools/nova_ast.py", "tools/nova_scope.py")
+
+
 def typecheck_tool():
     if not _TYPECHECK:
+        base = INSTALL_DIR
+        missing = missing_installation_files(base, TYPECHECK_FILES)
+        if missing:
+            raise installation_error("a program with an import or a type annotation (it is type-checked before it runs)",
+                                     base, missing, "copy the tools folder next to novalang.py")
         _TYPECHECK.append(load_tool("nova-typecheck.py"))
     return _TYPECHECK[0]
 
@@ -11057,8 +11090,9 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self, engine=None, allow_python=False, profile="trusted", **settings):
-        """`engine` is "vm" (the default) or "tree" (the tree-walker).
+    def __init__(self, engine=None, allow_python=False, profile="trusted", args=None, **settings):
+        """`engine` is "vm" (the default) or "tree" (the tree-walker). `args` is what the script's `args()` returns:
+        a list of strings, empty if omitted ([emb.args]); it belongs to this engine alone.
         `allow_python` gives scripts the python.* namespace; without it every
         python.import/call/get/set refuses. A host that runs scripts it did
         not write should leave it off and use expose_global instead.
@@ -11068,9 +11102,14 @@ class Nova:
         `random=True`, `stdin=True`, `process=True`, `regex=True`, `python=[modules]`,
         `limits={...}`): docs/spec/16-sandbox.md. The default, `trusted`, is how NovaLang has
         always behaved and must not be used for code you did not write."""
+        if args is None:
+            args = []
+        if (not isinstance(args, (list, tuple))) or not all(isinstance(item, str) for item in args):
+            raise TypeError("Nova(args=...) must be a list of strings, not {!r}".format(args))
         self.interpreter = Interpreter(engine, allow_python=allow_python,
                                        capabilities=TRUSTED if profile == "trusted" and not settings
                                        else Capabilities(profile, **settings))
+        self.interpreter.script_args = list(args)
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
 
     @property
