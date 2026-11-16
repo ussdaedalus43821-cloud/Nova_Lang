@@ -26,6 +26,11 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Added: documentation
+
+- **`docs/BYTECODE.md`**, a developer guide to `.novac` artifacts and the compiled-artifact cache: `--compile`, `--check-artifact`, `--no-cache`, `--cache-dir`,
+  `NOVALANG_CACHE` and `NOVALANG_CACHE_DEBUG`, where the cache lives and when it is on, and troubleshooting. It follows `docs/spec/17-bytecode.md`, which stays normative. Linked from the README.
+
 ### Changed: the license
 
 - **NovaLang is now dual licensed, `MIT OR Apache-2.0`, at the user's option**, for the patent grant of the Apache License. `LICENSE` is now `LICENSE-MIT` (the copyright line reads
