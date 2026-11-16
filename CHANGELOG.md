@@ -69,7 +69,7 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   that differs from the lock, or a set registry that cannot be read and verified), 2 for a usage error. Yanked, unverified and "newer version declares more" are reported and are not problems.
   Without a registry, or with the older unsigned layout, it says yanks and revocations were not checked and exits 0.
 - Specified in `docs/spec/18-packages.md` ("`add` and `audit` (the tool)"), with 32 tests in `tests/pkg/test_add_audit.py` that use a real signed registry made by the real `publish`, `yank` and `revoke`.
-  `nova-pkg` is a tool and not an engine, so there are no conformance cases for it. **Not built:** reporting a package whose minor release removed an export that the previous one had.
+  `nova-pkg` is a tool and not an engine, so there are no conformance cases for it. **Not built:** reporting a package whose minor release removed an export that the previous one had; it is recorded as open gap G-055 in `docs/GAPS.md`, with the choices it needs from the owner.
 
 ### Added and Fixed (M14 L6, item 1 of the 2.3.x patch list: the embedding fixes G-015 and G-017)
 

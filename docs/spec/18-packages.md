@@ -174,7 +174,7 @@ rollback state). If a registry is set but cannot be read and verified, or a dire
 If no registry is set, or it is the older unsigned layout (which has no yanks or revocations), the line says so and it is **not** a
 problem. The last line is `audit: no problems found` or `audit: N problem(s)`; the exit status is **0** with no problems, **1** with
 any, and 2 for a usage error. Not built: reporting a package whose minor release **removed an export** that the previous one had
-(a compare of exports of two versions, which needs the newer archive unpacked).
+(a compare of exports of two versions, which needs the other version's archive unpacked; open gap G-055).
 
 ## The registry (the tool)
 

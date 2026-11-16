@@ -2,7 +2,7 @@
 
 The proof-of-concept apps keep their own logs: Nova_Stats G-001 to G-026, Nova_Sort G-027 to G-035, Nova_Log G-036 to G-042 and
 Nova_Data G-043 to G-050 (see [`ROADMAP.md`](ROADMAP.md), M13, "Requirements from the Proof-of-Concept Apps"). This file continues the same numbering
-for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-055**.
+for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-056**.
 
 **How to read an entry.** *Tried* is what was done and the exact result. *Why it matters* says what promise it touches. *Fix* says where it is planned.
 *Probe* is a check in `tests/` that passes while the gap exists and fails the day it is fixed, as in the proof-of-concept repositories.
@@ -11,12 +11,28 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 
 | # | Gap | Severity | Planned |
 | --- | --- | --- | --- |
+| G-055 | `nova-pkg audit` does not report a package whose minor release **removed an export** that the previous version had (M13 plan 6.2: "a compare of exports, from the static scan"). Not built in M14 L6 item 2: it needs choices the plans leave open, and it makes `audit` download and unpack versions you never installed | FRICTION | **Open**, owner to decide the choices in the entry below; not scheduled |
 | G-054 | **TOCTOU in the `restricted` path gate:** `check_path` resolves a path's symbolic links and approves it, then the file is opened from the *same path string* in a later syscall, following links again. An attacker who controls a granted directory can swap a symbolic link between the two steps and have the sandbox open a file outside the grant | **Part A fixed; parent-component race open (Phase 6)** | **Final-component swap closed 2026-11-15** (M14): every restricted file open uses `O_NOFOLLOW` (Windows: open-then-verify by handle), so a terminal symbolic link is refused — the measured read/write exploit rates drop to 0 (`[sbx.toctou]`, threat model N5). A parent directory swapped for a link is **not** closed and is deferred to Phase 6. Surfaced 2026-11-14 |
 | G-053 | The text readers carry a NUL byte through as an ordinary field/line character instead of refusing it (a NUL means the bytes are not text: a truncated binary or the wrong encoding) | TRAP | `std:csv` **closed 2.4.0** (M14, this entry); `read()` deferred — refusing a NUL where it is accepted is a MAJOR change to a stable builtin |
 | G-052 | A float literal too large for a binary64 is silently infinity (a 400-digit `1000...0.0`), and `inf - inf` of two of them is `nan` | TRAP (minor) | M13, with the number work: **decided 2026-11-14 (slice 2): keep and document** (`[lib.std-format]`); the lexer is not changed |
 | G-051 | On PyPy a deeply nested program crashes the interpreter (segmentation fault) instead of getting the named nesting error; the nesting limit depends on the host's `RecursionError` | PORTABILITY, and a TRAP: the same setting crashes at 20,000 and silently runs at 10,000 | M12 slice 6, or earlier |
 | G-017 | `import` (and a type annotation) needs files beside `novalang.py` that nothing documented, and a lone `novalang.py` ended in a Python `FileNotFoundError` traceback (first logged in the Nova_Log/Nova_Data proof-of-concept apps, carried by the M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): the program ends with an `ImportError` that names the missing files and what to copy; README and `[emb.model]` list what an installation contains. Measured: three Python files for the type check (`tools/nova-typecheck.py`, `nova_ast.py`, `nova_scope.py`), plus `lib/std/` for `std:` imports |
 | G-015 | An embedded program could not be given its `args()`; `args()` read a module-wide global shared by every engine in the process (M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): `Nova(args=[...])`, per engine, `[emb.args]` |
+
+## G-055 `audit` cannot report a minor release that removed an export - FRICTION
+- **Found:** 2026-11-16, building `nova-pkg audit` (M14 L6, item 2). The M13 plan, 6.2, says `audit` "reports a package whose minor release **removed** an export that the
+  previous one had (a compare of exports, from the static scan)". The rest of 6.2 and 6.3 is built; this part is not.
+- **Why it was not built in that pull request.** Two reasons, both are the owner's to decide and neither is settled by the plans:
+  1. **Choices the plans leave open.** (a) What is "an export" of a package: the exports of its entry file (`main`) only, or of every `.nova` file a program can import by path
+     (`import "pkg/file.nova"`). (b) Which two versions are compared: the locked one and the one before it, every consecutive pair in the registry, or the locked one and the newest in range.
+     (c) Versions below 1.0.0, where a minor release is allowed to break by the caret rule: whether they are compared at all. (d) Whether a yanked version can be the baseline.
+     (e) Whether finding one is a problem (exit status 1) or only a report. The plan says "reports"; the other findings in `audit` that are reports do not change the exit status.
+  2. **A new cost and trust surface.** `audit` today reads the registry's signed index and the installed copy. Comparing exports needs the archive of a version that is not installed,
+     fetched, checked against its recorded hash and the revocation list, and unpacked into a scratch folder, which is code `audit` has never run on files you did not choose to install.
+- **What exists to build it on:** `scan_package` already parses every `.nova` file of a package into its syntax tree, and an export is an `ExportNode` wrapping a function or a `let`; the
+  registry client already fetches and verifies archives for `install`.
+- **Fix:** decide (a) to (e), then build it as a finding of `audit` with a test per choice. Until then `audit` does not say whether an export disappeared; the `std:` modules are
+  covered by the stable-surface test, which does fail on a removed export.
 
 ## G-051 The nesting limit depends on the host's recursion limit, and PyPy breaks it - PORTABILITY
 - **Found:** 2026-11-14, running NovaLang's own test suite on PyPy 3.10.16 to see whether the 9x to 14x speedup of the benchmark suite
