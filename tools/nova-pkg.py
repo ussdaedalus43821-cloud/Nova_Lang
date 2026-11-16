@@ -989,9 +989,10 @@ def source_text(entry):
 
 def audit(project_dir, out=print):
     """Report every locked package; True if there is a problem ([pkg.audit]). A problem is a package that is revoked,
-    whose archive is not the one the lock recorded, that changed after it was installed, or that uses a capability it does
-    not declare, or a registry that is set and cannot be read and verified. Yanked, unverified and capability changes
-    in newer versions are reported and are not problems."""
+    whose archive is not the one the lock recorded, that changed after it was installed, that uses a capability it does
+    not declare, that declares a capability the lock did not record (gained), whose locked version is missing from the signed
+    registry's index, or a registry that is set and cannot be read and verified. Yanked, unverified, a capability only lost
+    and capability changes in newer versions are reported and are not problems."""
     manifest = read_manifest(project_dir, "the project " + project_dir, root=True)
     lock, _ = read_lock(project_dir)
     if lock is None:
@@ -1042,9 +1043,12 @@ def audit(project_dir, out=print):
                 if recorded is not None and recorded != declared:
                     gained = [c for c in declared if c not in recorded]
                     lost = [c for c in recorded if c not in declared]
-                    out("  capabilities changed since the lock: {}{}{}".format(
-                        "gained " + ", ".join(gained) if gained else "", "; " if gained and lost else "",
-                        "lost " + ", ".join(lost) if lost else ""))
+                    if gained:
+                        problems += 1
+                        out("  GAINED capabilities since the lock: {} (the lock recorded: {})".format(
+                            ", ".join(gained), ", ".join(recorded) or "nothing"))
+                    if lost:
+                        out("  capabilities lost since the lock: {}".format(", ".join(lost)))
                 for capability in sorted(set(scan_package(directory)) - set(declared)):
                     problems += 1
                     out("  USES {} and does not declare it".format(capability))
@@ -1057,7 +1061,9 @@ def audit(project_dir, out=print):
                     continue
                 found = (versions or {}).get(version)
                 if found is None:
-                    out("  registry: {} is not in the registry's index of this package".format(version))
+                    problems += 1
+                    out("  MISSING: {} is not in the signed registry's index of this package, so its yank and revocation "
+                        "status could not be checked".format(version))
                     continue
                 if found["sha256"] in checked.revoked_archives:
                     problems += 1

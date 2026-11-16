@@ -64,11 +64,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   with one it writes the range as given. It refuses a package that is already a dependency (it never rewrites a range you chose), and it is all or nothing: if `install` refuses (the policy,
   the capabilities, the NovaLang version), `nova.json` is put back byte for byte and no `nova.lock` is written. The file is rewritten as JSON with two-space indentation.
 - **`nova-pkg audit`** lists every locked package with its version, source and declared capabilities, and reports, without changing anything: `UNVERIFIED` for a git source, a package `CHANGED`
-  after it was installed, a capability used and not declared, a `YANKED` or `REVOKED` version (with the reason), an archive that is not the one the lock recorded, capabilities that changed since
-  the lock, and a newer version in your range that declares more than the locked one. **Exit status:** 0 with no problems, 1 with any (revoked, changed, a capability used and not declared, an archive
-  that differs from the lock, or a set registry that cannot be read and verified), 2 for a usage error. Yanked, unverified and "newer version declares more" are reported and are not problems.
+  after it was installed, a capability used and not declared, a `YANKED` or `REVOKED` version (with the reason), a locked version missing from the signed registry's index (`MISSING`), an archive that is not the one the lock recorded, capabilities
+  gained or lost since the lock, and a newer version in your range that declares more than the locked one. **Exit status:** 0 with no problems, 1 with any (revoked, changed, a capability used and not
+  declared, a capability gained since the lock, a locked version missing from the signed index, an archive that differs from the lock, or a set registry that cannot be read and verified), 2 for a usage
+  error. Yanked, unverified, a capability only lost, and "newer version declares more" are reported and are not problems.
   Without a registry, or with the older unsigned layout, it says yanks and revocations were not checked and exits 0.
-- Specified in `docs/spec/18-packages.md` ("`add` and `audit` (the tool)"), with 32 tests in `tests/pkg/test_add_audit.py` that use a real signed registry made by the real `publish`, `yank` and `revoke`.
+- Specified in `docs/spec/18-packages.md` ("`add` and `audit` (the tool)"), with 36 tests in `tests/pkg/test_add_audit.py` that use a real signed registry made by the real `publish`, `yank` and `revoke`.
   `nova-pkg` is a tool and not an engine, so there are no conformance cases for it. **Not built:** reporting a package whose minor release removed an export that the previous one had; it is recorded as open gap G-055 in `docs/GAPS.md`, with the choices it needs from the owner.
 
 ### Added and Fixed (M14 L6, item 1 of the 2.3.x patch list: the embedding fixes G-015 and G-017)

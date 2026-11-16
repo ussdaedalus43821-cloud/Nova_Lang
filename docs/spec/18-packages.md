@@ -162,9 +162,11 @@ and these findings, each on its own line:
 | `UNVERIFIED` | a `git` source: pinned to a commit by `nova.lock`, and signed by no one | no |
 | `CHANGED after it was installed` | the files no longer match the `integrity` in `nova.lock` | **yes** |
 | `USES <capability> and does not declare it` | `[pkg.capabilities]` 2, found in the installed files | **yes** |
-| `capabilities changed since the lock` | what the installed `nova.json` declares differs from what `nova.lock` recorded (what was gained, what was lost) | no (a change of files is `CHANGED`) |
+| `GAINED capabilities since the lock` | the installed `nova.json` declares a capability that `nova.lock` did not record (whether or not the files also changed) | **yes** |
+| `capabilities lost since the lock` | the lock recorded a capability the installed `nova.json` no longer declares, and nothing was gained | no |
 | `YANKED` | the signed index marks this version yanked: ranges no longer choose it, and the lock still installs it | no |
 | `REVOKED: <reason>` | the archive's hash is in `revoked.json` | **yes** |
+| `MISSING` | the locked version is not in the signed index of this package (or the signed registry has no index of it), so its yank and revocation status could not be checked | **yes** |
 | the registry holds another archive | the signed index's hash for this version is not the one `nova.lock` recorded | **yes** |
 | `newer: <version> (in your range ...) declares <capabilities>, which <version> does not` | for a package the project depends on directly, the newest unyanked, unrevoked version inside the range declares more than the locked one; updating needs `install --accept-capabilities` | no |
 

@@ -227,7 +227,50 @@ class Audit(Registry):
         manifest["capabilities"] = ["clock"]
         write(path, manifest)
         text = self.audit(expect=1)
-        self.assertIn("capabilities changed since the lock: gained clock", text)
+        self.assertIn("GAINED capabilities since the lock: clock (the lock recorded: nothing)", text)
+
+    def edit_lock(self, name, **changes):
+        path = os.path.join(self.project, "nova.lock")
+        lock = json.loads(read(path))
+        lock["packages"][name].update(changes)
+        write(path, lock)
+
+    def test_a_gained_capability_is_a_problem_even_when_the_files_match_the_lock(self):
+        self.published("acme/reader", "1.0.0", source="export def load(p) { return read(p) }\n", capabilities=["files.read"])
+        self.app({"acme/reader": "*"})
+        self.install()
+        self.edit_lock("acme/reader", capabilities=[])         # the lock now says it declared nothing; the files are untouched
+        text = self.audit(expect=1)
+        self.assertNotIn("CHANGED after it was installed", text)
+        self.assertIn("GAINED capabilities since the lock: files.read (the lock recorded: nothing)", text)
+        self.assertTrue(text.rstrip().endswith("audit: 1 problem(s)"))
+
+    def test_a_capability_only_lost_since_the_lock_is_reported_and_is_not_a_problem(self):
+        self.published("acme/reader", "1.0.0", source="export def load(p) { return read(p) }\n", capabilities=["files.read"])
+        self.app({"acme/reader": "*"})
+        self.install()
+        self.edit_lock("acme/reader", capabilities=["files.read", "clock"])
+        text = self.audit(expect=0)
+        self.assertIn("capabilities lost since the lock: clock", text)
+        self.assertNotIn("GAINED", text)
+        self.assertTrue(text.rstrip().endswith("audit: no problems found"))
+
+    def test_a_locked_version_missing_from_the_signed_index_is_a_problem(self):
+        self.installed(("acme/ledger", "1.0.0"))
+        self.edit_lock("acme/ledger", version="1.0.5")          # a version the registry never held
+        text = self.audit(expect=1)
+        self.assertIn("MISSING: 1.0.5 is not in the signed registry's index of this package", text)
+        self.assertIn("could not be checked", text)
+        self.assertTrue(text.rstrip().endswith("audit: 1 problem(s)"))
+
+    def test_a_locked_package_the_signed_registry_has_no_index_for_is_a_problem(self):
+        self.installed(("acme/ledger", "1.0.0"))
+        path = os.path.join(self.project, "nova.lock")
+        lock = json.loads(read(path))
+        lock["packages"]["acme/ghost"] = lock["packages"].pop("acme/ledger")
+        write(path, lock)
+        text = self.audit(expect=1)
+        self.assertIn("MISSING: 1.0.0 is not in the signed registry's index of this package", text)
 
     def test_a_newer_version_in_range_that_declares_more_is_reported_and_is_not_a_problem(self):
         self.installed(("acme/ledger", "1.0.0"))
