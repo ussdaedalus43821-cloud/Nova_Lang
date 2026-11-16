@@ -374,6 +374,7 @@ class Args(unittest.TestCase):
                 nl.Nova(args=bad)
             self.assertIn("must be a list of strings", str(raised.exception))
 
+    @unittest.skipIf(nl.SANDBOX_UNSUPPORTED, "the restricted profile needs Python 3.8 or later on Windows ([sbx.profiles])")
     def test_restricted_needs_the_process_grant_to_see_args(self):
         denied = nl.Nova(profile="restricted", args=["x"])
         with self.assertRaises(nl.NovaLangError):
