@@ -713,7 +713,7 @@ def run_embedding(case, engine):
     fixture, calls, results = case["embedding"], [], []
     out = io.StringIO()
     error, status = "", 0
-    nova = novalang.Nova(engine, allow_python=bool(case.get("allow_python")))
+    nova = novalang.Nova(engine, allow_python=bool(case.get("allow_python")), args=fixture.get("args"))
     try:
         for name, value in fixture.get("globals", {}).items():
             nova.expose_global(name, decode(value))

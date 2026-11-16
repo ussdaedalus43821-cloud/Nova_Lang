@@ -2,6 +2,8 @@
 
 import contextlib
 import io
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -331,6 +333,142 @@ print(message)
                         status = bootstrap.run_bootstrap(str(path), engine=engine, allow_python=True)
                     self.assertEqual(status, 0)
                     self.assertEqual(out.getvalue(), expected)
+
+
+class Args(unittest.TestCase):
+    """[emb.args] (G-015): an embedded program gets its own args()."""
+
+    def test_empty_unless_the_host_gives_it_and_never_the_hosts_command_line(self):
+        with patch.object(nl, "SCRIPT_ARGS", ["from", "the", "command", "line"]):
+            self.assertEqual(nl.Nova().eval("args()"), [])
+
+    def test_the_hosts_strings_on_both_python_engines(self):
+        for engine in ("vm", "tree"):
+            engine_under_test = nl.Nova(engine, args=["--year", "2027"])
+            self.assertEqual(engine_under_test.eval("args()"), ["--year", "2027"], engine)
+
+    def test_a_tuple_is_accepted_and_copied(self):
+        given = ["a"]
+        engine = nl.Nova(args=given)
+        given.append("changed after")
+        self.assertEqual(engine.eval("args()"), ["a"])
+        self.assertEqual(nl.Nova(args=("x", "y")).eval("args()"), ["x", "y"])
+
+    def test_two_engines_share_nothing(self):
+        first, second = nl.Nova(args=["one"]), nl.Nova(args=["two"])
+        self.assertEqual((first.eval("args()"), second.eval("args()")), (["one"], ["two"]))
+
+    def test_each_call_returns_a_new_list(self):
+        engine = nl.Nova(args=["x"])
+        engine.exec("let mine = args()\nappend(mine, \"y\")")
+        self.assertEqual(engine.eval("args()"), ["x"])
+
+    def test_a_function_defined_earlier_sees_them_too(self):
+        engine = nl.Nova(args=["x"])
+        engine.exec("def first_arg() { return args()[0] }")
+        self.assertEqual(engine.call("first_arg"), "x")
+
+    def test_anything_but_a_list_of_strings_is_a_type_error_before_the_engine_exists(self):
+        for bad in ("abc", 5, [1, 2], ["a", None], {"a": 1}):
+            with self.assertRaises(TypeError, msg=repr(bad)) as raised:
+                nl.Nova(args=bad)
+            self.assertIn("must be a list of strings", str(raised.exception))
+
+    def test_restricted_needs_the_process_grant_to_see_args(self):
+        denied = nl.Nova(profile="restricted", args=["x"])
+        with self.assertRaises(nl.NovaLangError):
+            denied.eval("args()")
+        granted = nl.Nova(profile="restricted", process=True, args=["x"])
+        self.assertEqual(granted.eval("args()"), ["x"])
+
+    def test_a_command_line_run_still_reads_the_words_after_the_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            program = Path(folder, "show.nova")
+            program.write_text("print(args())\n", encoding="utf-8")
+            done = subprocess.run([sys.executable, str(ROOT / "novalang.py"), str(program), "p", "q"],
+                                  capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.stdout.strip(), '["p", "q"]')
+
+
+class InstallationFiles(unittest.TestCase):
+    """[emb.model] (G-017): a lone novalang.py names the files an import needs instead of ending in a traceback."""
+
+    TOOLS = ("nova-typecheck.py", "nova_ast.py", "nova_scope.py")
+
+    def installation(self, folder, tools=TOOLS, std=True):
+        folder = Path(folder)
+        shutil.copy(ROOT / "novalang.py", folder / "novalang.py")
+        if tools:
+            (folder / "tools").mkdir()
+            for name in tools:
+                shutil.copy(ROOT / "tools" / name, folder / "tools" / name)
+        if std:
+            shutil.copytree(ROOT / "lib" / "std", folder / "lib" / "std")
+        return folder
+
+    def run_program(self, folder, source):
+        program = Path(folder, "program.nova")
+        program.write_text(source, encoding="utf-8")
+        return subprocess.run([sys.executable, str(Path(folder, "novalang.py")), str(program)],
+                              capture_output=True, text=True, timeout=60, cwd=str(folder))
+
+    def refused(self, done, *names):
+        self.assertEqual(done.returncode, 1, done.stderr + done.stdout)
+        self.assertNotIn("Traceback", done.stderr + done.stdout)
+        text = done.stderr + done.stdout
+        self.assertIn("ImportError:", text)
+        for name in names:
+            self.assertIn(name, text)
+
+    def test_a_program_with_no_import_and_no_annotation_needs_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder, tools=(), std=False)
+            done = self.run_program(folder, 'print("alone")\n')
+        self.assertEqual((done.returncode, done.stdout.strip()), (0, "alone"))
+
+    def test_an_import_without_the_type_checker_names_every_missing_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder, tools=())
+            done = self.run_program(folder, 'import "std:text" as text\nprint(1)\n')
+            self.refused(done, "tools/nova-typecheck.py", "tools/nova_ast.py", "tools/nova_scope.py",
+                         "copy the tools folder", folder)
+
+    def test_one_missing_tool_file_is_the_only_one_named(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder, tools=("nova-typecheck.py", "nova_ast.py"))
+            done = self.run_program(folder, "def f(x: int) { return x }\nprint(f(1))\n")
+            self.refused(done, "tools/nova_scope.py")
+            self.assertNotIn("nova_ast.py", done.stderr + done.stdout)
+
+    def test_a_std_import_without_lib_std_names_the_folder_to_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder, std=False)
+            done = self.run_program(folder, 'import "std:text" as text\nprint(1)\n')
+            self.refused(done, "lib/std/modules.json", "copy the lib/std folder")
+
+    def test_a_missing_module_file_is_named(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder)
+            (Path(folder) / "lib" / "std" / "text.nova").unlink()
+            done = self.run_program(folder, 'import "std:text" as text\nprint(1)\n')
+            self.refused(done, "lib/std/text.nova")
+
+    def test_a_complete_installation_runs_the_same_program(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder)
+            done = self.run_program(folder, 'import "std:text" as text\nprint(text.find("abc", "b"))\n')
+        self.assertEqual((done.returncode, done.stdout.strip()), (0, "1"))
+
+    def test_the_embedding_api_raises_the_one_error_with_the_same_words(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.installation(folder, tools=())
+            code = ("import sys; sys.path.insert(0, %r)\nimport novalang\n"
+                    "try:\n    novalang.Nova().eval('import \"std:text\" as t')\n"
+                    "except novalang.NovaLangError as error:\n    print(type(error).__name__, error)\n" % str(folder))
+            done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, cwd=str(folder))
+        self.assertIn("NovaLangError", done.stdout, done.stderr)
+        self.assertIn("tools/nova-typecheck.py", done.stdout)
+        self.assertNotIn("Traceback", done.stderr)
 
 
 if __name__ == "__main__":

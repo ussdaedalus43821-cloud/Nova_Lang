@@ -31,6 +31,16 @@ standard output as it does for a program (`[val.display]`).
 be `run` any number of times, on any engine, without parsing again. Running it is
 the same as `eval` of its source.
 
+**What an installation must contain.** The interpreter is one file, `novalang.py`, but two things a
+program can use are read from the folders beside it: a program with an `import` or a type annotation is
+checked before it runs by `tools/nova-typecheck.py`, which needs `tools/nova_ast.py` and
+`tools/nova_scope.py`; and `import "std:..."` reads `lib/std/modules.json` and the module's file in
+`lib/std/`. A host that copies `novalang.py` alone can run programs that use neither. When a file is
+missing, the program ends with an `ImportError` that names the files, the folder they were looked for in
+and what to copy (`ImportError: importing a standard module ("std:...") needs lib/std/modules.json, which is
+missing from <folder> (copy the lib/std folder next to novalang.py)`), never with a host traceback. The
+words after the first colon are the reference host's and are not part of the contract.
+
 ## [emb.values] Values across the boundary
 
 Every value that crosses, in either direction, is converted:
@@ -74,6 +84,22 @@ A host function is called with the script's arguments converted, and what it
 returns is converted back. The number of arguments is the host function's business:
 the engine passes exactly what the script wrote, and a mismatch is the host
 function's own failure (`[emb.errors]`).
+
+## [emb.args] The script's own arguments
+
+`args()` (`[host.process]`) returns the words a program was started with. A command-line run
+gives it the words after the file name. An embedding host gives it a list of strings when it
+creates the engine: `Nova(args=["--year", "2027"])`. Without it the list is empty, never the
+words of the host's own command line, so a host that is itself a program with arguments does not
+leak them to its scripts.
+
+The list belongs to **one engine**: two engines made with different `args` see only their own
+(`[emb.model]`). `args()` returns a **new list** each time, so a script that changes the list it was
+given does not change what the next call returns. Each item must be a string; anything else is a
+`TypeError` from the host's constructor (`Nova(args=...) must be a list of strings`), raised before the
+engine exists. The `restricted` profile does not change this: `args` is still one of the names the
+`process` capability grants (`[sbx.capabilities]`), so a restricted script sees it only if the host
+granted `process`.
 
 ## [emb.calls] The host calling the script
 
