@@ -1311,6 +1311,11 @@ def make_env(parent, barrier, is_root) {
 def define_stdlib_globals(scope) {
     scope["vars"]["PI"] = 3.141592653589793
     scope["vars"]["E"] = 2.718281828459045
+    if DEPR["probe"] {
+        # the test hook of the deprecation mechanism: defined only when the host asked for it by name, never in the
+        # restricted profile ([host.warnings]); a program cannot ask
+        scope["vars"]["_deprecated_probe"] = {kind: "builtin", name: "_deprecated_probe"}
+    }
     scope["vars"]["json"] = {
         dumps: {kind: "builtin", name: "json_dumps"},
         loads: {kind: "builtin", name: "json_loads"},
@@ -1793,8 +1798,65 @@ def limit_error(message) {
     throw("LimitError: " + message)
 }
 
+# `--warnings=error` ends a run the same way: a DeprecationError is not catchable either ([host.warnings]).
 def is_fatal(e) {
-    return type(e) == "string" and e[0:12] == "LimitError: "
+    return type(e) == "string" and (e[0:12] == "LimitError: " or e[0:18] == "DeprecationError: ")
+}
+
+# ---- deprecation warnings (docs/spec/10-host.md [host.warnings]) ----------
+# `table` is {function name: the text a warning opens with}, written by the host so the wording is in one place;
+# `sources` is the text of the file being run (the main program, or the module being loaded), for the line.
+let DEPR = {mode: "warn", table: {}, probe: false, warned: {}, sources: []}
+
+def configure_deprecations(config) {
+    DEPR["mode"] = config["mode"]
+    DEPR["table"] = config["table"]
+    DEPR["probe"] = config["probe"]
+}
+
+# The 1-based line of offset `pos` in `source`: a line ends at "\n", "\r\n" or a lone "\r", as the host counts it.
+def deprecation_line(source, pos) {
+    let line = 1
+    let i = 0
+    let end = min(pos, len(source))
+    while i < end {
+        let ch = source[i]
+        if ch == "\n" {
+            line = line + 1
+        } else if ch == "\r" {
+            if not (i + 1 < len(source) and source[i + 1] == "\n") {
+                line = line + 1
+            }
+        }
+        i = i + 1
+    }
+    return line
+}
+
+def note_deprecated(name, pos) {
+    if DEPR["mode"] == "off" {
+        return
+    }
+    let text = DEPR["table"][name]
+    if len(DEPR["sources"]) > 0 {
+        text = text + " (line " + str(deprecation_line(DEPR["sources"][len(DEPR["sources"]) - 1], pos)) + ")"
+    }
+    if DEPR["mode"] == "error" {
+        throw("DeprecationError: " + text)
+    }
+    let site = name + "|" + str(current_dir_for_warning()) + "|" + str(pos)
+    if site in DEPR["warned"] {
+        return
+    }
+    DEPR["warned"][site] = true
+    deprecation_warn("warning: " + text)
+}
+
+def current_dir_for_warning() {
+    if len(FILE_STACK) == 0 {
+        return ""
+    }
+    return FILE_STACK[len(FILE_STACK) - 1]
 }
 
 def begin_counters() {
@@ -2192,6 +2254,9 @@ def numbers_from_call_args(call_args) {
 }
 
 def call_builtin(name, call_args, pos) {
+    if name in DEPR["table"] {
+        note_deprecated(name, pos)
+    }
     if not SANDBOX["restricted"] {
         return call_builtin_raw(name, call_args, pos)
     }
@@ -2223,6 +2288,9 @@ def call_builtin_raw(name, call_args, pos) {
     }
     if DET["on"] and name in DET_NAMES {
         return det_builtin(name, call_args)
+    }
+    if name == "_deprecated_probe" {
+        return make_nothing()
     }
     if name == "print" {
         let text = ""
@@ -3769,6 +3837,7 @@ def run_module(resolved_path, raw_path, pos) {
     append(MODULE_LOADING, resolved_path)
     append(FILE_STACK, dirname(resolved_path))
     append(EXPORT_STACK, {})
+    append(DEPR["sources"], source)
 
     let exports = {}
     try {
@@ -3801,6 +3870,7 @@ def run_module(resolved_path, raw_path, pos) {
         pop(FILE_STACK)
         pop(MODULE_LOADING)
         pop(EXPORT_STACK)
+        pop(DEPR["sources"])
     }
 
     MODULE_CACHE[resolved_path] = exports
@@ -3844,10 +3914,15 @@ def exec_import(node, scope) {
 
 def run_program(source, path) {
     append(FILE_STACK, dirname(abspath(path)))
-    let ast = parse_program(source)
-    let scope = make_env(false, true, true)
-    define_stdlib_globals(scope)
-    check_toplevel(exec_block(ast["statements"], scope))
+    append(DEPR["sources"], source)
+    try {
+        let ast = parse_program(source)
+        let scope = make_env(false, true, true)
+        define_stdlib_globals(scope)
+        check_toplevel(exec_block(ast["statements"], scope))
+    } finally {
+        pop(DEPR["sources"])
+    }
 }
 
 # A `return`, `break` or `continue` that reaches the top of a program or of a

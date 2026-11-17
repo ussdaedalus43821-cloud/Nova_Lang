@@ -136,6 +136,18 @@ blocks of the `try` statements it leaves run first (`[host.process]`). The same
 goes for a host function that asks to exit. After an exit the engine can still be
 used. Running out of call depth is the ordinary error of `[port.limits]`.
 
+## [emb.warnings] Deprecation warnings
+
+`Nova(..., warnings="warn", warning=None)` chooses what a call of a deprecated function does ([`[host.warnings]`](10-host.md)); both belong to the engine.
+
+1. **`warnings`** is `"warn"` (the default), `"error"` or `"off"`, with the meaning of `--warnings=`; `"error"` ends the run with the error
+   `DeprecationError: ...`, and any other value raises `ValueError` when the engine is made.
+2. **`warning`** is a function of **one string**, called once per call site with the line `warning: ...` that the command line would print.
+   Anything else raises `TypeError`. The function runs on the host's thread, inside the call that ran the script.
+3. **`Nova.warning_log`** is a list of every such line the engine has made so far, oldest first (a copy). An embedded engine
+   **never prints** a warning itself: the host decides what to do with it, by the callback or the log. In the deterministic mode
+   the same holds for the command line.
+4. The warnings of one engine are its own: another `Nova` has its own log, and the call sites already warned about are remembered per engine.
 ## [py.off] The Python bridge is off by default
 
 A script reaches Python only through the global `python`, and only if the host

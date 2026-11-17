@@ -287,7 +287,7 @@
  ],
  "embedding": {
   "class": "Nova",
-  "constructor": "(self, engine=None, allow_python=False, profile='trusted', args=None, **settings)",
+  "constructor": "(self, engine=None, allow_python=False, profile='trusted', args=None, warnings='warn', warning=None, **settings)",
   "methods": {
    "call": "(self, name, *args)",
    "compile": "(self, code)",

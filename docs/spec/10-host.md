@@ -124,3 +124,41 @@ and the language offers no way to seed or repeat one.
   nothing after the call runs, a `catch` does not see it, and `finally` blocks of
   the `try` statements it leaves **do** run first (`[err.finally]`). `exit` takes at
   most one argument (`exit() takes an optional status code and nothing else`).
+
+## [host.warnings] Deprecation warnings
+
+A function that [`DEPRECATIONS.md`](DEPRECATIONS.md) lists is **deprecated**: it still works, and a call of it says so. This section is
+what the call does; the rules for how long the function stays are in [`STABLE.md`](STABLE.md).
+
+1. **The warning.** The first time a given **call site** runs, in a run, the engine writes one line to **standard error**:
+
+       warning: NAME() is deprecated since SINCE; use REPLACEMENT (removal not before REMOVAL) (line N)
+
+   `NAME`, `SINCE`, `REPLACEMENT` and `REMOVAL` are the four columns of the list. `N` is the 1-based line of the call in the file being run (the main
+   program, or the module while it loads), counted as an error's line is; a call made from inside a function that was defined in another file is
+   given the line of the main program, as an error there is. A call site is one place in the source: a call in a loop, or in a function called many
+   times, warns once. **Standard output and the exit status are not changed by a warning.**
+2. **`--warnings=MODE`** (also `--warnings MODE`) chooses what a call does: `warn` (the default: point 1), `off` (nothing is written), or `error`
+   (the run ends at the first call, every time, with `DeprecationError: ` and the text of the warning without its `warning: ` prefix, exit status 1).
+   A `DeprecationError` is **not catchable**: no `try` of the program sees it and no `finally` block runs, as with a fatal limit
+   ([`[sbx.limits]`](16-sandbox.md)). Any other value is a usage error, exit status 2.
+3. **The deterministic mode** ([`[sbx.determinism]`](16-sandbox.md)) writes no warning to standard error; the warnings are kept (by the embedding API,
+   [`[emb.warnings]`](11-embedding.md)).
+4. **What this covers.** A call of a deprecated **built-in function**. Deprecated standard-module exports, capabilities, manifest fields and
+   flags, and the `deprecated` mark on a package version in a registry index, warn the same way when they are built (open gap G-056).
+5. **The three engines agree**: the same lines, with the same line numbers, and the same `DeprecationError`.
+
+## [host.probe] The test hook of the deprecation mechanism
+
+Nothing is deprecated, so nothing could exercise [`[host.warnings]`](10-host.md). A function named `_deprecated_probe` exists only to do that:
+it takes no argument, returns nothing, and is listed as deprecated since 2.4, replaced by nothing, removable from 3.0. It is **not** in
+`DEPRECATIONS.md`, because it is not part of the language.
+
+1. **A program cannot reach it.** The function is not a built-in. An engine defines it in a program's global scope only when its **host** asked for
+   it by name: `Nova(_deprecation_probe=True)` for the embedding API, `--_deprecation-probe` on the command line. Without the request the name
+   is undefined, exactly like any other name the program never wrote: `NovaError: undefined name '_deprecated_probe'`.
+2. **The restricted profile refuses the request.** `Nova(profile="restricted", _deprecation_probe=True)` and `--profile restricted --_deprecation-probe`
+   both fail before any program runs (a sandbox error, and exit status 2). No grant, setting or limit of a restricted engine makes the name visible.
+3. A program cannot make the request itself: it is a setting of the engine, made by whoever starts it, and no function of the language changes
+   the settings of the engine it runs on. (A program that starts a second NovaLang process needs the `process` capability, and what that process
+   does is a run of its own.)

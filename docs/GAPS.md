@@ -2,7 +2,7 @@
 
 The proof-of-concept apps keep their own logs: Nova_Stats G-001 to G-026, Nova_Sort G-027 to G-035, Nova_Log G-036 to G-042 and
 Nova_Data G-043 to G-050 (see [`ROADMAP.md`](ROADMAP.md), M13, "Requirements from the Proof-of-Concept Apps"). This file continues the same numbering
-for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-056**.
+for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-057**.
 
 **How to read an entry.** *Tried* is what was done and the exact result. *Why it matters* says what promise it touches. *Fix* says where it is planned.
 *Probe* is a check in `tests/` that passes while the gap exists and fails the day it is fixed, as in the proof-of-concept repositories.
@@ -11,6 +11,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 
 | # | Gap | Severity | Planned |
 | --- | --- | --- | --- |
+| G-056 | The deprecation mechanism warns only for a call of a deprecated **built-in function**. A deprecated `std:` export, a capability, a manifest field or a flag does not warn yet at import, install or startup, and a package version cannot carry a `deprecated` message in the registry index that `install` prints (M13 plan, 6.3, points 2 and 5). Nothing is deprecated, so nothing is owed today | FRICTION | **Open**, to be built with the first real deprecation; not scheduled |
 | G-055 | `nova-pkg audit` does not report a package whose minor release **removed an export** that the previous version had (M13 plan 6.2: "a compare of exports, from the static scan"). Not built in M14 L6 item 2: it needs choices the plans leave open, and it makes `audit` download and unpack versions you never installed | FRICTION | **Open**, owner to decide the choices in the entry below; not scheduled |
 | G-054 | **TOCTOU in the `restricted` path gate:** `check_path` resolves a path's symbolic links and approves it, then the file is opened from the *same path string* in a later syscall, following links again. An attacker who controls a granted directory can swap a symbolic link between the two steps and have the sandbox open a file outside the grant | **Part A fixed; parent-component race open (Phase 6)** | **Final-component swap closed 2026-11-15** (M14): every restricted file open uses `O_NOFOLLOW` (Windows: open-then-verify by handle), so a terminal symbolic link is refused — the measured read/write exploit rates drop to 0 (`[sbx.toctou]`, threat model N5). A parent directory swapped for a link is **not** closed and is deferred to Phase 6. Surfaced 2026-11-14 |
 | G-053 | The text readers carry a NUL byte through as an ordinary field/line character instead of refusing it (a NUL means the bytes are not text: a truncated binary or the wrong encoding) | TRAP | `std:csv` **closed 2.4.0** (M14, this entry); `read()` deferred — refusing a NUL where it is accepted is a MAJOR change to a stable builtin |
@@ -18,6 +19,17 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 | G-051 | On PyPy a deeply nested program crashes the interpreter (segmentation fault) instead of getting the named nesting error; the nesting limit depends on the host's `RecursionError` | PORTABILITY, and a TRAP: the same setting crashes at 20,000 and silently runs at 10,000 | M12 slice 6, or earlier |
 | G-017 | `import` (and a type annotation) needs files beside `novalang.py` that nothing documented, and a lone `novalang.py` ended in a Python `FileNotFoundError` traceback (first logged in the Nova_Log/Nova_Data proof-of-concept apps, carried by the M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): the program ends with an `ImportError` that names the missing files and what to copy; README and `[emb.model]` list what an installation contains. Measured: three Python files for the type check (`tools/nova-typecheck.py`, `nova_ast.py`, `nova_scope.py`), plus `lib/std/` for `std:` imports |
 | G-015 | An embedded program could not be given its `args()`; `args()` read a module-wide global shared by every engine in the process (M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): `Nova(args=[...])`, per engine, `[emb.args]` |
+
+## G-056 The deprecation warning covers built-in functions only - FRICTION
+- **Found:** 2026-11-17, building the deprecation mechanism (M14 L6, item 3).
+- **What exists:** the warning for a call of a built-in function listed in `docs/spec/DEPRECATIONS.md`, `--warnings=warn|error|off`, the embedding `warning` callback and
+  `Nova.warning_log`, on all three engines ([`[host.warnings]`](spec/10-host.md)).
+- **What does not:** the M13 plan (6.3) also says a deprecated *capability*, *manifest field* or *flag* warns "at install or startup", a deprecated `std:` export warns when it is
+  called, and a package may mark a version `deprecated` in the registry index with a message that `install` prints. None of these has anything to warn about today, and each needs a
+  decision of its own (for example, whether a warning at install is once per package or once per run).
+- **Also open, and smaller:** the line of a warning for a call inside a function that was defined in an imported file and called later is the line in the main program, as an
+  error's line is; a call made when a host calls a function (`Nova.call`) has no line.
+- **Fix:** build each when the first real item is deprecated, with the same flags and the same `DeprecationError`.
 
 ## G-055 `audit` cannot report a minor release that removed an export - FRICTION
 - **Found:** 2026-11-16, building `nova-pkg audit` (M14 L6, item 2). The M13 plan, 6.2, says `audit` "reports a package whose minor release **removed** an export that the

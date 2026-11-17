@@ -90,7 +90,7 @@ def sandbox_config(settings):
 
 
 def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, engine=None,
-                  allow_python=False, sandbox=None):
+                  allow_python=False, sandbox=None, warnings="warn", probe=False):
     """Run `target_path` through the self-hosted interpreter defined in
     `engine_path`. `script_args` become what the target's own args() call
     sees - the Stage 11 standard-library built-in, read from novalang.py's
@@ -134,6 +134,14 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     program += "\nSTD[\"dir\"] = {}\n".format(nova_string_literal(novalang.STD_DIR))
     if configured:
         program += "\nconfigure_sandbox({})\n".format(nova_literal(sandbox_config(sandbox)))
+    # What a call of a deprecated function does (docs/spec/10-host.md [host.warnings]): the engine is handed the same
+    # table of texts the other engines use, and says the warning through the host function defined below.
+    if restricted and probe:
+        print("--_deprecation-probe is a test hook and is not available with --profile restricted", file=sys.stderr)
+        return 2
+    table = novalang.deprecation_table(probe)
+    program += "\nconfigure_deprecations({})\n".format(nova_literal(
+        {"mode": warnings, "table": table, "probe": bool(probe)}))
     program += "\nrun_file({})\n".format(nova_string_literal(target_path))
 
     # `engine` ("vm" or "tree") is passed in, never read from novalang's
@@ -151,6 +159,14 @@ def run_bootstrap(target_path, engine_path=DEFAULT_ENGINE, script_args=None, eng
     # The one host function the engine needs for the native functions of the standard modules. It is a
     # name of this interpreter alone (the engine's own program), never of the program the engine runs.
     interpreter.globals.define("native_call", novalang.BuiltinFunction("native_call", 4, novalang.native_call, needs_interpreter=True))
+    quiet = bool(sandbox and sandbox.get("deterministic"))
+
+    def deprecation_warn(args, position):
+        if not quiet:
+            print(args[0], file=sys.stderr)
+        return novalang.NOTHING
+
+    interpreter.globals.define("deprecation_warn", novalang.BuiltinFunction("deprecation_warn", 1, deprecation_warn))
     if restricted:
         interpreter.python_override = tuple(sandbox.get("python", ()))
     # novalang.nova tracks "the directory of whichever file is currently

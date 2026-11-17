@@ -58,6 +58,21 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
 - Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
 
+### Added (M14 L6, item 3 of the 2.3.x patch list: the deprecation mechanism)
+
+- **A call of a deprecated built-in function now warns**, on all three engines: once per call site per run, one line on standard error,
+  `warning: NAME() is deprecated since SINCE; use REPLACEMENT (removal not before REMOVAL) (line N)`. Standard output and the exit status do not change.
+  **Nothing is deprecated in this release**, so no existing program sees a warning; `docs/spec/DEPRECATIONS.md` is still empty.
+- **`--warnings=warn|error|off`** (also `--warnings MODE`). `error` ends the run at the first call with an uncatchable `DeprecationError` (exit status 1): no `try` catches it and no `finally` runs,
+  as with a fatal limit. In the deterministic mode no warning is printed.
+- **Embedding:** `Nova(warnings="warn"|"error"|"off", warning=fn)`. `fn` is called with the same line the command line prints, once per call site; `Nova.warning_log` lists every warning so far.
+  An embedded engine never prints a warning itself. These are two new optional arguments (a minor change under `docs/spec/STABLE.md`); the recorded constructor signature in `tests/api/stable-surface.json` was updated with `--update`.
+- **A test-only hook, not reachable by programs:** `_deprecated_probe()` exists so the mechanism can be tested while nothing is deprecated. It is not a built-in and not in any list. An engine defines it only when its
+  **host** asks (`Nova(_deprecation_probe=True)` or the command-line flag `--_deprecation-probe`), and the restricted profile refuses the request, so neither a program nor a sandboxed engine can reach it.
+  `tests/security/test_deprecation.py` proves it on all three engines, with every grant, and for the embedding API.
+- Specified in `docs/spec/10-host.md` (`[host.warnings]`, `[host.probe]`) and `docs/spec/11-embedding.md` (`[emb.warnings]`), with 10 conformance cases in `cases/deprecation.json` and 4 in `cases/embedding.json`
+  (VM, tree-walker and self-hosted; the embedding ones on the first two), and 19 tests. **Not built (open gap G-056):** a deprecated `std:` export, capability, manifest field or flag warning at install or startup, and the registry index's `deprecated` mark.
+
 ### Added (M14 L6, item 2 of the 2.3.x patch list: `nova-pkg add` and `nova-pkg audit`)
 
 - **`nova-pkg add NAME[@RANGE]`** adds a dependency from the registry to `nova.json` and runs `install`. Without a range it takes the newest version that is not yanked, as `^X.Y.Z`;

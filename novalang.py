@@ -4825,8 +4825,63 @@ def deterministic_format(seconds, fmt, position):
 
 
 def fatal_error(fatal):
-    """The error the embedding API raises for a fatal limit: `LimitError: step budget of ...`."""
-    return NovaLangError(NovaError(fatal.message, fatal.position, label="LimitError"))
+    """The error the embedding API raises for a fatal limit: `LimitError: step budget of ...`, or, for
+    `warnings="error"`, `DeprecationError: ...`."""
+    return NovaLangError(NovaError(fatal.message, fatal.position, label=fatal.label))
+
+
+# ---------------------------------------------------------------------------
+# Deprecation ([host.warnings], docs/spec/DEPRECATIONS.md)
+# ---------------------------------------------------------------------------
+
+class FatalDeprecation(FatalLimit):
+    """A deprecated function called while `--warnings=error` (or `Nova(warnings="error")`) is in force. Like a
+    fatal limit it is not a NovaError: no `try` of a program catches it and no `finally` block runs. It is a
+    FatalLimit only so that every place that ends a run for one already ends it for this."""
+
+    label = "DeprecationError"
+
+    def render(self, source=None):
+        return "DeprecationError: {}".format(self.message)
+
+    def __str__(self):
+        return "DeprecationError: {}".format(self.message)
+
+
+# What is deprecated: built-in function name -> (deprecated in, replaced by, earliest removal). It mirrors
+# docs/spec/DEPRECATIONS.md and is empty because nothing is deprecated (a test checks that the two agree).
+DEPRECATED = {}
+
+# The one function that exists only to test the mechanism, and the gate that keeps it out of programs
+# ([host.warnings]): it is not in BUILTINS and not in DEPRECATED. An engine defines it only when its host asked for
+# it by name (Nova(_deprecation_probe=True) or the command-line flag --_deprecation-probe), and the restricted
+# profile refuses the request, so no program and no sandboxed engine can reach it.
+DEPRECATION_PROBE = "_deprecated_probe"
+DEPRECATION_PROBE_ENTRY = ("2.4", "nothing (a test hook)", "3.0")
+WARNING_MODES = ("warn", "error", "off")
+
+# What the command line chose (--warnings, --_deprecation-probe): read by every Interpreter made without its own say.
+WARNING_SETTINGS = {"mode": "warn", "probe": False}
+
+
+def deprecation_table(probe):
+    """{function name: the text a warning about it opens with} for an engine, the probe included when it was asked
+    for. The self-hosted engine is handed this table, so the wording is written in one place."""
+    entries = dict(DEPRECATED)
+    if probe:
+        entries[DEPRECATION_PROBE] = DEPRECATION_PROBE_ENTRY
+    return {name: "{}() is deprecated since {}; use {} (removal not before {})".format(name, since, use, removal)
+            for name, (since, use, removal) in entries.items()}
+
+
+def line_number(source, position):
+    """The 1-based line of character offset `position` in `source`, as an error counts it."""
+    spans = line_spans(source)
+    position = max(0, min(position, len(source)))
+    number = 0
+    while number < len(spans) - 1 and position >= spans[number + 1][0]:
+        number += 1
+    return number + 1
 
 
 def sandbox_error(message):
@@ -4990,13 +5045,27 @@ class ProgramExit(Exception):
 class Interpreter:
     artifact_cache = None            # an ArtifactCache for a command-line program and its modules ([bc.cache]); None: no cache
 
-    def __init__(self, engine=None, allow_python=None, capabilities=None):
+    warning_stderr = False           # the command line prints warnings to stderr; an embedded engine never does
+
+    def __init__(self, engine=None, allow_python=None, capabilities=None, warnings=None, warning=None, probe=None):
         self.engine = engine or DEFAULT_ENGINE
         if self.engine not in ENGINES:
             raise ValueError("engine must be one of {}, not {!r}".format(ENGINES, engine))
         # python.* is off unless asked for (docs/design/python-bridge-hardening.md,
         # D3): --allow-python for the command line, Nova(allow_python=True) for a host.
         self.caps = capabilities if capabilities is not None else DEFAULT_CAPABILITIES
+        # Deprecation warnings ([host.warnings]): the mode, a host callback, the log of what was said, the call sites
+        # already warned about, the source being run (for the line), and the table of what is deprecated.
+        self.warnings_mode = WARNING_SETTINGS["mode"] if warnings is None else warnings
+        self.warning_callback = warning
+        self.warning_log = []
+        self.warned = set()
+        self.sources = []
+        self.probe = WARNING_SETTINGS["probe"] if probe is None else probe
+        if self.probe and self.caps.restricted:
+            raise sandbox_error("the deprecation probe is a test hook and is not available in the restricted profile")
+        self.deprecations = dict(deprecation_table(self.probe))
+        self.probe_function = BuiltinFunction(DEPRECATION_PROBE, 0, lambda args, position: NOTHING)
         self.limits = self.caps.limit_values
         self.det = Determinism(*self.caps.determinism) if self.caps.determinism else None
         self.counting = self.caps.restricted           # steps, time and output are counted
@@ -5134,6 +5203,8 @@ class Interpreter:
         scope.define("json", dict(JSON_NAMESPACE))
         scope.define("python", dict(PYTHON_NAMESPACE if self.allow_python
                                     else PYTHON_DISABLED_NAMESPACE))
+        if self.probe:
+            scope.define(DEPRECATION_PROBE, self.probe_function)
         return scope
 
     # -- dispatch -----------------------------------------------------------
@@ -5698,6 +5769,33 @@ class Interpreter:
             self.caps.check_path(path, "write", position)
         return delete_file(path, position)
 
+    def note_deprecated(self, name, position):
+        """A call of the deprecated built-in `name` ([host.warnings]). `off` says nothing; `error` ends the run with
+        an uncatchable DeprecationError every time; `warn` says it once per call site per run: to the callback, to the
+        log, and, on the command line, to standard error. The line is the line of the call in the source being run
+        (the main program, or the module being loaded), counted as an error's line is."""
+        mode = self.warnings_mode
+        if mode == "off":
+            return
+        text = self.deprecations[name]
+        if self.sources and self.sources[-1] is not None and position is not None:
+            text += " (line {})".format(line_number(self.sources[-1], position))
+        if mode == "error":
+            raise FatalDeprecation(text, position)
+        site = (name, self.import_stack[-1] if self.import_stack else None, position)
+        if site in self.warned:
+            return
+        self.warned.add(site)
+        self.warn(text)
+
+    def warn(self, text):
+        line = "warning: " + text
+        self.warning_log.append(line)
+        if self.warning_callback is not None:
+            self.warning_callback(line)
+        if self.warning_stderr and self.det is None:
+            print(line, file=sys.stderr)
+
     def call_value(self, callee, args, position):
         """Call an already-evaluated callee with already-evaluated args -
         shared by ordinary CallNode evaluation and by map/filter/reduce,
@@ -5710,6 +5808,9 @@ class Interpreter:
                     ),
                     position,
                 )
+            if self.deprecations and callee.name in self.deprecations and (
+                    callee is self.probe_function or callee is BUILTINS.get(callee.name)):
+                self.note_deprecated(callee.name, position)
             try:
                 if self.counting:
                     self.step(position)
@@ -9485,24 +9586,29 @@ def run(source, interpreter, path=None):
             if loaded is not None and loaded is not CACHE_REJECTED:
                 program = LoadedProgram(loaded.annotated, loaded.imports, loaded.code)
                 type_gate(program, source, interpreter, path)
-                return program, run_program(program, interpreter)
+                return program, run_program(program, interpreter, source)
         tokens = Lexer(source).tokenize()
         ast = Parser(tokens).parse()
         type_gate(ast, source, interpreter, path)
         if cache is not None:
             cache.store(source, ast, replacing=loaded is CACHE_REJECTED)
-        return ast, run_program(ast, interpreter)
+        return ast, run_program(ast, interpreter, source)
     except RecursionError:
         # A program nested too deeply to lex, parse or run: a NovaLang error, never Python's
         # ([sbx.limits], nesting).
         raise NovaError("the interpreter ran out of stack - recursion too deep") from None
 
 
-def run_program(ast, interpreter):
+def run_program(ast, interpreter, source=None):
     """Run a parsed program on the interpreter's engine; its value. The counters of the limits start
-    from zero here, unless this is a module being loaded by a program that is already running."""
-    with interpreter.running():
-        return run_program_counted(ast, interpreter)
+    from zero here, unless this is a module being loaded by a program that is already running. `source` is
+    the text the program came from, kept while it runs so a deprecation warning can name its line ([host.warnings])."""
+    interpreter.sources.append(source)
+    try:
+        with interpreter.running():
+            return run_program_counted(ast, interpreter)
+    finally:
+        interpreter.sources.pop()
 
 
 def run_program_counted(ast, interpreter):
@@ -10727,7 +10833,7 @@ def run_artifact_bytes(data, origin, script_args):
     program = LoadedProgram(artifact.annotated, artifact.imports, artifact.code)
     try:
         type_gate(program, source, interpreter, None)
-        run_program(program, interpreter)
+        run_program(program, interpreter, source)
     except ProgramExit as stop:
         return stop.code
     except FatalLimit as fatal:
@@ -11064,7 +11170,7 @@ class CompiledScript:
         own that caller would have to import novalang to catch."""
         interpreter = engine.interpreter
         try:
-            value = run_program(self.ast, interpreter)
+            value = run_program(self.ast, interpreter, self.source)
         except NovaError as error:
             raise NovaLangError(error) from None
         except FatalLimit as fatal:
@@ -11090,9 +11196,15 @@ class Nova:
     trouble in the NovaLang code it runs.
     """
 
-    def __init__(self, engine=None, allow_python=False, profile="trusted", args=None, **settings):
+    def __init__(self, engine=None, allow_python=False, profile="trusted", args=None, warnings="warn", warning=None,
+                 **settings):
         """`engine` is "vm" (the default) or "tree" (the tree-walker). `args` is what the script's `args()` returns:
-        a list of strings, empty if omitted ([emb.args]); it belongs to this engine alone.
+        a list of strings, empty if omitted ([emb.args]); it belongs to this engine alone. `warnings` is what a call of
+        a deprecated function does: "warn" (the default: the text goes to `warning`, a function of one string, if
+        there is one, and to `warning_log`; nothing is printed), "error" (the run ends with an uncatchable
+        DeprecationError) or "off" ([emb.warnings]). The one keyword that starts with an underscore, `_deprecation_probe`,
+        is a hook for NovaLang's own tests ([host.probe]); it is taken out of `settings` here so that it is not part of
+        the signature a host can rely on.
         `allow_python` gives scripts the python.* namespace; without it every
         python.import/call/get/set refuses. A host that runs scripts it did
         not write should leave it off and use expose_global instead.
@@ -11106,11 +11218,23 @@ class Nova:
             args = []
         if (not isinstance(args, (list, tuple))) or not all(isinstance(item, str) for item in args):
             raise TypeError("Nova(args=...) must be a list of strings, not {!r}".format(args))
+        probe = bool(settings.pop("_deprecation_probe", False))
+        if warnings not in WARNING_MODES:
+            raise ValueError("Nova(warnings=...) must be one of {}, not {!r}".format(", ".join(WARNING_MODES), warnings))
+        if warning is not None and not callable(warning):
+            raise TypeError("Nova(warning=...) must be a function of one string, not {!r}".format(warning))
         self.interpreter = Interpreter(engine, allow_python=allow_python,
                                        capabilities=TRUSTED if profile == "trusted" and not settings
-                                       else Capabilities(profile, **settings))
+                                       else Capabilities(profile, **settings),
+                                       warnings=warnings, warning=warning, probe=probe)
         self.interpreter.script_args = list(args)
         self._compiled_cache = {}          # source text -> CompiledScript, see eval()
+
+    @property
+    def warning_log(self):
+        """Every deprecation warning this engine has made so far, as the text the command line would print
+        (`warning: f() is deprecated since ...`), oldest first ([emb.warnings]). A copy."""
+        return list(self.interpreter.warning_log)
 
     @property
     def registry(self):
@@ -11232,7 +11356,8 @@ def run_bootstrap(args):
         return 2
     import bootstrap
     return bootstrap.run_bootstrap(args[0], script_args=args[1:], engine=DEFAULT_ENGINE,
-                                   allow_python=ALLOW_PYTHON,
+                                   allow_python=ALLOW_PYTHON, warnings=WARNING_SETTINGS["mode"],
+                                   probe=WARNING_SETTINGS["probe"],
                                    sandbox=DEFAULT_CAPABILITIES.settings
                                    if DEFAULT_CAPABILITIES.restricted or DEFAULT_CAPABILITIES.determinism else None)
 
@@ -11559,6 +11684,10 @@ SANDBOX_FLAGS = {
     "--deterministic": ("deterministic", False), "--seed": ("seed", True), "--clock-start": ("clock_start", True),
 }
 
+# Not sandbox settings: what a call of a deprecated function does ([host.warnings]). `--warnings=MODE` and `--warnings MODE`
+# both work; `--_deprecation-probe` is a hook for NovaLang's own tests and is refused with --profile restricted.
+WARNING_FLAGS = ("--warnings", "--_deprecation-probe")
+
 
 RUNNER_FLAGS = {"--isolate": None, "--wall-ms": "wall_ms", "--memory-mb": "memory_mb",
                 "--output-cap": "output_cap", "--pass-env": "pass_env"}
@@ -11578,9 +11707,30 @@ def main(argv):
     sandbox = {}                            # docs/spec/16-sandbox.md [sbx.profiles]
     runner = {}                             # [sbx.runner]: --isolate and the flags that tune it
     forwarded = []                          # the flags the isolated child is given again
+    Interpreter.warning_stderr = True
     while args and (args[0] in ("--tree-walk", "--allow-python", "--no-cache", "--cache-dir") or args[0] in SANDBOX_FLAGS
-                    or args[0] in RUNNER_FLAGS):
+                    or args[0] in RUNNER_FLAGS or args[0] in WARNING_FLAGS or args[0].startswith("--warnings=")):
         flag = args[0]
+        if flag == "--_deprecation-probe":
+            WARNING_SETTINGS["probe"] = True
+            forwarded.append(flag)
+            args = args[1:]
+            continue
+        if flag == "--warnings" or flag.startswith("--warnings="):
+            if flag == "--warnings":
+                if len(args) < 2:
+                    print("--warnings needs one of {}".format(", ".join(WARNING_MODES)), file=sys.stderr)
+                    return 2
+                value, args = args[1], args[1:]
+            else:
+                value = flag.partition("=")[2]
+            if value not in WARNING_MODES:
+                print("--warnings needs one of {}, not {!r}".format(", ".join(WARNING_MODES), value), file=sys.stderr)
+                return 2
+            WARNING_SETTINGS["mode"] = value
+            forwarded.append("--warnings=" + value)
+            args = args[1:]
+            continue
         if flag == "--no-cache":
             CACHE_SETTINGS["disabled"] = True
             forwarded.append(flag)
@@ -11656,6 +11806,9 @@ def main(argv):
         except NovaLangError as problem:
             print(problem, file=sys.stderr)
             return 2
+    if WARNING_SETTINGS["probe"] and DEFAULT_CAPABILITIES.restricted:
+        print("--_deprecation-probe is a test hook and is not available with --profile restricted", file=sys.stderr)
+        return 2
     if runner.get("isolate"):
         if not args:
             print("--isolate needs a program to run", file=sys.stderr)
