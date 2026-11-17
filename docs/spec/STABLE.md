@@ -53,6 +53,14 @@ and the reason a pattern is refused names the construct and the way to write it.
 meaning, and `$` still matches before a final line feed. This is the owner-accepted cost of decision D3 of the M13 plan
 ("the loss of backreferences and look-around"), and the changelog entry for the release must say it.
 
+**A third narrowing, for nesting.** In the release that makes the nesting limits explicit (M14 L6, item 4; G-051) a program may nest at most
+**1000** brackets, braces and blocks, and its syntax tree may be at most **5000** levels deep (a chain of operators, of `not`, of `else if` or of
+`x[0][0]`). Before it, the specification promised only a minimum of 100 and the real ceiling was the Python's recursion limit: on CPython about 2000
+parentheses, 5000 blocks and 10,000 operands in one chain, and on PyPy a crash. A program above the new numbers ran before and now gets
+`NovaError: the interpreter ran out of stack - recursion too deep`, before anything of it runs. By the table above that is a **major** change in the usual case; it is made in a minor
+release because the old ceiling was the host's and not the language's, the specification never promised more than 100, and the owner accepted it
+(M14 L6, 2026-11-17). The numbers are now specified in `[port.limits]` and are the same on every host; the self-hosted interpreter stays at 100 (D-048).
+
 **A second narrowing, for packages.** In the release that adds declared capabilities (`docs/spec/18-packages.md`), `nova.json` is read
 strictly: an unknown key is an error unless it starts with `x-`, and a package that refers to a gated name (`read`, `time`, `regex` and
 so on) must list its capability, or it is refused at install and at import. Both were silently accepted before. They are the point of

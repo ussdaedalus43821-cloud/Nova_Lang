@@ -197,7 +197,7 @@ matrix; each row needs a case that makes the limit trip, on every engine.
 | Cell | Limit and default | Error | Kind |
 | --- | --- | --- | --- |
 | `depth` | nested calls: 1200 (self-hosted 60), minimum 50 | `call depth of <N> exceeded - is the recursion missing a base case?` | catchable |
-| `nesting` | nesting of the program's own text (brackets, blocks), minimum 100 | `the interpreter ran out of stack - recursion too deep` | catchable |
+| `nesting` | nesting of the program's own text (brackets, blocks): 1000 (self-hosted 100); depth of its syntax tree: 5000; minimum 100 for both ([`[port.limits]`](06-portability.md)) | `the interpreter ran out of stack - recursion too deep` | catchable |
 | `integer` | digits of an integer: 4000 | `the result has too many digits - an integer cannot have more than 4000 digits` | catchable |
 | `list.repeat` | items of a list made by `*`: 1,000,000 | `repeating that list <n> times would exceed <N> items` | catchable |
 | `list.plus` | items of a list made by `+` | `a list cannot grow beyond <N> items` | catchable |

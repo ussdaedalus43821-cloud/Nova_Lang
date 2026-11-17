@@ -134,6 +134,15 @@ sys.setrecursionlimit(20000)
 
 MAX_CALL_DEPTH = 1200
 
+# How deeply a program's own text may nest, counted by the parser and not by the host's recursion limit ([port.limits], G-051):
+# NESTING_LIMIT levels of brackets, braces and blocks (a parenthesis, a list, a dictionary, an argument list, an index, a block);
+# TREE_DEPTH_LIMIT levels in the syntax tree, which is what a long chain of operators (`a and b and c ...`), of prefix
+# operators (`not not not x`), of `else if` or of `x[0][0][0]` makes without any brackets. The self-hosted interpreter counts
+# brackets and blocks to 100 ([sbx.limits], D-0xx). The error is the same for all three.
+NESTING_LIMIT = 1000
+TREE_DEPTH_LIMIT = 5000
+NESTING_MESSAGE = "the interpreter ran out of stack - recursion too deep"
+
 # How many call-stack frames an error report shows before it elides the middle.
 MAX_TRACE_FRAMES = 8
 
@@ -996,6 +1005,29 @@ class ProgramNode(Node):
         self.imports = imports         # True if any `import` appears
 
 
+def check_tree_depth(program):
+    """Refuse a syntax tree deeper than TREE_DEPTH_LIMIT with the nesting error ([port.limits]). It walks the tree with a list of its own,
+    never by recursion, so a tree of any depth is measured the same way on every host; the parser calls it when a program is
+    parsed, and the compiler and the tree-walker call it before they walk a tree (once: the answer is kept on the program)."""
+    if getattr(program, "depth_checked", False):
+        return
+    pending = [(program, 1)]
+    while pending:
+        node, depth = pending.pop()
+        if isinstance(node, Node):
+            if depth > TREE_DEPTH_LIMIT:
+                raise NovaError(NESTING_MESSAGE, getattr(node, "position", None))
+            for child in vars(node).values():
+                if isinstance(child, Node):
+                    pending.append((child, depth + 1))
+                elif isinstance(child, (list, tuple)):
+                    pending.extend((item, depth + 1) for item in child if isinstance(item, Node))
+                    for item in child:
+                        if isinstance(item, (list, tuple)):
+                            pending.extend((sub, depth + 1) for sub in item if isinstance(sub, Node))
+    program.depth_checked = True
+
+
 # Statements that end in '}' and therefore need no separator after them.
 BLOCK_STATEMENTS = (IfNode, WhileNode, ForNode, ForInNode, FunctionDefNode, TryNode)
 
@@ -1060,6 +1092,8 @@ class Parser:
         self.index = 0
         self.annotated = False          # set by the first type annotation
         self.imports = False            # set by the first import
+        self.nesting = 0                # brackets, braces and blocks open right now (NESTING_LIMIT)
+        self.chain = 0                  # prefix operators and `else if` links being parsed one inside the other (TREE_DEPTH_LIMIT)
 
     # -- token helpers ------------------------------------------------------
 
@@ -1133,12 +1167,25 @@ class Parser:
             statements.append(statement)
             self.end_statement(statement, (TT_EOF,))
             self.skip_newlines()
-        return ProgramNode(statements, self.annotated, self.imports)
+        program = ProgramNode(statements, self.annotated, self.imports)
+        check_tree_depth(program)
+        return program
+
+    def enter_nesting(self):
+        self.nesting += 1
+        if self.nesting > NESTING_LIMIT:
+            raise NovaError(NESTING_MESSAGE, self.current.position)
+
+    def enter_chain(self):
+        self.chain += 1
+        if self.chain > TREE_DEPTH_LIMIT:
+            raise NovaError(NESTING_MESSAGE, self.current.position)
 
     def block(self):
         # The '{' may sit on the line after the header, so allow a break here.
         self.skip_newlines()
         opening = self.expect(TT_LBRACE, "a '{' to open the block")
+        self.enter_nesting()
         statements = []
         self.skip_newlines()
         while self.current.type not in (TT_RBRACE, TT_EOF):
@@ -1149,6 +1196,7 @@ class Parser:
         if self.current.type != TT_RBRACE:
             raise NovaError("this block is never closed with '}'", opening.position)
         self.advance()
+        self.nesting -= 1
         return BlockNode(statements, opening.position)
 
     def statement(self):
@@ -1253,7 +1301,9 @@ class Parser:
 
         if self.optional_else():
             if self.current.type == TT_IF:
+                self.enter_chain()
                 else_block = self.if_statement()        # else if ... chain
+                self.chain -= 1
             else:
                 else_block = self.block()
             return IfNode(condition, then_block, else_block, keyword.position)
@@ -1469,7 +1519,10 @@ class Parser:
     def not_expression(self):
         if self.current.type == TT_NOT:
             op_token = self.advance()
-            return NotNode(self.not_expression(), op_token.position)
+            self.enter_chain()
+            operand = self.not_expression()
+            self.chain -= 1
+            return NotNode(operand, op_token.position)
         return self.comparison()
 
     def comparison(self):
@@ -1502,7 +1555,10 @@ class Parser:
     def unary(self):
         if self.current.type in (TT_PLUS, TT_MINUS):
             op_token = self.advance()
-            return UnaryOpNode(op_token.value, self.unary(), op_token.position)
+            self.enter_chain()
+            operand = self.unary()
+            self.chain -= 1
+            return UnaryOpNode(op_token.value, operand, op_token.position)
         return self.call()
 
     def call(self):
@@ -1510,6 +1566,7 @@ class Parser:
         while True:
             if self.current.type == TT_LPAREN:
                 paren = self.advance()
+                self.enter_nesting()
                 args = []
                 if self.current.type != TT_RPAREN:
                     while True:
@@ -1518,10 +1575,13 @@ class Parser:
                             break
                         self.advance()
                 self.expect(TT_RPAREN, "a ')' to close the argument list")
+                self.nesting -= 1
                 node = CallNode(node, args, paren.position)
             elif self.current.type == TT_LBRACKET:
                 bracket = self.advance()
+                self.enter_nesting()
                 node = self.index_or_slice(node, bracket)
+                self.nesting -= 1
             elif self.current.type == TT_DOT:
                 dot = self.advance()
                 name = self.name_token("a field name after '.'")
@@ -1600,6 +1660,7 @@ class Parser:
             for inner_token in inner_tokens:            # point at the real line
                 inner_token.position += offset
             inner = Parser(inner_tokens)
+            inner.nesting, inner.chain = self.nesting + 1, self.chain   # a hole is a level inside the string that holds it
             parts.append(inner.expression())
             if inner.current.type != TT_EOF:
                 raise NovaError(
@@ -1637,6 +1698,7 @@ class Parser:
 
         if token.type == TT_LBRACKET:
             self.advance()
+            self.enter_nesting()
             items = []
             self.skip_newlines()                        # lists may span lines
             if self.current.type != TT_RBRACKET:
@@ -1648,6 +1710,7 @@ class Parser:
                     self.advance()
                     self.skip_newlines()
             self.expect(TT_RBRACKET, "a ']' to close the list")
+            self.nesting -= 1
             return ListNode(items, token.position)
 
         # A '{' here can only be a dictionary: blocks are read by block(),
@@ -1655,12 +1718,17 @@ class Parser:
         # its condition at the brace.
         if token.type == TT_LBRACE:
             self.advance()
-            return self.dict_literal(token)
+            self.enter_nesting()
+            literal = self.dict_literal(token)
+            self.nesting -= 1
+            return literal
 
         if token.type == TT_LPAREN:
             self.advance()
+            self.enter_nesting()
             node = self.expression()
             self.expect(TT_RPAREN, "a closing ')'")
+            self.nesting -= 1
             return node
 
         if token.type in (TT_EOF, TT_NEWLINE):
@@ -8663,6 +8731,7 @@ class Compiler:
 
 def compile_ast(program):
     """Compile a parsed program (a ProgramNode) to a module CodeObject."""
+    check_tree_depth(program)
     resolution = Resolver().resolve(program)
     return Compiler(resolution).compile_program(program)
 
@@ -9621,6 +9690,7 @@ def run_program_counted(ast, interpreter):
             return execute(interpreter, module_frame(code, interpreter.globals.values))
         except StraySignal as signal:
             raise top_level_error(signal) from None
+    check_tree_depth(ast)
     try:
         return interpreter.evaluate(ast)
     except ReturnSignal:
@@ -11898,5 +11968,34 @@ def run_inline(source):
     return 0
 
 
+# PyPy overruns its C stack, and ends the process with a segmentation fault, long before the recursion limit above is reached
+# (G-051); a thread with a stack of this size reaches it. The nesting limits are counted by the parser ([port.limits]) and
+# need about this much room at their maximum, on every host.
+PYPY_STACK_BYTES = 256 * 1024 * 1024
+
+
+def main_with_room(argv):
+    """`main(argv)`, in a thread with room for the deepest program the nesting limits allow, on PyPy; plain `main(argv)` elsewhere
+    (CPython's own stack holds the same program at this recursion limit, and its signal handling stays in the main thread)."""
+    if sys.implementation.name != "pypy":
+        return main(argv)
+    import threading
+    threading.stack_size(PYPY_STACK_BYTES)
+    outcome = {}
+
+    def work():
+        try:
+            outcome["status"] = main(argv)
+        except BaseException as problem:            # SystemExit, KeyboardInterrupt: hand them to the main thread
+            outcome["raised"] = problem
+
+    thread = threading.Thread(target=work)
+    thread.start()
+    thread.join()
+    if "raised" in outcome:
+        raise outcome["raised"]
+    return outcome["status"]
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main_with_room(sys.argv))

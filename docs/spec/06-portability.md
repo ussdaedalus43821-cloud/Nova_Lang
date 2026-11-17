@@ -142,11 +142,19 @@ corpus relies on.
 | Characters in a string made by `*` | `repeating that string <n> times would be too long` | 1,000,000 | 1,000,000 |
 | Items in a list grown by `append` | `a list cannot grow beyond 1000000 items` | 1,000,000 | 1,000,000 |
 | Items in a list made by `range` | `range() would build a list of <n> items, which is too large` | 1,000,000 | 1,000,000 |
+| Brackets, braces and blocks open at once (a parenthesis, a list, a dictionary, an argument list, an index, a block, a hole of an f-string) | `the interpreter ran out of stack - recursion too deep` | 1000 (self-hosted 100) | 100 |
+| Depth of the syntax tree (what a chain of operators, of prefix operators, of `else if` or of `x[0][0]` makes without brackets) | `the interpreter ran out of stack - recursion too deep` | 5000 | 100 |
 
 `<N>` is the host's own bound, so the corpus matches that message with a
 pattern. The self-hosted interpreter's call depth is 60, because each NovaLang
 call costs it several of the host's. Runaway recursion ends the program with that error,
 status 1, or is caught by a `try` (`[err.try-catch]`).
+
+**Nesting is counted by the parser, not by the host.** A program that nests deeper than the two limits above is refused when it is parsed, with the
+nesting error, status 1; nothing of it runs. The count is the same on every host: it does not depend on the recursion limit of the Python that runs the
+interpreter, which on PyPy used to end the process with a segmentation fault (`G-051`). Where the two limits are measured: each `(`, `[`, `{` and block adds one
+level to the first, and the second is the number of levels of the tree, the program itself being the first, so `a and b and c` is four deep (the program, the two `and`, a name) and `print(a + b)` is four.
+The self-hosted interpreter counts the first to 100 and has no count for the second ([`D-048`](DIVERGENCES.md)).
 
 Lengths and sizes above the table's minimum are not promised to work: a host
 with less memory is allowed to refuse a 1,000,000-item list only if its limit is
