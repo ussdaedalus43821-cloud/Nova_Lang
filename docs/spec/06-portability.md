@@ -156,6 +156,8 @@ interpreter, which on PyPy used to end the process with a segmentation fault (`G
 level to the first, and the second is the number of levels of the tree, the program itself being the first, so `a and b and c` is four deep (the program, the two `and`, a name) and `print(a + b)` is four.
 The self-hosted interpreter counts the first to 100 and has no count for the second ([`D-048`](DIVERGENCES.md)).
 
+A program nested to these limits needs about 10,000 frames of the host's own stack. CPython before 3.11 on Windows, and PyPy, overflow the C stack of the main thread long before that, and end the process with a crash and no message. So the command line runs a program in a thread with a 256 MB stack on those hosts (the interactive loop is not affected); a host that embeds the interpreter there and runs untrusted programs should do the same with `novalang.run_with_room(function, ...)`. Other hosts, and every host from CPython 3.11 on, need nothing.
+
 Lengths and sizes above the table's minimum are not promised to work: a host
 with less memory is allowed to refuse a 1,000,000-item list only if its limit is
 documented. The reference's numbers are the ones the corpus tests exactly.

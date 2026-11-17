@@ -5,6 +5,7 @@ The conformance corpus (cases/nesting.json) proves the engines agree at the boun
 import contextlib
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,8 +18,14 @@ ERROR = "the interpreter ran out of stack - recursion too deep"
 RESTRICTED = "the restricted profile needs Python 3.8 or later on Windows ([sbx.profiles])"
 
 
-def parse(source):
+def parse_here(source):
     return nl.Parser(nl.Lexer(source).tokenize()).parse()
+
+
+def parse(source):
+    """On a host whose main thread cannot hold 10,000 Python frames (CPython before 3.11 on Windows, PyPy) the parser runs in the
+    large-stack thread that the command line gives a program."""
+    return nl.run_with_room(parse_here, source)
 
 
 def accepted(source):
@@ -101,7 +108,7 @@ class Boundaries(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             with self.assertRaises(nl.NovaError):
-                nl.run('print("ran")\n' + parens(nl.NESTING_LIMIT + 1), nl.Interpreter("vm"))
+                nl.run_with_room(nl.run, 'print("ran")\n' + parens(nl.NESTING_LIMIT + 1), nl.Interpreter("vm"))
         self.assertEqual(out.getvalue(), "")
 
 
@@ -161,10 +168,91 @@ class Profiles(unittest.TestCase):
                     nl.Nova(engine).exec("let x = " + " and ".join(["true"] * 20000) + "\n")
                 self.assertIn(ERROR, str(caught.exception))
 
-    def test_the_main_thread_runs_the_program_on_cpython(self):
-        self.assertNotEqual(sys.implementation.name, "pypy")
-        self.assertEqual(nl.main_with_room(["novalang.py", "--no-cache", str(ROOT / "examples" / "hello.nova")])
-                         if (ROOT / "examples" / "hello.nova").exists() else 0, 0)
+
+
+class Room(unittest.TestCase):
+    """`run_with_room`: a thread with a large stack on a host that needs one, a plain call on any other."""
+
+    def forced(self):
+        saved = nl.needs_room
+        nl.needs_room = lambda: True
+        self.addCleanup(setattr, nl, "needs_room", saved)
+
+    def test_it_returns_what_the_function_returns_either_way(self):
+        self.assertEqual(nl.run_with_room(lambda a, b: a + b, 40, 2), 42)
+        self.forced()
+        self.assertEqual(nl.run_with_room(lambda a, b: a + b, 40, 2), 42)
+
+    def test_it_raises_what_the_function_raises_either_way(self):
+        def fail():
+            raise ValueError("raised in the thread")
+
+        def leave():
+            raise SystemExit(3)
+
+        for forced in (False, True):
+            if forced:
+                self.forced()
+            with self.assertRaises(ValueError):
+                nl.run_with_room(fail)
+            with self.assertRaises(SystemExit) as stop:
+                nl.run_with_room(leave)
+            self.assertEqual(stop.exception.code, 3)
+
+    def test_a_host_that_refuses_a_stack_size_gets_the_next_smaller_and_one_that_refuses_all_runs_the_function_directly(self):
+        import threading
+        self.forced()
+        asked = []
+        real = threading.stack_size
+
+        def picky(size=0):
+            asked.append(size)
+            if size > 64 * 1024 * 1024:
+                raise ValueError("size not valid: {} bytes".format(size))        # what Windows with Python 3.7 said of 256 MB
+            return real(size)
+
+        threading.stack_size = picky
+        try:
+            self.assertEqual(nl.run_with_room(lambda: "ran"), "ran")
+            self.assertEqual(asked[:3], [256 * 1024 * 1024, 128 * 1024 * 1024, 64 * 1024 * 1024])
+
+            def refuses_all(size=0):
+                raise ValueError("size not valid")
+
+            threading.stack_size = refuses_all
+            self.assertEqual(nl.run_with_room(lambda: "ran directly"), "ran directly")
+        finally:
+            threading.stack_size = real
+            real(0)
+
+    def test_a_program_run_from_the_command_line_goes_through_it_and_the_repl_does_not(self):
+        self.forced()
+        calls = []
+        saved = nl.run_with_room
+        nl.run_with_room = lambda function, *arguments: calls.append(function) or 0
+        try:
+            nl.main_with_room(["novalang.py", "program.nova"])
+            self.assertEqual(calls, [nl.main])
+            calls.clear()
+            saved_main = nl.main
+            nl.main = lambda argv: 7
+            try:
+                self.assertEqual(nl.main_with_room(["novalang.py"]), 7)
+            finally:
+                nl.main = saved_main
+            self.assertEqual(calls, [])
+        finally:
+            nl.run_with_room = saved
+
+    def test_a_program_runs_the_same_in_the_thread(self):
+        self.forced()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "p.nova"
+            path.write_text('print("in the thread")\n', encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                status = nl.main_with_room(["novalang.py", "--no-cache", str(path)])
+        self.assertEqual((status, out.getvalue()), (0, "in the thread\n"))
 
 
 if __name__ == "__main__":
