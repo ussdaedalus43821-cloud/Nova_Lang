@@ -425,6 +425,9 @@ A project lists its dependencies in a `nova.json` at its root:
 python3 tools/nova-pkg.py install            # resolve, write nova.lock, install
 python3 tools/nova-pkg.py install --frozen   # install exactly nova.lock (for CI)
 python3 tools/nova-pkg.py verify             # check nothing in .nova_modules was edited
+python3 tools/nova-pkg.py add acme/ledger    # add a dependency to nova.json (the newest version, as ^X.Y.Z), then install
+python3 tools/nova-pkg.py add acme/ledger@~1.0.0   # ... or a range of your own
+python3 tools/nova-pkg.py audit              # each locked package: source, capabilities, yanked or revoked
 ```
 
 Then any file in the project can write `import "math-utils"`, which binds

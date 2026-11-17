@@ -6,6 +6,8 @@ nova-pkg - NovaLang's package manager (just-in-time: resolve, lock, install).
     python3 tools/nova-pkg.py install --frozen   install exactly nova.lock (CI)
     python3 tools/nova-pkg.py verify             check .nova_modules is intact
     python3 tools/nova-pkg.py init [NAME]        write a nova.json (version 2) here
+    python3 tools/nova-pkg.py add NAME[@RANGE]   add a dependency to nova.json, then install
+    python3 tools/nova-pkg.py audit              each locked package: source, capabilities, yanked or revoked
     python3 tools/nova-pkg.py capabilities [PACKAGE]
                                                  what each installed package declares and uses
     python3 tools/nova-pkg.py keygen --out FILE     make a signing key for a registry
@@ -919,6 +921,180 @@ def capabilities(project_dir, only, out=print):
 
 
 # ---------------------------------------------------------------------------
+# add and audit ([pkg.add], [pkg.audit])
+# ---------------------------------------------------------------------------
+
+def parse_target(text):
+    """(name, range text or None) from `NAME` or `NAME@RANGE`; a scoped name is `owner/name`, so the first `@` is the split."""
+    name, at, wanted = text.partition("@")
+    scoped = SCOPED_NAME.match(name)
+    if not NAME.match(name) and not scoped:
+        raise PkgError('"{}" is not a package name - write lowercase letters, digits, ".", "_" and "-", as "math-utils" '
+                       'or "owner/name", optionally followed by @RANGE, as "math-utils@^1.0.0"'.format(name))
+    if scoped and scoped.group(1) in RESERVED_OWNERS:
+        raise PkgError('"{}" is a reserved owner'.format(scoped.group(1)))
+    if at and not wanted:
+        raise PkgError('"{}" has an @ and no range after it - write "{}@^1.0.0", or leave the @ out to take the newest '
+                       "version".format(text, name))
+    if wanted:
+        Range(wanted, '"{}"'.format(text))
+    return name, (wanted or None)
+
+
+def command_add(project_dir, target, out=print):
+    """Add `NAME[@RANGE]` to the project's dependencies, then install. Without a range the newest version the registry
+    offers that is not yanked is taken, as `^<that version>`. If the install fails, nova.json is put back as it was."""
+    name, wanted = parse_target(target)
+    manifest = read_manifest(project_dir, "the project " + project_dir, root=True)
+    path = os.path.join(project_dir, MANIFEST)
+    if name == manifest["name"]:
+        raise PkgError("{} is the project itself, which cannot depend on itself".format(name))
+    if name in manifest["dependencies"]:
+        raise PkgError('"{}" is already a dependency ({}) - edit "dependencies" in {} to change it'.format(
+            name, json.dumps(manifest["dependencies"][name]), MANIFEST))
+    if wanted is None:
+        sources = Sources(project_dir, manifest)
+        try:
+            newest = sources.available(name, "nova-pkg add")[0]
+        finally:
+            sources.close()
+        wanted = "^" + show(newest)
+    with open(path, "rb") as handle:
+        original = handle.read()
+    document = read_json(path, "the manifest")
+    document.setdefault("dependencies", {})[name] = wanted
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(document, indent=2) + "\n")
+    out("added {} {} to {}".format(name, wanted, MANIFEST))
+    try:
+        install(project_dir, out=out)
+    except PkgError as problem:
+        with open(path, "wb") as handle:
+            handle.write(original)
+        raise PkgError("{}\n{} was put back as it was: nothing was added".format(problem, MANIFEST)) from None
+    except BaseException:
+        with open(path, "wb") as handle:
+            handle.write(original)
+        raise
+
+
+def source_text(entry):
+    source = entry.get("source", {})
+    if "registry" in source:
+        return "registry {}".format(source["registry"])
+    if "path" in source:
+        return "path {}".format(source["path"])
+    return "git {} at {}".format(source.get("git"), str(source.get("commit", ""))[:12])
+
+
+def audit(project_dir, out=print):
+    """Report every locked package; True if there is a problem ([pkg.audit]). A problem is a package that is revoked,
+    whose archive is not the one the lock recorded, that changed after it was installed, that uses a capability it does
+    not declare, that declares a capability the lock did not record (gained), whose locked version is missing from the signed
+    registry's index, or a registry that is set and cannot be read and verified. Yanked, unverified, a capability only lost
+    and capability changes in newer versions are reported and are not problems."""
+    manifest = read_manifest(project_dir, "the project " + project_dir, root=True)
+    lock, _ = read_lock(project_dir)
+    if lock is None:
+        raise PkgError("there is no {} - run install".format(LOCKFILE))
+    packages = lock.get("packages", {})
+    problems = 0
+    out("{} package(s) in {}".format(len(packages), LOCKFILE))
+    sources = Sources(project_dir, manifest)
+    try:
+        wants_registry = any("registry" in entry.get("source", {}) for entry in packages.values())
+        checked, note = None, None
+        if wants_registry:
+            if sources.registry is None:
+                note = "no registry is set (nova.json \"registry\" or $NOVA_REGISTRY), so yanks and revocations were not checked"
+            elif not sources.is_signed():
+                if any("registry" in e.get("source", {}) and ("archive" in e or SCOPED_NAME.match(n)) for n, e in packages.items()):
+                    problems += 1
+                    note = ("{} has no {}, but {} recorded archives it signed, so yanks and revocations were NOT checked and the "
+                            "registry is not what it was".format(sources.registry, registry_protocol.REGISTRY_FILE, LOCKFILE))
+                else:
+                    note = "{} is an unsigned registry: it has no yanks or revocations to check".format(sources.registry)
+            else:
+                try:
+                    checked = sources.signed("nova-pkg audit")
+                except PkgError as problem:
+                    problems += 1
+                    note = "the registry {} could not be read and verified, so yanks and revocations were NOT checked: {}".format(
+                        sources.registry, problem)
+        if note:
+            out("registry: " + note)
+        for name, entry in sorted(packages.items()):
+            version = entry.get("version")
+            out("{} {}   {}".format(name, version, source_text(entry)))
+            if "git" in entry.get("source", {}):
+                out("  UNVERIFIED: a git source is pinned to a commit but signed by no one")
+            directory = os.path.join(project_dir, MODULES, *name.split("/"))
+            recorded = entry.get("capabilities")
+            if not os.path.isdir(directory):
+                out("  declares: {}".format(", ".join(recorded) if recorded else "nothing" if recorded is not None else "not recorded"))
+                out("  not installed: run install to check it against the lock")
+            else:
+                installed = read_manifest(directory, 'package "{}"'.format(name))
+                declared = installed["capabilities"]
+                out("  declares: {}".format(", ".join(declared) or "nothing"))
+                if integrity(directory) != entry.get("integrity"):
+                    problems += 1
+                    out("  CHANGED after it was installed (it no longer matches {}); run install to restore it".format(LOCKFILE))
+                if recorded is not None and recorded != declared:
+                    gained = [c for c in declared if c not in recorded]
+                    lost = [c for c in recorded if c not in declared]
+                    if gained:
+                        problems += 1
+                        out("  GAINED capabilities since the lock: {} (the lock recorded: {})".format(
+                            ", ".join(gained), ", ".join(recorded) or "nothing"))
+                    if lost:
+                        out("  capabilities lost since the lock: {}".format(", ".join(lost)))
+                for capability in sorted(set(scan_package(directory)) - set(declared)):
+                    problems += 1
+                    out("  USES {} and does not declare it".format(capability))
+            if checked is not None and "registry" in entry.get("source", {}) and SCOPED_NAME.match(name):
+                try:
+                    versions, _ = checked.index(name)
+                except RegistryError as problem:
+                    problems += 1
+                    out("  registry: {}".format(problem))
+                    continue
+                found = (versions or {}).get(version)
+                if found is None:
+                    problems += 1
+                    out("  MISSING: {} is not in the signed registry's index of this package, so its yank and revocation "
+                        "status could not be checked".format(version))
+                    continue
+                if found["sha256"] in checked.revoked_archives:
+                    problems += 1
+                    out("  REVOKED: {}".format(checked.revoked_archives[found["sha256"]] or "no reason given"))
+                elif entry.get("archive") not in (None, "sha256-" + found["sha256"]):
+                    problems += 1
+                    out("  the registry now holds another archive for {} than the one {} recorded".format(version, LOCKFILE))
+                elif found["yanked"]:
+                    out("  YANKED: ranges no longer choose it; the lock still installs it")
+                else:
+                    out("  registry: not yanked, not revoked")
+                wanted = manifest["dependencies"].get(name)
+                if isinstance(wanted, str) and recorded is not None:
+                    allowed = Range(wanted, name)
+                    newer = sorted((parse_version(v, name) for v, item in versions.items()
+                                    if not item["yanked"] and item["sha256"] not in checked.revoked_archives
+                                    and allowed.allows(parse_version(v, name))
+                                    and parse_version(v, name) > parse_version(version, name)), reverse=True)
+                    if newer:
+                        gained = [c for c in versions[show(newer[0])].get("capabilities", []) if c not in recorded]
+                        if gained:
+                            out("  newer: {} (in your range {}) declares {}, which {} does not; updating to it needs "
+                                "install --accept-capabilities {}".format(show(newer[0]), wanted, ", ".join(gained),
+                                                                          version, ",".join(gained)))
+    finally:
+        sources.close()
+    out("audit: {}".format("{} problem(s)".format(problems) if problems else "no problems found"))
+    return problems > 0
+
+
+# ---------------------------------------------------------------------------
 # Packing and publishing ([pkg.registry])
 # ---------------------------------------------------------------------------
 
@@ -1086,6 +1262,8 @@ USAGE = """usage: nova-pkg.py [--project DIR] COMMAND
   install [--frozen] [--accept-capabilities LIST]      resolve, lock and install
   verify                                               check .nova_modules against nova.lock
   init [NAME]                                          write a nova.json here
+  add NAME[@RANGE]                                     add a dependency to nova.json, then install
+  audit                                                every locked package: source, capabilities, yanked or revoked
   capabilities [PACKAGE]                               what installed packages declare and use
   keygen --out FILE                                    make a signing key for a registry
   pack [--out DIR]                                     build this package's deterministic archive
@@ -1097,7 +1275,7 @@ VALUE_OPTIONS = {"--registry": "registry", "--key": "key", "--out": "out", "--ex
                  "--registry-name": "registry-name", "--archive": "archive", "--keyid": "keyid", "--reason": "reason",
                  "--accept-capabilities": "accept"}
 FLAG_OPTIONS = {"--dry-run": "dry-run", "--frozen": "frozen"}
-COMMANDS = ("install", "verify", "init", "capabilities", "keygen", "pack", "publish", "yank", "unyank", "revoke")
+COMMANDS = ("install", "verify", "init", "add", "audit", "capabilities", "keygen", "pack", "publish", "yank", "unyank", "revoke")
 
 
 def parse_options(args):
@@ -1122,10 +1300,10 @@ def parse_options(args):
     return positional, options
 
 
-ALLOWED = {"install": {"frozen", "accept"}, "verify": set(), "init": set(), "capabilities": set(), "keygen": {"out"},
+ALLOWED = {"install": {"frozen", "accept"}, "verify": set(), "init": set(), "add": set(), "audit": set(), "capabilities": set(), "keygen": {"out"},
            "pack": {"out"}, "publish": {"registry", "key", "dry-run", "expires-days", "registry-name"},
            "yank": {"registry", "key"}, "unyank": {"registry", "key"}, "revoke": {"registry", "key", "archive", "keyid", "reason"}}
-POSITIONAL = {"install": 0, "verify": 0, "init": 1, "capabilities": 1, "keygen": 0, "pack": 0, "publish": 0, "yank": 1,
+POSITIONAL = {"install": 0, "verify": 0, "init": 1, "add": 1, "audit": 0, "capabilities": 1, "keygen": 0, "pack": 0, "publish": 0, "yank": 1,
               "unyank": 1, "revoke": 0}
 
 
@@ -1137,7 +1315,7 @@ def main(argv, out=print):
     command, rest = (args[0], args[1:]) if args else (None, [])
     positional, options = parse_options(rest) if command in COMMANDS else (None, None)
     if (positional is None or set(options) - ALLOWED[command]
-            or len(positional) > POSITIONAL[command] or (command in ("yank", "unyank") and not positional)):
+            or len(positional) > POSITIONAL[command] or (command in ("yank", "unyank", "add") and not positional)):
         print(USAGE, file=sys.stderr)
         return 2
     try:
@@ -1159,6 +1337,11 @@ def main(argv, out=print):
                                    "are: {})".format(name, ", ".join(CAPABILITIES)))
             install(project_dir, frozen=bool(options.get("frozen")), out=out, accepted=accepted)
             return 0
+        if command == "add":
+            command_add(project_dir, positional[0], out=out)
+            return 0
+        if command == "audit":
+            return 1 if audit(project_dir, out=out) else 0
         if command == "capabilities":
             capabilities(project_dir, positional[0] if positional else None, out=out)
             return 0

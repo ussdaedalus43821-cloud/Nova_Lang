@@ -136,6 +136,48 @@ In this order, and nothing is copied until all of it passes:
 use, marks a capability used and not declared (a file edited after install), and the project's policy. `nova-pkg.py init
 [NAME]` writes a version-2 manifest with an empty `capabilities` list.
 
+## `add` and `audit` (the tool)
+
+**`add NAME[@RANGE]`** adds a dependency to the project's `nova.json`, then runs `install`. `NAME` is a package name or an
+`owner/name`; `RANGE` is a version range (`^1.2.0`, `~1.2.0`, `1.2.0`, `*`). It only adds a dependency **from the registry**:
+a `path` or `git` dependency is written by hand.
+
+- **Without a range** it takes the newest version the registry offers that is **not yanked**, and writes `^X.Y.Z` for it
+  (for a `0.x` version a caret keeps the minor, as `[pkg.manifest]` says of ranges). Without a registry
+  (`"registry"` in `nova.json`, or `$NOVA_REGISTRY`) it stops and says what to set. With a range it writes the range as given.
+- **It refuses** a name that is not a package name, a reserved owner (`std`, `nova`), a range with an `@` and nothing after it, the
+  project's own name, and a package that is **already** a dependency (the message shows what is there; change `dependencies`
+  by hand, so `add` never silently rewrites a range you chose).
+- **It is all or nothing.** The new entry is written, then `install` runs with every check of "What `install` checks" above
+  (the policy, the capabilities, the running NovaLang version). If `install` refuses, `nova.json` is put back byte for byte,
+  no `nova.lock` is written, and the message says so. New dependencies go **after** the existing ones; the file is written
+  as JSON with two-space indentation (as `init` writes it), so a hand-made layout is not kept.
+
+**`audit`** reads `nova.lock` and the installed packages and **changes nothing**. For each locked package, sorted by name, it prints
+the version and where it came from (`registry`, `path` or `git` with the commit), the capabilities its installed `nova.json` declares,
+and these findings, each on its own line:
+
+| Finding | Meaning | Problem? |
+| --- | --- | --- |
+| `UNVERIFIED` | a `git` source: pinned to a commit by `nova.lock`, and signed by no one | no |
+| `CHANGED after it was installed` | the files no longer match the `integrity` in `nova.lock` | **yes** |
+| `USES <capability> and does not declare it` | `[pkg.capabilities]` 2, found in the installed files | **yes** |
+| `GAINED capabilities since the lock` | the installed `nova.json` declares a capability that `nova.lock` did not record (whether or not the files also changed) | **yes** |
+| `capabilities lost since the lock` | the lock recorded a capability the installed `nova.json` no longer declares, and nothing was gained | no |
+| `YANKED` | the signed index marks this version yanked: ranges no longer choose it, and the lock still installs it | no |
+| `REVOKED: <reason>` | the archive's hash is in `revoked.json` | **yes** |
+| `MISSING` | the locked version is not in the signed index of this package (or the signed registry has no index of it), so its yank and revocation status could not be checked | **yes** |
+| the registry holds another archive | the signed index's hash for this version is not the one `nova.lock` recorded | **yes** |
+| `newer: <version> (in your range ...) declares <capabilities>, which <version> does not` | for a package the project depends on directly, the newest unyanked, unrevoked version inside the range declares more than the locked one; updating needs `install --accept-capabilities` | no |
+
+The registry findings need a **signed** registry that can be read and verified (the checks of "The registry" above, and the same
+rollback state). If a registry is set but cannot be read and verified, or a directory registry has lost its `registry.json` although
+`nova.lock` recorded signed archives from it, **that is a problem**: the line says the yanks and revocations were *not* checked.
+If no registry is set, or it is the older unsigned layout (which has no yanks or revocations), the line says so and it is **not** a
+problem. The last line is `audit: no problems found` or `audit: N problem(s)`; the exit status is **0** with no problems, **1** with
+any, and 2 for a usage error. Not built: reporting a package whose minor release **removed an export** that the previous one had
+(a compare of exports of two versions, which needs the other version's archive unpacked; open gap G-055).
+
 ## The registry (the tool)
 
 A registry is a tree of files (decision D7: a static signed index, nothing to operate and no service to attack), served by
