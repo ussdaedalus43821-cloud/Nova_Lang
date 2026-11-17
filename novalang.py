@@ -11968,33 +11968,53 @@ def run_inline(source):
     return 0
 
 
-# PyPy overruns its C stack, and ends the process with a segmentation fault, long before the recursion limit above is reached
-# (G-051); a thread with a stack of this size reaches it. The nesting limits are counted by the parser ([port.limits]) and
-# need about this much room at their maximum, on every host.
-PYPY_STACK_BYTES = 256 * 1024 * 1024
+# Some hosts run out of C stack, and end the process ("stack overflow", a segmentation fault), long before the recursion limit above is
+# reached (G-051): PyPy, and CPython before 3.11 on Windows, where a call of one Python function by another uses the 1 MB stack of the
+# main thread. The nesting limits are counted by the parser ([port.limits]) and need about 10,000 Python frames at their maximum, so
+# on those hosts a program runs in a thread whose stack is this large.
+ROOM_STACK_BYTES = 256 * 1024 * 1024
 
 
-def main_with_room(argv):
-    """`main(argv)`, in a thread with room for the deepest program the nesting limits allow, on PyPy; plain `main(argv)` elsewhere
-    (CPython's own stack holds the same program at this recursion limit, and its signal handling stays in the main thread)."""
-    if sys.implementation.name != "pypy":
-        return main(argv)
+def needs_room():
+    """Is this a host whose main thread cannot hold the deepest program the nesting limits allow?"""
+    return sys.implementation.name == "pypy" or (sys.platform == "win32" and sys.version_info < (3, 11))
+
+
+def run_with_room(function, *arguments):
+    """`function(*arguments)`, in a thread with a large stack on a host that needs one (`needs_room`), and called directly on any other.
+    What it raises, it raises here; a Ctrl-C while it runs ends the process with status 130, as a stopped program does."""
+    if not needs_room():
+        return function(*arguments)
     import threading
-    threading.stack_size(PYPY_STACK_BYTES)
+    threading.stack_size(ROOM_STACK_BYTES)
     outcome = {}
 
     def work():
         try:
-            outcome["status"] = main(argv)
-        except BaseException as problem:            # SystemExit, KeyboardInterrupt: hand them to the main thread
+            outcome["value"] = function(*arguments)
+        except BaseException as problem:            # SystemExit, KeyboardInterrupt: hand them to the calling thread
             outcome["raised"] = problem
 
-    thread = threading.Thread(target=work)
+    thread = threading.Thread(target=work, daemon=True)
     thread.start()
-    thread.join()
+    try:
+        while thread.is_alive():                    # a timeout, so that Ctrl-C can reach this thread on Windows
+            thread.join(0.2)
+    except KeyboardInterrupt:
+        sys.stdout.flush()
+        print("\n(stopped)", file=sys.stderr)
+        os._exit(130)
     if "raised" in outcome:
         raise outcome["raised"]
-    return outcome["status"]
+    return outcome["value"]
+
+
+def main_with_room(argv):
+    """`main(argv)` for a program run from the command line. The interactive loop (no arguments) stays in the main thread: its Ctrl-C
+    is the main thread's."""
+    if len(argv) < 2:
+        return main(argv)
+    return run_with_room(main, argv)
 
 
 if __name__ == "__main__":

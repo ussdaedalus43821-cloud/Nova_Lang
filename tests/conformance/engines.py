@@ -108,14 +108,15 @@ def run_in_process(source, engine, files=None, env=None, stdin="", args=None, al
                    sandbox=None, symlinks=None, deprecation=None):
     with patched_environment(env):
         if files is None:
-            return run_in_process_in(source, engine, None, stdin, args, allow_python, sandbox, deprecation)
+            return novalang.run_with_room(run_in_process_in, source, engine, None, stdin, args, allow_python, sandbox,
+                                          deprecation)
         with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
             write_files(folder, source, files, symlinks)
             here = os.getcwd()
             os.chdir(folder)
             try:
-                return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args,
-                                         allow_python, sandbox, deprecation)
+                return novalang.run_with_room(run_in_process_in, source, engine, os.path.realpath(folder), stdin, args,
+                                              allow_python, sandbox, deprecation)
             finally:
                 os.chdir(here)
 

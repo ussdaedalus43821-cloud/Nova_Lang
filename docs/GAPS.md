@@ -65,7 +65,7 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 - **Closed 2026-11-17 (M14 L6, item 4).** The nesting is counted by the parser and not by the host: 1000 brackets, braces and blocks open at once
   and a syntax tree 5000 deep (a chain of operators, of `not`, of `else if`, of `x[0][0]`), each refused with the same error before anything runs
   (`novalang.py`: `NESTING_LIMIT`, `TREE_DEPTH_LIMIT`, `check_tree_depth`, which the compiler and the tree-walker also call; the artifact loader already counted, V1).
-  On PyPy the interpreter runs in a thread with a large stack (`main_with_room`), and `tests/portability/test_pypy_nesting.py` is now the check that the
+  On PyPy, and on Windows with Python before 3.11 (found by the Windows 3.7 row of CI: the main thread's 1 MB stack overflows at the new limits), the interpreter runs a program in a thread with a large stack (`run_with_room`; an embedding host on those hosts has to do the same), and `tests/portability/test_pypy_nesting.py` is now the check that the
   crash is gone and the limits are the same on PyPy 3.10.16 and on CPython, in the trusted and the restricted profile. The self-hosted interpreter stays at 100 ([`D-048`](spec/DIVERGENCES.md)).
   The limits **narrow** what ran before (CPython took about 2000 parentheses, 5000 blocks and 10,000 operands): declared in [`STABLE.md`](spec/STABLE.md).
   PyPy is still a measurement and not a supported engine: the whole suite was not run on it.
