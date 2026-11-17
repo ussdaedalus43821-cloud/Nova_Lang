@@ -231,7 +231,7 @@ def normalize(engine, expected_error, result):
                 # A labelled failure of the language's own (ImportError,
                 # TypeError) carries its label in the message text.
                 inner, _, rest = message.partition(": ")
-                if inner in ("ImportError", "TypeError", "AssertionError", "FileError", "FileNotFoundError", "LimitError"):
+                if inner in ("ImportError", "TypeError", "AssertionError", "FileError", "FileNotFoundError", "LimitError", "DeprecationError"):
                     label, message = inner, rest
             result["error"] = label + ": " + message
         result["error_line"] = None
@@ -250,6 +250,8 @@ def differences(wanted, got, engine):
     for key in ("host_calls", "results"):
         if key in got and wanted.get(key, []) != got[key]:
             out.append("{}: expected {!r}, got {!r}".format(key, wanted.get(key, []), got[key]))
+    if wanted.get("warnings") is not None and wanted["warnings"] != got.get("warnings"):
+        out.append("warnings: expected {!r}, got {!r}".format(wanted["warnings"], got.get("warnings")))
     if "cache_after" in got and wanted.get("cache_after") != got["cache_after"]:
         out.append("cache_after: expected {!r}, got {!r}".format(wanted.get("cache_after"), got["cache_after"]))
     if engine != "bootstrap" and wanted.get("error_line") is not None \
@@ -269,6 +271,7 @@ def judge(case, engine, result):
     spec["host_calls"] = case.get("host_calls", [])
     spec["results"] = case.get("results", [])
     spec["cache_after"] = case.get("cache_after")
+    spec["warnings"] = case.get("warnings")
     recorded = case.get("divergences", {}).get(engine)
     if recorded is None:
         return differences(spec, got, engine)

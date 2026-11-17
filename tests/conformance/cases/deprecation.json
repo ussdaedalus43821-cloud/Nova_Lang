@@ -1,0 +1,190 @@
+{
+ "area": "deprecation",
+ "version": 1,
+ "cases": [
+  {
+   "name": "dep-a-call-warns-once-per-call-site",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "print(\"start\")\nfor i in range(3) {\n    _deprecated_probe()\n}\n_deprecated_probe()\nprint(\"end\")\n",
+   "output": [
+    "start",
+    "end"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true
+   },
+   "warnings": [
+    "warning: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 3)",
+    "warning: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 5)"
+   ]
+  },
+  {
+   "name": "dep-a-function-called-twice-warns-once",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "def run() {\n    _deprecated_probe()\n}\nrun()\nrun()\nprint(\"done\")\n",
+   "output": [
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true
+   },
+   "warnings": [
+    "warning: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 2)"
+   ]
+  },
+  {
+   "name": "dep-a-warning-does-not-change-output-or-status",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "print(1)\n_deprecated_probe()\nprint(2)\n",
+   "output": [
+    "1",
+    "2"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true
+   },
+   "warnings": [
+    "warning: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 2)"
+   ]
+  },
+  {
+   "name": "dep-off-says-nothing",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "print(\"a\")\n_deprecated_probe()\nprint(\"b\")\n",
+   "output": [
+    "a",
+    "b"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true,
+    "mode": "off"
+   },
+   "warnings": []
+  },
+  {
+   "name": "dep-error-ends-the-run",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "print(\"before\")\n_deprecated_probe()\nprint(\"after\")\n",
+   "output": [
+    "before"
+   ],
+   "error": "DeprecationError: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 2)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true,
+    "mode": "error"
+   },
+   "warnings": []
+  },
+  {
+   "name": "dep-error-is-not-catchable",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "print(\"before\")\ntry {\n    _deprecated_probe()\n} catch e {\n    print(\"caught\")\n} finally {\n    print(\"finally\")\n}\nprint(\"after\")\n",
+   "output": [
+    "before"
+   ],
+   "error": "DeprecationError: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 3)",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "deprecation": {
+    "probe": true,
+    "mode": "error"
+   },
+   "warnings": []
+  },
+  {
+   "name": "dep-a-module-call-reports-the-modules-line",
+   "spec": [
+    "host.warnings"
+   ],
+   "profile": "host",
+   "source": "import \"lib.nova\"\nprint(\"main\")\n",
+   "output": [
+    "main"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "files": {
+    "lib.nova": "let x = 1\n\n_deprecated_probe()\nexport let y = 2\n"
+   },
+   "deprecation": {
+    "probe": true
+   },
+   "warnings": [
+    "warning: _deprecated_probe() is deprecated since 2.4; use nothing (a test hook) (removal not before 3.0) (line 3)"
+   ]
+  },
+  {
+   "name": "dep-the-probe-is-undefined-unless-the-host-asks",
+   "spec": [
+    "host.probe"
+   ],
+   "profile": "host",
+   "source": "print(\"a\")\n_deprecated_probe()\n",
+   "output": [
+    "a"
+   ],
+   "error": "NovaError: undefined name '_deprecated_probe'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "dep-the-probe-is-undefined-in-the-restricted-profile",
+   "spec": [
+    "host.probe"
+   ],
+   "profile": "sandbox",
+   "source": "print(\"a\")\n_deprecated_probe()\n",
+   "output": [
+    "a"
+   ],
+   "error": "NovaError: undefined name '_deprecated_probe'",
+   "error_line": 2,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted"
+   }
+  }
+ ]
+}

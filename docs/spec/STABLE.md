@@ -72,9 +72,9 @@ version.**
 3. **Kept for a sunset:** at least two minor releases **and** at least six months, whichever is longer.
 4. **Removed only in a major release,** with the migration in the changelog.
 
-*State of the mechanism in this version: the policy and the list exist; the warning itself (point 2) is not
-implemented yet, and nothing is deprecated, so nothing is owed. It is part of the foundations still to land
-before 2.3.0 declares the surface (see the M13 plan, slice 1).*
+*State of the mechanism in this version: the policy, the list and the warning for a deprecated built-in function
+([`[host.warnings]`](10-host.md), `--warnings`, the embedding callback) exist, and nothing is deprecated, so nothing is
+owed. A deprecated standard-module export, capability, manifest field or flag does not warn yet (gap G-056).*
 
 ## Changing the recorded surface
 

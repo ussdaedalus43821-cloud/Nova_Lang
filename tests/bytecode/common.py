@@ -103,7 +103,7 @@ def programs_run_through_artifacts(stats=None):
                 loaded = nl.load_artifact(data, source)
                 program._code = loaded.code
                 stats["through an artifact"] = stats.get("through an artifact", 0) + 1
-            return program, nl.run_program(program, interpreter)
+            return program, nl.run_program(program, interpreter, source)
         except RecursionError:
             raise nl.NovaError("the interpreter ran out of stack - recursion too deep") from None
 

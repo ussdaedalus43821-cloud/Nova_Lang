@@ -105,22 +105,22 @@ def patched_environment(env):
 
 
 def run_in_process(source, engine, files=None, env=None, stdin="", args=None, allow_python=False,
-                   sandbox=None, symlinks=None):
+                   sandbox=None, symlinks=None, deprecation=None):
     with patched_environment(env):
         if files is None:
-            return run_in_process_in(source, engine, None, stdin, args, allow_python, sandbox)
+            return run_in_process_in(source, engine, None, stdin, args, allow_python, sandbox, deprecation)
         with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
             write_files(folder, source, files, symlinks)
             here = os.getcwd()
             os.chdir(folder)
             try:
                 return run_in_process_in(source, engine, os.path.realpath(folder), stdin, args,
-                                         allow_python, sandbox)
+                                         allow_python, sandbox, deprecation)
             finally:
                 os.chdir(here)
 
 
-def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=False, sandbox=None):
+def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=False, sandbox=None, deprecation=None):
     out = io.StringIO()
     error, line, status = "", None, 0
     # The `sandbox` object of a case is the engine's configuration (docs/spec/16-sandbox.md): the
@@ -128,7 +128,10 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
     capabilities = None
     if sandbox is not None:
         capabilities = novalang.Capabilities(**sandbox)
-    interpreter = novalang.Interpreter(engine, allow_python=allow_python, capabilities=capabilities)
+    # The `deprecation` object of a case ([host.warnings]): {"mode": "warn" | "error" | "off", "probe": true}.
+    deprecation = deprecation or {}
+    interpreter = novalang.Interpreter(engine, allow_python=allow_python, capabilities=capabilities,
+                                       warnings=deprecation.get("mode", "warn"), probe=bool(deprecation.get("probe")))
     if folder is not None:
         interpreter.file_stack.append(folder)       # as run_source does for a file
     real_stdin, real_args = sys.stdin, novalang.SCRIPT_ARGS
@@ -150,7 +153,7 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
             except novalang.ProgramExit as stop:
                 status = stop.code
             except novalang.FatalLimit as problem:
-                error = "LimitError: {}".format(problem.message)
+                error = "{}: {}".format(problem.label, problem.message)
                 status = 1
             except SystemExit as stop:
                 status = stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
@@ -161,7 +164,8 @@ def run_in_process_in(source, engine, folder, stdin="", args=None, allow_python=
                 status = 70
     finally:
         sys.stdin, novalang.SCRIPT_ARGS = real_stdin, real_args
-    return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status}
+    return {"output": lines_of(out.getvalue()), "error": error, "error_line": line, "exit": status,
+            "warnings": list(interpreter.warning_log)}
 
 
 SANDBOX_FLAGS = (("read", "--allow-read"), ("write", "--allow-write"), ("import_from", "--allow-import"),
@@ -188,7 +192,7 @@ def sandbox_arguments(sandbox):
 
 
 def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_python=False, timeout=120,
-                  sandbox=None, symlinks=None):
+                  sandbox=None, symlinks=None, deprecation=None):
     with tempfile.TemporaryDirectory(prefix="nova-conformance-") as folder:
         path = Path(folder) / "case.nova"
         if files is None:
@@ -199,7 +203,7 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_pytho
         try:
             done = subprocess.run(
                 [sys.executable, str(ROOT / "novalang.py")] + (["--allow-python"] if allow_python else [])
-                + (sandbox_arguments(sandbox) if sandbox else [])
+                + (sandbox_arguments(sandbox) if sandbox else []) + deprecation_arguments(deprecation)
                 + ["--bootstrap", str(path)] + list(args or []),
                 cwd=folder, input=(stdin or "").encode("utf-8"), capture_output=True, timeout=timeout,
                 env=dict(os.environ, PYTHONUTF8="1", **(env or {})),
@@ -210,13 +214,25 @@ def run_bootstrap(source, files=None, env=None, stdin="", args=None, allow_pytho
     error = ""
     for line in stderr.splitlines():
         match = HEADLINE.match(line)
-        if match and not line.startswith(" "):
+        if match and not line.startswith(" ") and not line.startswith("warning: "):      # a warning is not the error
             error = line
             break
     if "Traceback (most recent call last)" in stderr:
         error = "InternalError: " + stderr.strip().splitlines()[-1]
     return {"output": lines_of(done.stdout.decode("utf-8", "replace").replace("\r\n", "\n")),
-            "error": error, "error_line": None, "exit": done.returncode}
+            "error": error, "error_line": None, "exit": done.returncode,
+            "warnings": [line for line in stderr.splitlines() if line.startswith("warning: ")]}
+
+
+def deprecation_arguments(deprecation):
+    """A case's `deprecation` object as the flags that select it ([host.warnings])."""
+    out = []
+    if deprecation:
+        if deprecation.get("probe"):
+            out.append("--_deprecation-probe")
+        if "mode" in deprecation:
+            out.append("--warnings=" + deprecation["mode"])
+    return out
 
 
 def run_isolated_case(source, engine, files, env, stdin, args, sandbox, symlinks, timeout=180):
@@ -251,14 +267,15 @@ def run_isolated_case(source, engine, files, env, stdin, args, sandbox, symlinks
 
 
 def run(source, engine, files=None, env=None, stdin="", args=None, allow_python=False, sandbox=None,
-        symlinks=None):
+        symlinks=None, deprecation=None):
     """`files` maps relative paths (with `/`) to text: the modules the program
     imports, or any file it reads, written beside it (as main.nova) in a folder
     of their own that is the working directory. `env` sets environment
     variables, `stdin` is what `input()` reads, `args` is what `args()` returns."""
     if engine == "bootstrap":
-        return run_bootstrap(source, files, env, stdin, args, allow_python, sandbox=sandbox, symlinks=symlinks)
-    return run_in_process(source, engine, files, env, stdin, args, allow_python, sandbox, symlinks)
+        return run_bootstrap(source, files, env, stdin, args, allow_python, sandbox=sandbox, symlinks=symlinks,
+                             deprecation=deprecation)
+    return run_in_process(source, engine, files, env, stdin, args, allow_python, sandbox, symlinks, deprecation)
 
 
 def run_policy(case):
@@ -623,7 +640,8 @@ def run_case(case, engine):
         return run_isolated_case(case["source"], engine, files, case.get("env"), case.get("stdin", ""),
                                  case.get("args"), sandbox, case.get("symlinks"))
     return run(case["source"], engine, files, case.get("env"),
-               case.get("stdin", ""), case.get("args"), allow_python, sandbox, case.get("symlinks"))
+               case.get("stdin", ""), case.get("args"), allow_python, sandbox, case.get("symlinks"),
+               case.get("deprecation"))
 
 
 def render_argument(value):
@@ -713,7 +731,8 @@ def run_embedding(case, engine):
     fixture, calls, results = case["embedding"], [], []
     out = io.StringIO()
     error, status = "", 0
-    nova = novalang.Nova(engine, allow_python=bool(case.get("allow_python")), args=fixture.get("args"))
+    nova = novalang.Nova(engine, allow_python=bool(case.get("allow_python")), args=fixture.get("args"),
+                         warnings=fixture.get("warnings", "warn"), _deprecation_probe=bool(fixture.get("probe")))
     try:
         for name, value in fixture.get("globals", {}).items():
             nova.expose_global(name, decode(value))
@@ -738,4 +757,4 @@ def run_embedding(case, engine):
     except novalang.NovaLangError as problem:
         error, status = nova_error_text(problem), 1
     return {"output": lines_of(out.getvalue()), "error": error, "error_line": None, "exit": status,
-            "host_calls": calls, "results": results}
+            "host_calls": calls, "results": results, "warnings": nova.warning_log}

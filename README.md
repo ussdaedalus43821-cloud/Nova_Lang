@@ -493,7 +493,7 @@ except NovaLangError as error:
 
 | Method | Purpose |
 |---|---|
-| `Nova(engine=None, allow_python=False, args=None)` | A fresh interpreter — nothing is shared between instances. `python.*` is **off** unless `allow_python=True`. `args=["a", "b"]` is what the script's `args()` returns (a list of strings; empty if omitted, never your own command line) |
+| `Nova(engine=None, allow_python=False, args=None, warnings="warn", warning=None)` | A fresh interpreter — nothing is shared between instances. `python.*` is **off** unless `allow_python=True`. `args=["a", "b"]` is what the script's `args()` returns (a list of strings; empty if omitted, never your own command line). `warnings="warn"\|"error"\|"off"` and `warning=fn` say what a call of a deprecated function does (`nova.warning_log` lists the warnings; nothing is printed) |
 | `eval(code)` / `exec(code)` | Run a string of NovaLang, returning its value (or discarding it) — cached by source text, so calling the same script every frame costs no repeated parsing |
 | `compile(code)` | Lex and parse once, returning a `CompiledScript` you can `run()` repeatedly yourself |
 | `load_file(path)` | Read and run a `.nova` file; its own relative imports resolve against its directory |
