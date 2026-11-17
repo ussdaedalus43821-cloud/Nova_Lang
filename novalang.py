@@ -1822,6 +1822,10 @@ MAX_LIST_LENGTH = 1000000
 # CHARGE_FLOOR is not charged at all, because 1000 of them still reach the ordinary check.
 WORK_CHECK_UNITS = 50000
 CHARGE_FLOOR = 64
+# Units of work that cost one step of the run's budget ([sbx.limits], steps): the cost model. Walking an operand, the matcher's
+# thread-steps and a native's reported work are all counted in units, so a run is stopped by its budget at the same point on every
+# engine, which a wall-clock limit cannot do.
+WORK_PER_STEP = 128
 
 
 def operand_work(*values):
@@ -1831,6 +1835,17 @@ def operand_work(*values):
         if isinstance(value, (list, str, dict)):
             total += len(value)
     return total
+
+
+# The cost model charges an operation for what it walks ([sbx.limits], "Work costs steps"). These built-ins do not walk their operands
+# (they look at one end of a list, or at a length, or at one item), so a call of one is one step however long the list is: charged
+# by the operands' length, `append` in a loop would cost the square of the loop.
+CONSTANT_WORK = frozenset(("append", "len", "pop", "type", "choice"))
+
+
+def membership_work(right):
+    """What `x in right` walks: a list or a string; a dictionary is looked at by key."""
+    return len(right) if isinstance(right, (list, str)) else 0
 
 # The language's own bound on an integer ([port.integers]): at most 4000
 # decimal digits, whatever Python release is underneath. Python's own limit on
@@ -3109,7 +3124,7 @@ REGEX_MAX_NESTING = 100         # groups inside groups
 REGEX_MAX_COMPILE_WORK = 400000  # nodes visited while compiling: a repeat of an empty group adds no instruction
 REGEX_CACHE_SIZE = 128
 REGEX_HARD_STRING = 16 * 1024 * 1024   # the longest string sub() builds when the run has no string limit
-REGEX_UNIT = 128                # thread-steps that cost one step of the run's budget
+REGEX_UNIT = WORK_PER_STEP      # thread-steps that cost one step of the run's budget (the cost model of [sbx.limits])
 CODE_POINT_MAX = 0x10FFFF
 
 (R_CHAR, R_ANY, R_SET, R_SPLIT, R_JMP, R_SAVE, R_BOL, R_EOL, R_WORDB, R_NWORDB, R_MATCH, R_LOOP) = range(12)
@@ -3592,10 +3607,7 @@ class RegexMeter:
         self.pending += units
         if self.pending >= REGEX_UNIT:
             steps, self.pending = divmod(self.pending, REGEX_UNIT)
-            interpreter = self.interpreter
-            for _ in range(steps):
-                interpreter.step(self.position)
-            interpreter.charge(steps * REGEX_UNIT, self.position)
+            self.interpreter.charge(steps * REGEX_UNIT, self.position)      # charge() turns the units into steps
 
 
 def regex_search(program, text, start, meter, no_empty_at_start=False, exists=False):
@@ -5176,6 +5188,7 @@ class Interpreter:
     def begin_counters(self):
         self.steps = 0
         self.work = 0
+        self.step_units = 0             # units of work not yet worth a whole step (WORK_PER_STEP)
         self.output_bytes = 0
         self.deadline = None
         limits = self.limits
@@ -5225,7 +5238,15 @@ class Interpreter:
         much that call does, and the clock is only read every 1000 steps; so an operation that walks a long list
         (`x in big`, `sorted(big)`, `a + b` on two long lists) is charged here by the size of what it walks, and
         the clock is read every WORK_CHECK_UNITS of it. The time limit can then be passed by at most one operation,
-        and one operation is bounded by the collection limits ([sbx.limits], time)."""
+        and one operation is bounded by the collection limits ([sbx.limits], time). The same units also cost the
+        step budget, WORK_PER_STEP to a step, so that a run that does a great deal of work inside few steps is stopped
+        by its budget at the same point on every engine ([sbx.limits], steps)."""
+        self.step_units += units
+        if self.step_units >= WORK_PER_STEP:
+            whole, self.step_units = divmod(self.step_units, WORK_PER_STEP)
+            self.steps += whole
+            if self.steps >= self.next_check:
+                self.step_slow(position)
         self.work += units
         if self.work >= WORK_CHECK_UNITS:
             self.work = 0
@@ -5594,12 +5615,13 @@ class Interpreter:
             self.evaluate(node.start), node.position)
         end = None if node.end is None else slice_bound(
             self.evaluate(node.end), node.position)
-        # Slices clamp instead of failing: "Hello"[1:99] is "ello".
+        # Slices clamp instead of failing: "Hello"[1:99] is "ello". A slice copies what it returns, and is charged for that.
+        result = target[start:end]
         if self.counting:
-            work = operand_work(target)
+            work = operand_work(result)
             if work >= CHARGE_FLOOR:
                 self.charge(work, node.position)
-        return target[start:end]
+        return result
 
     def visit_InterpolationNode(self, node):
         parts = [self.evaluate(part) for part in node.parts]
@@ -5648,7 +5670,7 @@ class Interpreter:
         left = self.evaluate(node.left)
         right = self.evaluate(node.right)
         if self.counting and node.op in ("in", "==", "!="):
-            work = operand_work(left, right)
+            work = membership_work(right) if node.op == "in" else operand_work(left, right)
             if work >= CHARGE_FLOOR:
                 self.charge(work, node.position)
         return compare_operation(node.op, left, right, node.position)
@@ -5668,15 +5690,15 @@ class Interpreter:
     def visit_WhileNode(self, node):
         broke = False
         while self.condition_value(node, "while"):
-            if self.counting:
-                self.step(node.position)
             try:
                 self.execute_scoped_block(node.body)
             except ContinueSignal:
-                continue
+                pass
             except BreakSignal:
                 broke = True
                 break
+            if self.counting:                   # a pass is counted when it is over, as the VM counts it at the jump back
+                self.step(node.position)
 
         # Like Python: the `else` runs only if the loop was never broken out of.
         if node.else_block is not None and not broke:
@@ -5698,8 +5720,6 @@ class Interpreter:
         try:
             index = 0
             while index < iterations:
-                if self.counting:
-                    self.step(node.position)
                 loop_env.define(node.name, range_value(start, step, index, node.descending))
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
@@ -5708,6 +5728,8 @@ class Interpreter:
                 except BreakSignal:
                     broke = True
                     break
+                if self.counting:               # a pass is counted when it is over, as the VM counts it at the jump back
+                    self.step(node.position)
                 index += 1
         finally:
             self.env = saved
@@ -5725,8 +5747,6 @@ class Interpreter:
         broke = False
         try:
             for item in items:
-                if self.counting:
-                    self.step(node.position)
                 if node.second_name:
                     loop_env.define(node.name, item[0])
                     loop_env.define(node.second_name, item[1])
@@ -5735,10 +5755,12 @@ class Interpreter:
                 try:
                     self.execute_scoped_block(node.body, parent=loop_env)
                 except ContinueSignal:
-                    continue
+                    pass
                 except BreakSignal:
                     broke = True
                     break
+                if self.counting:               # a pass is counted when it is over, as the VM counts it at the jump back
+                    self.step(node.position)
         finally:
             self.env = saved
 
@@ -5883,7 +5905,7 @@ class Interpreter:
                 if self.counting:
                     self.step(position)
                     self.check_call_arguments(callee, args, position)
-                    work = operand_work(*args)
+                    work = 0 if callee.name in CONSTANT_WORK else operand_work(*args)
                     if callee.name == "range" and 1 <= len(args) <= 3 and all(is_number(a) for a in args):
                         work += range_count(args, position) or 0
                     if work >= CHARGE_FLOOR:
@@ -5902,7 +5924,7 @@ class Interpreter:
                     result = callee.implementation(args, position)
                 if self.counting:
                     self.check_result_size(result, position)
-                    work = operand_work(result)
+                    work = 0 if callee.name in CONSTANT_WORK else operand_work(result)
                     if work >= CHARGE_FLOOR:
                         self.charge(work, position)
                 return bounded_integer(result, position)
@@ -9214,7 +9236,7 @@ def execute(interpreter, entry):
                     right = stack.pop()
                     left = stack[-1]
                     kind = type(left)
-                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                    if type(right) is kind and (kind is int or kind is bool or kind is float or (kind is str and not counting)):
                         stack[-1] = left == right
                     else:
                         if counting:
@@ -9321,7 +9343,7 @@ def execute(interpreter, entry):
                 elif op == IN_:
                     right = stack.pop()
                     if counting:
-                        work = operand_work(right)
+                        work = membership_work(right)
                         if work >= CHARGE_FLOOR:
                             interpreter.charge(work, positions[ip - 1])
                     stack[-1] = compare_operation("in", stack[-1], right, positions[ip - 1])
@@ -9405,7 +9427,7 @@ def execute(interpreter, entry):
                     right = stack.pop()
                     left = stack[-1]
                     kind = type(left)
-                    if type(right) is kind and (kind is int or kind is str or kind is bool or kind is float):
+                    if type(right) is kind and (kind is int or kind is bool or kind is float or (kind is str and not counting)):
                         stack[-1] = left != right
                     else:
                         if counting:
@@ -9502,11 +9524,12 @@ def execute(interpreter, entry):
                 elif op == SLICE_:
                     end = stack.pop() if arg[1] else None
                     start = stack.pop() if arg[0] else None
+                    result = stack[-1][start:end]
                     if counting:
-                        work = operand_work(stack[-1])
+                        work = operand_work(result)
                         if work >= CHARGE_FLOOR:
                             interpreter.charge(work, positions[ip - 1])
-                    stack[-1] = stack[-1][start:end]
+                    stack[-1] = result
                 elif op == NEG_ or op == POS_:
                     stack[-1] = unary_operation("-" if op == NEG_ else "+", stack[-1],
                                                 positions[ip - 1])

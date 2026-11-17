@@ -53,6 +53,12 @@ and the reason a pattern is refused names the construct and the way to write it.
 meaning, and `$` still matches before a final line feed. This is the owner-accepted cost of decision D3 of the M13 plan
 ("the loss of backreferences and look-around"), and the changelog entry for the release must say it.
 
+**A narrowing of a limit, for steps.** In the release that makes work cost steps (M14 L6, item 5; G-042, decision D5) a `restricted` program that does a great deal of work inside few
+calls (hundreds of passes over lists of a million items, for example) uses more of its step budget than before, and one that came near the default 5,000,000 may now be stopped by
+`LimitError: step budget ... exhausted` where it used to finish. By the table above that is a **major** change in the usual case; it is made in a minor release because
+the specification never said what a step costs beyond "a pass or a call", the number of steps was declared not portable across hosts, the default ceiling is unchanged and a realistic workload uses under 1% of it,
+and the owner accepted it (M14 L6, 2026-11-16, with the condition that the ceiling be named in the changelog together with how to raise it). The cost model is now specified in `[sbx.limits]`.
+
 **A third narrowing, for nesting.** In the release that makes the nesting limits explicit (M14 L6, item 4; G-051) a program may nest at most
 **1000** brackets, braces and blocks, and its syntax tree may be at most **5000** levels deep (a chain of operators, of `not`, of `else if` or of
 `x[0][0]`). Before it, the specification promised only a minimum of 100 and the real ceiling was the Python's recursion limit: on CPython about 2000

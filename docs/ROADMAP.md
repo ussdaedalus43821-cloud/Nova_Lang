@@ -473,7 +473,7 @@ patch release (2.3.x) unless a later milestone takes them. Each is explained in 
 | --- | --- |
 | `nova-pkg add` and `audit` | `audit` needs the registry for yanks and revocations; both are small now that the registry exists |
 | The deprecation warning (one warning per call site, `--warnings`, an embedding callback) | The policy and an empty `DEPRECATIONS.md` exist; nothing is deprecated, so nothing is owed |
-| The step-counted time limit (G-042, decision D5) | The wall-clock limit still gives a different answer on each engine; the self-hosted engine stops near 250 CSV rows |
+| The step-counted time limit (G-042, decision D5) | **Built** (M14 L6, item 5): work costs steps, 128 units to a step, the same on all three engines, so a run stopped by `steps` stops at the same point on each; the wall-clock `time` limit stays beside it and still differs by engine |
 | The independent review | Of the M11 sandbox, the regex matcher, the registry client and the signature check; it is still pending and the threat model's review log lists what it is asked to read |
 | The explicit nesting counter (G-051), as its own pull request | **Built** (M14 L6, item 4): [`GAPS.md`](GAPS.md) G-051 is closed; the limits are 1000 and 5000, counted by the parser, and verified on PyPy |
 | The embedding fixes (G-015 `args()` through the embedding API, G-017 the four extra files an `import` needs) | Not started; Nova_Data vendors the four files by hand |

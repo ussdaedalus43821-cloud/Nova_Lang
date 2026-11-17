@@ -58,6 +58,24 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
 - Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
 
+### Changed (M14 L6, item 5 of the 2.3.x patch list: the step-counted limit, G-042 / D5)
+
+- **Work now costs steps, so `steps` stops a run at the same point on every engine.** Until now a step was one pass of a loop or one call, however much the call did, and the work of a long operation (a sum of two
+  long lists, `sorted`, `join`, `str` of a list, a regular expression over a large text) only moved the clock, which is why the wall-clock `time` limit let the VM do a hundred times what the self-hosted engine could.
+  In the `restricted` profile every **128 units of work** are one more step of the budget, a unit being one item or character the operation walks (the same units that already moved the clock, and
+  that the regex matcher already charged at this rate). `a + b` of two 100,000-item lists is about 1,560 steps. The VM, the tree-walker and the self-hosted interpreter charge exactly the same units
+  (28 kinds of operation compared, and the `step-work-*` conformance cases): a loop of any of them, run to the budget, prints the same last number on all three.
+- **The ceiling is unchanged, and generous: 5,000,000 steps per run in `restricted`, none in `trusted`.** A real restricted workload barely touches it: Nova_Log reading and counting a 0.5 MB access log takes about 32,000 steps (0.6%).
+  **To raise it:** `--limit steps=50000000` on the command line, or `Nova(profile="restricted", limits={"steps": 50000000})` in a host. A program that did a great deal of work in few calls (hundreds of passes over million-item lists)
+  used to pass the step budget and be stopped, if at all, by `time`; it can now be stopped by `steps` first, with `LimitError: step budget of N steps exhausted`.
+- **The wall-clock `time` limit stays beside it** (5,000 ms in `restricted`), so a slow engine can still be stopped by `time` before `steps`. To get the same stop point on every engine, set `time` above what the slowest needs.
+- **The cost model charges an operation for what it walks and nothing else** (a first version charged every operand and made `append` in a loop cost the square of the loop, which a real streaming program, std:files reading a 1.4 MB file, ran out of
+  the budget on): `append`, `len`, `pop`, `type` and `choice` cost one step however long the list is; `x in d` on a dictionary is a lookup and is not charged; a slice is charged for what it copies, not for what it cuts from.
+- **Three mismatches between the VM and the other engines were found and fixed on the way:** `==` and `!=` of two strings were not charged on the VM; `in` charged only its right operand on the VM and both on the others;
+  and **a pass of a loop was counted at its start by the tree-walker and the self-hosted engine and at the jump back by the VM**, so at an odd budget the VM ran one statement further, and a loop left by `break` cost the VM one step less.
+  All three now count a pass when it is over, the VM's way, so no bytecode changed.
+- Specified in `docs/spec/16-sandbox.md` (`[sbx.limits]`, "Work costs steps"); 16 conformance cases in `cases/step-work.json` (each runs a loop of one kind of operation to the budget and compares the last number printed), 10 tests in `tests/security/test_step_work.py`.
+
 ### Changed, a narrowing (M14 L6, item 4 of the 2.3.x patch list: the explicit nesting counter, G-051)
 
 - **How deeply a program may nest is now a specified limit, counted by the parser, the same on every host.** At most **1000** brackets, braces and blocks open at once

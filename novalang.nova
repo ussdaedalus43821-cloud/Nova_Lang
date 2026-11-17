@@ -1790,7 +1790,7 @@ let LIMITS = {
 }
 
 # What this run has used.
-let RUN = {steps: 0, output: 0, started: 0, next_check: 1000, work: 0}
+let RUN = {steps: 0, output: 0, started: 0, next_check: 1000, work: 0, step_units: 0}
 
 # The three fatal limits end the run with a message that begins "LimitError: ". A `try` of the
 # program never sees one, and no `finally` block runs ([sbx.limits]).
@@ -1862,6 +1862,7 @@ def current_dir_for_warning() {
 def begin_counters() {
     RUN["steps"] = 0
     RUN["work"] = 0
+    RUN["step_units"] = 0
     RUN["output"] = 0
     RUN["started"] = monotonic()
     RUN["next_check"] = min(1000, LIMITS["steps"] + 1)
@@ -1885,8 +1886,32 @@ def operand_work(value) {
     return 0
 }
 
+# The cost model charges an operation for what it walks ([sbx.limits], "Work costs steps"): these built-ins look at one end of a
+# list, or at a length or one item, so a call of one is one step however long the list is.
+let CONSTANT_WORK = {append: true, len: true, pop: true, "type": true, choice: true}
+
+# What `x in right` walks: a list or a string; a dictionary is looked at by key.
+def membership_work(right) {
+    let kind = type(right)
+    if kind == "list" or kind == "string" {
+        return len(right)
+    }
+    return 0
+}
+
+# The same units also cost the step budget, 128 to a step (WORK_PER_STEP of the host, [sbx.limits], steps), so that a run
+# that does a great deal of work inside few steps is stopped by its budget at the same point on every engine.
 def charge(units) {
     if units >= 64 {
+        RUN["step_units"] = RUN["step_units"] + units
+        if RUN["step_units"] >= 128 {
+            let whole = RUN["step_units"] // 128
+            RUN["step_units"] = RUN["step_units"] - whole * 128
+            RUN["steps"] = RUN["steps"] + whole
+            if RUN["steps"] >= RUN["next_check"] {
+                step_slow()
+            }
+        }
         RUN["work"] = RUN["work"] + units
         if RUN["work"] >= 50000 {
             RUN["work"] = 0
@@ -1895,14 +1920,10 @@ def charge(units) {
     }
 }
 
-# The work of a native (a regex over a large text): the host reports units of it, 128 to a step of the budget,
-# and the clock is read as for any long operation. Only the restricted profile counts.
+# The work of a native (a regex over a large text): the host reports units of it, charged like any other work: 128
+# to a step of the budget, and the clock is read as for any long operation. Only the restricted profile counts.
 def native_work(units) {
     if SANDBOX["restricted"] {
-        RUN["steps"] = RUN["steps"] + units // 128
-        if RUN["steps"] >= RUN["next_check"] {
-            step_slow()
-        }
         charge(units)
     }
 }
@@ -2263,8 +2284,10 @@ def call_builtin(name, call_args, pos) {
     count_step()
     check_builtin_limits(name, call_args)
     let work = 0
-    for call_arg in call_args {
-        work = work + operand_work(call_arg)
+    if not (name in CONSTANT_WORK) {
+        for call_arg in call_args {
+            work = work + operand_work(call_arg)
+        }
     }
     if name == "range" and len(call_args) >= 1 and len(call_args) <= 3 {
         work = work + limits_range_count(call_args)
@@ -2272,7 +2295,9 @@ def call_builtin(name, call_args, pos) {
     charge(work)
     let result = call_builtin_raw(name, call_args, pos)
     check_result_size(result)
-    charge(operand_work(result))
+    if not (name in CONSTANT_WORK) {
+        charge(operand_work(result))
+    }
     return result
 }
 
@@ -2904,7 +2929,11 @@ def eval_compare(node, scope) {
     let right = eval_expr(node["right"], scope)
     let op = node["op"]
     if SANDBOX["restricted"] and (op == "in" or op == "==" or op == "!=") {
-        charge(operand_work(left) + operand_work(right))
+        if op == "in" {
+            charge(membership_work(right))
+        } else {
+            charge(operand_work(left) + operand_work(right))
+        }
     }
     if op == "==" {
         return target_equal(left, right)
@@ -2938,19 +2967,21 @@ def eval_index(node, scope) {
 
 def eval_slice(node, scope) {
     let target = eval_expr(node["target"], scope)
-    if SANDBOX["restricted"] {
-        charge(operand_work(target))
-    }
+    let result = 0
     if node["has_start"] and node["has_end"] {
-        return target[eval_expr(node["start"], scope):eval_expr(node["end"], scope)]
+        result = target[eval_expr(node["start"], scope):eval_expr(node["end"], scope)]
+    } else if node["has_start"] {
+        result = target[eval_expr(node["start"], scope):]
+    } else if node["has_end"] {
+        result = target[:eval_expr(node["end"], scope)]
+    } else {
+        result = target[:]
     }
-    if node["has_start"] {
-        return target[eval_expr(node["start"], scope):]
+    # A slice copies what it returns, and is charged for that.
+    if SANDBOX["restricted"] {
+        charge(operand_work(result))
     }
-    if node["has_end"] {
-        return target[:eval_expr(node["end"], scope)]
-    }
-    return target[:]
+    return result
 }
 
 def eval_member(node, scope) {
@@ -3088,18 +3119,16 @@ def exec_if(node, scope) {
 def exec_while(node, scope) {
     let broke = false
     while eval_condition(node, scope, "while") {
-        count_step()
         let result = exec_scoped_block(node["body"], scope)
         if result["kind"] == "break" {
             broke = true
             break
         }
-        if result["kind"] == "continue" {
-            continue
-        }
         if result["kind"] == "return" {
             return result
         }
+        # a pass is counted when it is over (a `continue` too), as the VM counts it at the jump back
+        count_step()
     }
     if node["has_else"] and not broke {
         return exec_scoped_block(node["else_block"], scope)
@@ -3148,7 +3177,6 @@ def exec_for(node, scope) {
     let broke = false
     let index = 0
     while index < iterations {
-        count_step()
         let offset = index * step_value
         if node["descending"] {
             loop_env["vars"][node["name"]] = start - offset
@@ -3163,6 +3191,7 @@ def exec_for(node, scope) {
         if result["kind"] == "return" {
             return result
         }
+        count_step()        # a pass is counted when it is over, as the VM counts it at the jump back
         index = index + 1
     }
 
@@ -3189,7 +3218,6 @@ def exec_for_in(node, scope) {
 
     if node["has_second"] {
         for a, b in collection {
-            count_step()
             loop_env["vars"][node["name"]] = a
             loop_env["vars"][node["second_name"]] = b
             let result = exec_block(node["body"]["statements"], make_env(loop_env, false, false))
@@ -3197,28 +3225,23 @@ def exec_for_in(node, scope) {
                 broke = true
                 break
             }
-            if result["kind"] == "continue" {
-                continue
-            }
             if result["kind"] == "return" {
                 return result
             }
+            count_step()        # a pass is counted when it is over (a `continue` too), as the VM counts it at the jump back
         }
     } else {
         for a in collection {
-            count_step()
             loop_env["vars"][node["name"]] = a
             let result = exec_block(node["body"]["statements"], make_env(loop_env, false, false))
             if result["kind"] == "break" {
                 broke = true
                 break
             }
-            if result["kind"] == "continue" {
-                continue
-            }
             if result["kind"] == "return" {
                 return result
             }
+            count_step()        # a pass is counted when it is over (a `continue` too), as the VM counts it at the jump back
         }
     }
 

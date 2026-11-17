@@ -512,7 +512,7 @@ reach (and marked unreviewed until the independent review); no merge without the
 | `std:files` | **Built**: `size`, `is_dir`, `is_link`, `lines`, `each_line`; declares `files.read`; reads in 64 KiB pieces, nothing open between pieces, the grant judged for every piece. Spec `[lib.std-files]`, 8 conformance cases, `tests/std/test_files.py` (piece boundaries, random files, a 1.4 MB file the restricted profile cannot `read`, a link leading out of the grant) |
 | `std:decimal` made native | **Done, and not in the plan as written:** the pure-NovaLang version cost about 60 microseconds an operation and made Nova_Data's 10,000-row report four times slower, over the sandbox's 5 s limit. The plan named a native tier as the fallback; the API, the messages and the oracle tests are unchanged |
 | A lazy `for line in files.lines(path)` (the line source in `ITER_PREP`) | **Not built.** `each_line(path, handle)` gives constant memory on all three engines without a new kind of iterable, and `lines(path)` gives the list without the 1,000,000-character string. A lazy iterable stays an open question for a later slice |
-| The step-counted time limit (G-042, D5) | **Not built** (deferred by D5) |
+| The step-counted time limit (G-042, D5) | **Built 2026-11-17** (M14 L6, item 5; branch `m14/l6-step-limit`): the charged work of every operation (operand and result lengths, the matcher, natives) costs the step budget, 128 units to a step, with the same units on the VM, the tree-walker and the self-hosted engine (28 operation kinds compared; two VM mismatches fixed); the wall-clock `time` limit stays beside it and can still stop a slow engine first |
 | Nova_Data replaced by the library (slice 2's done-when) | **Done** on branch `use-std-decimal` of the Nova_Data repository: 82 tests pass, the report is byte for byte the same; the cost is about 50% more time per row (10,000 rows 2.9 s, 15,000 rows 4.2 s, 20,000 over the limit) |
 
 ### Slice 2: progress (branch `m13/slice-2-decimal`; a draft until the owner has read it)
@@ -659,7 +659,7 @@ its signatures (slice 6).
 | G-039 | `num()` accepts more than digits; no `isdigit` | Slice 1: `text.is_number` |
 | G-040 | An expression cannot continue on the next line | Deferred: lexer rule (syntax) |
 | G-041 | No lazy line reader | **Slice 3** |
-| G-042 | The wall-clock limit is engine-dependent | D5: deferred by recommendation |
+| G-042 | The wall-clock limit is engine-dependent | D5: deferred by recommendation; **built in M14 L6, item 5** |
 | G-043 | `round()` is half-to-even | Slice 2: `math.round_half`, `dec.quantize` (`round` is specified and stable) |
 | G-044 | No decimal type | **Slice 2** |
 | G-045 | `//` and `%` floor; no `trunc`/`divmod`/`int` | Slice 2: `math.trunc`, `math.divmod` |
