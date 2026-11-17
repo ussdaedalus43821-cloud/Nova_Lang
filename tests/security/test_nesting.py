@@ -199,6 +199,32 @@ class Room(unittest.TestCase):
                 nl.run_with_room(leave)
             self.assertEqual(stop.exception.code, 3)
 
+    def test_a_host_that_refuses_a_stack_size_gets_the_next_smaller_and_one_that_refuses_all_runs_the_function_directly(self):
+        import threading
+        self.forced()
+        asked = []
+        real = threading.stack_size
+
+        def picky(size=0):
+            asked.append(size)
+            if size > 64 * 1024 * 1024:
+                raise ValueError("size not valid: {} bytes".format(size))        # what Windows with Python 3.7 said of 256 MB
+            return real(size)
+
+        threading.stack_size = picky
+        try:
+            self.assertEqual(nl.run_with_room(lambda: "ran"), "ran")
+            self.assertEqual(asked[:3], [256 * 1024 * 1024, 128 * 1024 * 1024, 64 * 1024 * 1024])
+
+            def refuses_all(size=0):
+                raise ValueError("size not valid")
+
+            threading.stack_size = refuses_all
+            self.assertEqual(nl.run_with_room(lambda: "ran directly"), "ran directly")
+        finally:
+            threading.stack_size = real
+            real(0)
+
     def test_a_program_run_from_the_command_line_goes_through_it_and_the_repl_does_not(self):
         self.forced()
         calls = []

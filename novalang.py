@@ -11972,7 +11972,7 @@ def run_inline(source):
 # reached (G-051): PyPy, and CPython before 3.11 on Windows, where a call of one Python function by another uses the 1 MB stack of the
 # main thread. The nesting limits are counted by the parser ([port.limits]) and need about 10,000 Python frames at their maximum, so
 # on those hosts a program runs in a thread whose stack is this large.
-ROOM_STACK_BYTES = 256 * 1024 * 1024
+ROOM_STACK_SIZES = tuple(megabytes * 1024 * 1024 for megabytes in (256, 128, 64, 32, 16))     # tried in this order: a host refuses a size it does not allow
 
 
 def needs_room():
@@ -11981,12 +11981,12 @@ def needs_room():
 
 
 def run_with_room(function, *arguments):
-    """`function(*arguments)`, in a thread with a large stack on a host that needs one (`needs_room`), and called directly on any other.
+    """`function(*arguments)`, in a thread with a large stack on a host that needs one (`needs_room`), and called directly on any other,
+    or on a host that gives no thread a stack of any of ROOM_STACK_SIZES (it is then as exposed to a crash as it was before).
     What it raises, it raises here; a Ctrl-C while it runs ends the process with status 130, as a stopped program does."""
     if not needs_room():
         return function(*arguments)
     import threading
-    threading.stack_size(ROOM_STACK_BYTES)
     outcome = {}
 
     def work():
@@ -11995,8 +11995,17 @@ def run_with_room(function, *arguments):
         except BaseException as problem:            # SystemExit, KeyboardInterrupt: hand them to the calling thread
             outcome["raised"] = problem
 
-    thread = threading.Thread(target=work, daemon=True)
-    thread.start()
+    thread = None
+    for size in ROOM_STACK_SIZES:
+        try:
+            threading.stack_size(size)
+            thread = threading.Thread(target=work, daemon=True)
+            thread.start()
+            break
+        except (ValueError, RuntimeError):          # this size is not valid here, or the thread could not get it
+            thread = None
+    if thread is None:
+        return function(*arguments)
     try:
         while thread.is_alive():                    # a timeout, so that Ctrl-C can reach this thread on Windows
             thread.join(0.2)
