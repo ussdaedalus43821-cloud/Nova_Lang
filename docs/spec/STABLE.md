@@ -57,7 +57,7 @@ meaning, and `$` still matches before a final line feed. This is the owner-accep
 calls (hundreds of passes over lists of a million items, for example) uses more of its step budget than before, and one that came near the default 5,000,000 may now be stopped by
 `LimitError: step budget ... exhausted` where it used to finish. By the table above that is a **major** change in the usual case; it is made in a minor release because
 the specification never said what a step costs beyond "a pass or a call", the number of steps was declared not portable across hosts, the default ceiling is unchanged and a realistic workload uses under 1% of it,
-and the owner accepted it (M14 L6, 2026-11-16, with the condition that the ceiling be named in the changelog together with how to raise it). The cost model is now specified in `[sbx.limits]`.
+and the owner accepted it. **The record, because it was first written down wrongly:** on 2026-11-16 the owner chose, for the form of the step limit, a separate limit under which nothing that passes today starts failing (option (a)), with the condition that the ceiling be named in the changelog together with how to raise it. The implementation did not do that: it folded the work into the existing step budget (option (c)), under which a program can start failing. The owner accepted that form on **2026-11-17, after reviewing PR #22**; the condition stands and the changelog meets it. The cost model is now specified in `[sbx.limits]`.
 
 **A third narrowing, for nesting.** In the release that makes the nesting limits explicit (M14 L6, item 4; G-051) a program may nest at most
 **1000** brackets, braces and blocks, and its syntax tree may be at most **5000** levels deep (a chain of operators, of `not`, of `else if` or of
