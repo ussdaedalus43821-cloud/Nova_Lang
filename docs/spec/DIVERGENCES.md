@@ -747,6 +747,23 @@ is the swap's shape, diverges.
 
 Fix: a self-hosted open that refuses a terminal symbolic link (an `openat`/`O_NOFOLLOW`-style walk), taken with the Phase 6 parent-component work that hardens the self-hosted sandbox's own opens.
 
+### D-048 — How deep a program may nest: 1000 on the Python engines, 100 on the self-hosted interpreter
+
+Status: open
+Class: known limitation
+Engines: self-hosted
+Spec: `[port.limits]`, `[sbx.limits]`
+
+The bytecode VM and the tree-walker refuse a program with more than **1000** brackets, braces and blocks open at once, or a syntax tree
+deeper than **5000** (a chain of `and`, `+`, `not`, `else if`, `x[0][0]...`), with `the interpreter ran out of stack - recursion too deep`;
+the count is the parser's own and does not depend on the host's recursion limit. The self-hosted interpreter counts brackets and blocks
+to **100**, the specification's minimum, because each level costs it about ten calls of the host (D-042), so a program nested between 101 and
+1000 levels runs on the Python engines and is refused there. It has no count for long chains: a chain of a few hundred to a few thousand
+operands ends in the host's call-depth error (`call depth of 1200 exceeded - ...`), not in the nesting error. A program that every engine accepts
+nests no deeper than 100, and one that every engine refuses nests deeper than 5000.
+
+Fix: not planned. Raising the self-hosted limits needs a parser that does not use the host's call depth for each level.
+
 ## Not divergences, but worth knowing
 
 The bytecode VM and the tree-walker agree on every corpus case, which is the

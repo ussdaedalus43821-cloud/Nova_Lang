@@ -58,6 +58,18 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
   `sorted` on seeded lists full of ties), so a list of lists or of dictionaries can now be ordered. Additive: every earlier form, and every earlier error message, is unchanged.
 - Provisional, as every new `std:` module is (`docs/spec/STABLE.md`): additions are a minor change.
 
+### Changed, a narrowing (M14 L6, item 4 of the 2.3.x patch list: the explicit nesting counter, G-051)
+
+- **How deeply a program may nest is now a specified limit, counted by the parser, the same on every host.** At most **1000** brackets, braces and blocks open at once
+  (a parenthesis, a list, a dictionary, an argument list, an index, a block, a hole of an f-string), and a syntax tree at most **5000** levels deep (what a chain of `and`, `+`,
+  `not`, `else if` or `x[0][0]` makes with no brackets). A program above either gets `NovaError: the interpreter ran out of stack - recursion too deep` when it is
+  parsed, before anything of it runs. The compiler and the tree-walker measure a tree they are given in the same way, without recursion; the artifact loader already counted (256 nested code objects).
+- **This narrows what ran before.** The old ceiling was whatever the Python's recursion limit allowed: on CPython about 2000 nested parentheses, 5000 nested blocks and 10,000 operands in one chain. A program between the old and new numbers
+  now fails. It is declared in `docs/spec/STABLE.md` as an owner-accepted narrowing, like the one for `regex()`; the specification had promised only a minimum of 100.
+- **PyPy no longer crashes on a deeply nested program.** On PyPy the interpreter runs in a thread with a 256 MB stack; PyPy 3.10.16 gives the same errors and the same limits as CPython, in the trusted and the restricted profile (checked with `NOVA_PYPY=... python3 -m unittest tests.portability.test_pypy_nesting`). PyPy is still a measurement, not a supported engine.
+- **The self-hosted interpreter stays at 100 brackets and blocks** and has no count for long chains (it ends in the host's call-depth error): recorded as `D-048` in `docs/spec/DIVERGENCES.md`.
+- Specified in `docs/spec/06-portability.md` (`[port.limits]`) and `docs/spec/16-sandbox.md`; 16 conformance cases in `cases/nesting.json` (the VM and the tree-walker at the boundaries, the self-hosted interpreter recorded as D-048); 13 tests in `tests/security/test_nesting.py`; the G-051 probe in `tests/portability/test_pypy_nesting.py` is now the check that the gap is closed.
+
 ### Added (M14 L6, item 3 of the 2.3.x patch list: the deprecation mechanism)
 
 - **A call of a deprecated built-in function now warns**, on all three engines: once per call site per run, one line on standard error,
