@@ -108,7 +108,7 @@ class Boundaries(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             with self.assertRaises(nl.NovaError):
-                nl.run('print("ran")\n' + parens(nl.NESTING_LIMIT + 1), nl.Interpreter("vm"))
+                nl.run_with_room(nl.run, 'print("ran")\n' + parens(nl.NESTING_LIMIT + 1), nl.Interpreter("vm"))
         self.assertEqual(out.getvalue(), "")
 
 
