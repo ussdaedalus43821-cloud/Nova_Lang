@@ -240,11 +240,31 @@ an embedder who runs real work in the self-hosted engine sets `time` to suit. Th
 budget is per run, and per call a host makes into the program; a host function that calls back
 into the script is part of the same run and cannot reset it.
 
+**Work costs steps.** A pass or a call is one step, and so is every 128 **units of work**. A unit is one item or one character that an
+operation walks, and an operation is charged for what it walks and nothing else:
+
+| Operation | Units |
+| --- | --- |
+| `+`, `*` | the length of each list, string or dictionary operand |
+| `==`, `!=` | the length of each operand |
+| `x in y` | the length of `y` if it is a list or a string; none if it is a dictionary (looked up by key) |
+| a slice | the length of what it returns (it copies that, and no more) |
+| a call of a built-in | the length of each argument and of the result, **except** `append`, `len`, `pop`, `type` and `choice`, which look at one end or one item and cost one step however long the list is; `range` adds the count it would build |
+| the regex matcher, and a native of a standard module | the thread-steps, and the work it reports |
+
+An operation that walks fewer than 64 units is not charged. Units that do not make a whole step are carried to the next charge. A **pass of a loop is
+counted when it is over**, whether it ended at its last statement or at a `continue`; a pass left by `break` or `return` is not counted. So `a + b` of two
+lists of 100,000 items costs 200,000 units: about 1,560 steps, a loop that does that is stopped by `steps` after a few thousand passes, and building a list of n items
+with `append` costs 2 steps a pass and not the square of n. **The three engines charge exactly the same units in the same order**, so a run that is
+stopped by `steps` is stopped at the same point of the program on all of them (cases `step-work-*` and `step-order-*`); what stops it first on a slow engine can still be
+`time`, which is why an embedder who wants the same stop point everywhere sets `time` above what the slowest engine needs. The ceiling is `steps` (5,000,000 by default
+in `restricted`, raised with `--limit steps=N` or `limits={"steps": N}`; there is none in `trusted`).
+
 **Time.** The clock is monotonic. The engine checks the limit at least once every 1,000 steps,
 before and after a host function that can wait (`sleep`, `input`), and inside a step that does
 a lot of work: an operation that walks a list, a string or a dictionary (`x in big`, `a + b`
 on two long lists, `a == b`, a slice, `sorted`, `join`, `str` of a list, `range`) is charged the
-size of what it walks, and the clock is read for every 50,000 units charged. The error may
+size of what it walks, and the clock is read for every 50,000 units charged (the same units cost the step budget, above). The error may
 therefore come a little after the limit, but never from a program that ends sooner, and the
 overrun is at most the time one such operation takes on the largest collection the limits allow
 (about 0.4 seconds for a search of a list of a million items on a small machine). The regex matcher (`[lib.regex]`) is charged in the same way: 128 units of its work are one step of the budget, and the clock is read every 50,000 units. A host function
