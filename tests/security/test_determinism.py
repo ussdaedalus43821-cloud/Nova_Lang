@@ -69,6 +69,19 @@ class Configuration(unittest.TestCase):
             with self.assertRaises(nl.NovaLangError, msg=settings):
                 nl.Nova(**settings)
 
+    def test_the_seed_defaults_to_zero(self):                                                           # M021 (mutation test of 2026-11-17)
+        default = nl.Nova(deterministic=True).eval("random()")
+        self.assertEqual(default, nl.Nova(deterministic=True, seed=0).eval("random()"))
+        self.assertNotEqual(default, nl.Nova(deterministic=True, seed=1).eval("random()"))
+
+    def test_the_start_may_be_the_very_first_second_of_the_calendar_and_not_one_before(self):          # M035
+        first, after_last = -62135596800, 253402300800
+        nl.Nova(deterministic=True, clock_start=first)
+        nl.Nova(deterministic=True, clock_start=after_last - 1)
+        for start in (first - 1, after_last):
+            with self.assertRaises(nl.NovaLangError, msg=start):
+                nl.Nova(deterministic=True, clock_start=start)
+
     def test_trusted_takes_the_mode_but_still_no_grants(self):
         nl.Nova(profile="trusted", deterministic=True, seed=1)
         with self.assertRaises(nl.NovaLangError):

@@ -1738,6 +1738,90 @@
      "output": 100000000
     }
    }
+  },
+  {
+   "name": "step-exact-budget-of-a-loop-is-enough",
+   "spec": [
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "for i in range(6) {\n}\n",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 7,
+     "time": 600000,
+     "output": 100000000
+    }
+   }
+  },
+  {
+   "name": "step-one-short-of-the-budget-of-a-loop-stops-the-run",
+   "spec": [
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "for i in range(6) {\n}\n",
+   "output": [],
+   "error": "LimitError: step budget of 6 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 6,
+     "time": 600000,
+     "output": 100000000
+    }
+   }
+  },
+  {
+   "name": "step-exact-budget-of-the-last-operation-is-enough",
+   "spec": [
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "let A = range(3000)\nlet r = A + A\n",
+   "output": [],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 94,
+     "time": 600000,
+     "output": 100000000
+    }
+   }
+  },
+  {
+   "name": "step-one-short-of-the-budget-of-the-last-operation-stops-the-run",
+   "spec": [
+    "sbx.limits"
+   ],
+   "profile": "sandbox",
+   "source": "let A = range(3000)\nlet r = A + A\n",
+   "output": [],
+   "error": "LimitError: step budget of 93 steps exhausted - is there a loop that never ends?",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": [],
+   "sandbox": {
+    "profile": "restricted",
+    "limits": {
+     "steps": 93,
+     "time": 600000,
+     "output": 100000000
+    }
+   }
   }
  ]
 }

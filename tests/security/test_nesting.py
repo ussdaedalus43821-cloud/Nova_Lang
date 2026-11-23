@@ -134,6 +134,13 @@ class CompilerAndTreeWalker(unittest.TestCase):
             nl.run_program(deep_tree(nl.TREE_DEPTH_LIMIT + 5), interpreter)
         self.assertEqual(caught.exception.message, ERROR)
 
+    def test_a_tree_exactly_at_the_limit_is_accepted_and_one_level_deeper_is_refused(self):           # M043, M044 (mutation test of 2026-11-17)
+        # the program is level 1 and the number at the bottom is a level too: a chain of n minus signs is n + 2 levels deep
+        nl.check_tree_depth(deep_tree(nl.TREE_DEPTH_LIMIT - 2))
+        with self.assertRaises(nl.NovaError) as caught:
+            nl.check_tree_depth(deep_tree(nl.TREE_DEPTH_LIMIT - 1))
+        self.assertEqual(caught.exception.message, ERROR)
+
     def test_a_tree_within_the_limit_is_walked_by_both(self):
         for engine in ("vm", "tree"):
             with self.subTest(engine):

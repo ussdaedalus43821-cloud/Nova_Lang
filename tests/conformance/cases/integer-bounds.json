@@ -1,0 +1,64 @@
+{
+ "area": "integer-bounds",
+ "version": 1,
+ "cases": [
+  {
+   "name": "int-bound-4000-digits-by-subtraction-is-accepted",
+   "spec": [
+    "port.integers"
+   ],
+   "profile": "core",
+   "source": "let big = pow(10, 3999) * 9 + (pow(10, 3999) - 1)\nprint(len(str(big)))\nprint(len(str(big - 1)))\n",
+   "output": [
+    "4000",
+    "4000"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  },
+  {
+   "name": "int-bound-subtraction-reaching-the-limit-is-refused",
+   "spec": [
+    "port.integers"
+   ],
+   "profile": "core",
+   "source": "let big = pow(10, 3999) * 9 + (pow(10, 3999) - 1)\nlet r = big - (0 - 1)\nlet z = r > 5\nprint(z)\n",
+   "output": [],
+   "error": "NovaError: the result has too many digits - an integer cannot have more than 4000 digits",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "int-bound-multiplication-reaching-minus-the-limit-is-refused",
+   "spec": [
+    "port.integers"
+   ],
+   "profile": "core",
+   "source": "let r = (0 - pow(10, 2000)) * pow(10, 2000)\nlet z = r < 0\nprint(z)\n",
+   "output": [],
+   "error": "NovaError: the result has too many digits - an integer cannot have more than 4000 digits",
+   "error_line": null,
+   "exit": 1,
+   "host_calls": []
+  },
+  {
+   "name": "int-bound-multiplication-below-minus-the-limit-is-accepted",
+   "spec": [
+    "port.integers"
+   ],
+   "profile": "core",
+   "source": "let r = (0 - pow(10, 1999)) * pow(10, 2000)\nprint(r < 0)\nprint(len(str(r)))\n",
+   "output": [
+    "true",
+    "4001"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": []
+  }
+ ]
+}

@@ -81,6 +81,20 @@ class Dates(unittest.TestCase):
             for month in range(1, 13):
                 self.assertEqual(call("days_in_month", year, month), calendar.monthrange(year, month)[1], (year, month))
 
+    def test_days_in_month_refuses_a_year_or_a_month_on_its_own(self):                                 # M181 (mutation test of 2026-11-17)
+        for year, month in ((2000, 13), (2000, 0), (0, 1), (10000, 1), (0, 0)):
+            self.assertEqual(refused(self, "days_in_month", year, month),
+                             "date.days_in_month() needs a year from 1 to 9999 and a month from 1 to 12", (year, month))
+
+    def test_the_number_of_years_is_limited_to_just_under_20000(self):                                # M186
+        self.assertEqual(refused(self, "add_years", "2000-01-01", 19999), "date.add_years() gives a date outside the years 1 to 9999")
+        self.assertEqual(refused(self, "add_years", "2000-01-01", 20000), "date.add_years() has a number of years that is out of the calendar")
+
+    def test_a_count_that_is_not_a_number_is_named_by_its_kind_and_a_fraction_is_a_fraction(self):    # M197
+        for value, kind in ((True, "boolean"), ("3", "string"), ([1], "list"), (1.5, "a number with a fraction")):
+            self.assertEqual(refused(self, "add_years", "2000-01-01", value),
+                             "date.add_years() needs a whole number for the number of years, but got " + kind, value)
+
     def test_the_month_end_rule(self):
         for start, months, want in (("2027-01-31", 1, "2027-02-28"), ("2028-01-31", 1, "2028-02-29"), ("2027-03-31", -1, "2027-02-28"),
                                     ("2027-01-31", 3, "2027-04-30"), ("2027-08-31", 6, "2028-02-29"), ("2027-05-30", 12, "2028-05-30")):

@@ -353,6 +353,48 @@
      "exit": 1
     }
    }
+  },
+  {
+   "name": "nest-blocks-100-is-accepted-on-every-engine",
+   "spec": [
+    "port.limits",
+    "sbx.limits"
+   ],
+   "profile": "core",
+   "source": "if true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\nprint(\"done\")\n",
+   "output": [
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deep": true
+  },
+  {
+   "name": "nest-blocks-101-is-refused-by-the-self-hosted-engine-only",
+   "spec": [
+    "port.limits",
+    "sbx.limits"
+   ],
+   "profile": "core",
+   "source": "if true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\nif true {\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\n}\nprint(\"done\")\n",
+   "output": [
+    "done"
+   ],
+   "error": "",
+   "error_line": null,
+   "exit": 0,
+   "host_calls": [],
+   "deep": true,
+   "divergences": {
+    "bootstrap": {
+     "id": "D-048",
+     "output": [],
+     "error": "Error: the interpreter ran out of stack - recursion too deep",
+     "exit": 1
+    }
+   }
   }
  ]
 }
