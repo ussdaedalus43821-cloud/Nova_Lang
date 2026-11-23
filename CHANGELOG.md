@@ -26,6 +26,12 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Added: tests
+
+- **Tests for the 30 gaps the mutation test of 2026-11-17 found.** No behaviour changed. They cover the size pre-checks of `join`, `pad`, `replace_all` and `range`, the 4,000-digit and
+  exact-budget boundaries, the position of fatal limit errors, the default seed and the first second of the calendar in deterministic mode, the tree-depth boundary, an unreadable `nova.lock`, `std:date`
+  error text, and a return-type arrow with a space in it. Two small findings are recorded in `docs/GAPS.md` (G-057, G-058).
+
 ### Added: documentation
 
 - **`docs/BYTECODE.md`**, a developer guide to `.novac` artifacts and the compiled-artifact cache: `--compile`, `--check-artifact`, `--no-cache`, `--cache-dir`,

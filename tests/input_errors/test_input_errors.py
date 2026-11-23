@@ -63,6 +63,19 @@ class FormatterRefusalTests(unittest.TestCase):
                         self.assertEqual(next_file.read_bytes(), b"let next_value=2\n")
 
 
+class ReturnTypeArrowTests(unittest.TestCase):
+    """The arrow of a return type is a '-' and a '>' with nothing between them (mutation test of 2026-11-17, M117)."""
+
+    def test_a_minus_and_a_greater_than_with_a_space_between_are_not_an_arrow(self):
+        sys.path.insert(0, str(ROOT))
+        import novalang as nl
+        nl.Nova().exec("def f() -> int { return 1 }")
+        for header in ("def f() - > int { return 1 }", "def f() - int { return 1 }", "def f() -1 { return 1 }"):
+            with self.subTest(header), self.assertRaises(nl.NovaLangError) as caught:
+                nl.Nova().exec(header)
+            self.assertIn("expected a '{' to open the block", str(caught.exception))
+
+
 class PackageInputTests(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()

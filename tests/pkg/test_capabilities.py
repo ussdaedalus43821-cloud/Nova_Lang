@@ -333,6 +333,20 @@ class Import(Project):
             code, out, err = self.imports(flags)
             self.assertEqual((code, out), (0, "true\n"), (name, err))
 
+    def test_a_lockfile_that_is_not_json_is_refused_cleanly_by_the_vm_and_the_tree_walker(self):      # M015 (mutation test of 2026-11-17)
+        # The self-hosted engine does not give this message yet: it stops with a TypeError from its json.loads (found while writing this test; recorded as G-057).
+        self.publish("lib", "1.0.0", PURE)
+        self.manifest({"lib": "*"})
+        self.installed()
+        self.program('import "lib"\nprint(lib.twice(2))')
+        for broken in ("{not json", ""):
+            write(os.path.join(self.project, "nova.lock"), broken)
+            for name, flags in ENGINES[:2]:
+                code, out, err = self.imports(flags)
+                self.assertEqual(code, 1, (name, broken))
+                self.assertIn("nova.json or nova.lock is not valid JSON", out + err, (name, broken))
+                self.assertNotIn("Traceback", out + err, name)
+
     def test_an_edit_after_install_is_caught_at_import(self):
         self.publish("lib", "1.0.0", PURE)
         self.manifest({"lib": "*"})

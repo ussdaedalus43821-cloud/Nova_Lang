@@ -2,7 +2,7 @@
 
 The proof-of-concept apps keep their own logs: Nova_Stats G-001 to G-026, Nova_Sort G-027 to G-035, Nova_Log G-036 to G-042 and
 Nova_Data G-043 to G-050 (see [`ROADMAP.md`](ROADMAP.md), M13, "Requirements from the Proof-of-Concept Apps"). This file continues the same numbering
-for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-057**.
+for gaps found any other way, here in M12 work, so the ecosystem keeps one list. The next free number is **G-059**.
 
 **How to read an entry.** *Tried* is what was done and the exact result. *Why it matters* says what promise it touches. *Fix* says where it is planned.
 *Probe* is a check in `tests/` that passes while the gap exists and fails the day it is fixed, as in the proof-of-concept repositories.
@@ -11,6 +11,8 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 
 | # | Gap | Severity | Planned |
 | --- | --- | --- | --- |
+| G-058 | The size pre-check of `join` assumes at least one character for every item, so it refuses a join of empty strings that would fit: with a string limit of 6, `join(["", "", ""], "bb")` (a result of 4 characters) is refused because the estimate is 3 + 2 x 2 = 7. A refusal of something that fits, in the restricted profile only | minor | **Open**, found 2026-11-23 by the mutation-gap tests; changing it narrows nothing that worked, but it is the owner's to schedule |
+| G-057 | The self-hosted engine (`--bootstrap`) stops with a `TypeError` from its `json.loads` when `nova.lock` is not valid JSON, where the VM and the tree-walker refuse with `ImportError: nova.json or nova.lock is not valid JSON` | minor | **Open**, found 2026-11-23 by the mutation-gap tests; not scheduled |
 | G-056 | The deprecation mechanism warns only for a call of a deprecated **built-in function**. A deprecated `std:` export, a capability, a manifest field or a flag does not warn yet at import, install or startup, and a package version cannot carry a `deprecated` message in the registry index that `install` prints (M13 plan, 6.3, points 2 and 5). Nothing is deprecated, so nothing is owed today | FRICTION | **Open**, to be built with the first real deprecation; not scheduled |
 | G-055 | `nova-pkg audit` does not report a package whose minor release **removed an export** that the previous version had (M13 plan 6.2: "a compare of exports, from the static scan"). Not built in M14 L6 item 2: it needs choices the plans leave open, and it makes `audit` download and unpack versions you never installed | FRICTION | **Open**, owner to decide the choices in the entry below; not scheduled |
 | G-054 | **TOCTOU in the `restricted` path gate:** `check_path` resolves a path's symbolic links and approves it, then the file is opened from the *same path string* in a later syscall, following links again. An attacker who controls a granted directory can swap a symbolic link between the two steps and have the sandbox open a file outside the grant | **Part A fixed; parent-component race open (Phase 6)** | **Final-component swap closed 2026-11-15** (M14): every restricted file open uses `O_NOFOLLOW` (Windows: open-then-verify by handle), so a terminal symbolic link is refused — the measured read/write exploit rates drop to 0 (`[sbx.toctou]`, threat model N5). A parent directory swapped for a link is **not** closed and is deferred to Phase 6. Surfaced 2026-11-14 |
@@ -20,6 +22,20 @@ for gaps found any other way, here in M12 work, so the ecosystem keeps one list.
 | G-051 | On PyPy a deeply nested program crashes the interpreter (segmentation fault) instead of getting the named nesting error; the nesting limit depends on the host's `RecursionError` | PORTABILITY, and a TRAP: the same setting crashes at 20,000 and silently runs at 10,000 | **Closed 2026-11-17** (M14 L6, item 4): the parser counts the nesting (1000 brackets and blocks, a tree 5000 deep), the same on every host; PyPy gets the named error; `[port.limits]`, D-048 |
 | G-017 | `import` (and a type annotation) needs files beside `novalang.py` that nothing documented, and a lone `novalang.py` ended in a Python `FileNotFoundError` traceback (first logged in the Nova_Log/Nova_Data proof-of-concept apps, carried by the M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): the program ends with an `ImportError` that names the missing files and what to copy; README and `[emb.model]` list what an installation contains. Measured: three Python files for the type check (`tools/nova-typecheck.py`, `nova_ast.py`, `nova_scope.py`), plus `lib/std/` for `std:` imports |
 | G-015 | An embedded program could not be given its `args()`; `args()` read a module-wide global shared by every engine in the process (M13 plan, appendix A) | FRICTION | **Closed 2026-11-16** (M14 L6, item 1): `Nova(args=[...])`, per engine, `[emb.args]` |
+
+## G-058 The `join` size pre-check refuses a join of empty strings that fits - minor
+- **Found:** 2026-11-23, writing the mutation-gap tests (the join pre-check in `check_call_arguments`).
+- **Tried:** `Nova(profile="restricted", limits={"string": 6}).eval('join(["", "", ""], "bb")')`. The result would be `"bbbb"`, 4 characters. The pre-check estimates `items + separator x (items - 1)` = 7
+  (it assumes one character per item) and refuses it with "a string cannot grow beyond 6 characters".
+- **Why it matters:** only in the restricted profile, and only for a join whose items are empty strings; a refusal of a program the limit allows. The estimate is a lower bound only when no item is empty.
+- **Fix:** none made. The estimate could count the real lengths of the items (they are already in memory) at the cost of a pass over the list; the owner decides if and when.
+
+## G-057 The self-hosted engine does not refuse a `nova.lock` that is not JSON cleanly - minor
+- **Found:** 2026-11-23, writing the mutation-gap tests (M015).
+- **Tried:** a project with an installed package and a `nova.lock` containing `{not json`, then `import "lib"`. VM and tree-walker: `ImportError: nova.json or nova.lock is not valid JSON`, exit 1.
+  `--bootstrap`: `TypeError: json.loads(): Expecting property name enclosed in double quotes` from `check_installed()`, exit 1.
+- **Why it matters:** both refuse, so nothing unsafe runs; the message and the error kind differ between engines (the conformance suite does not cover package imports).
+- **Fix:** none made; the test for this case runs on the VM and the tree-walker and says so.
 
 ## G-056 The deprecation warning covers built-in functions only - FRICTION
 - **Found:** 2026-11-17, building the deprecation mechanism (M14 L6, item 3).
