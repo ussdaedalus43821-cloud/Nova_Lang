@@ -1,0 +1,94 @@
+{
+ "harness": {
+  "seconds": 4.5,
+  "ok": true
+ },
+ "cli": {
+  "seconds": 28.6,
+  "ok": true
+ },
+ "embedding": {
+  "seconds": 2.0,
+  "ok": true
+ },
+ "repl": {
+  "seconds": 11.5,
+  "ok": true
+ },
+ "bytecode": {
+  "seconds": 58.3,
+  "ok": true
+ },
+ "std": {
+  "seconds": 48.5,
+  "ok": true
+ },
+ "api": {
+  "seconds": 0.4,
+  "ok": true
+ },
+ "input-errors": {
+  "seconds": 3.0,
+  "ok": true
+ },
+ "portability": {
+  "seconds": 18.8,
+  "ok": true
+ },
+ "fmt-golden": {
+  "seconds": 0.2,
+  "ok": true
+ },
+ "lint-golden": {
+  "seconds": 0.1,
+  "ok": true
+ },
+ "fmt-repo": {
+  "seconds": 1.1,
+  "ok": true
+ },
+ "line-breaks": {
+  "seconds": 1.9,
+  "ok": true
+ },
+ "python": {
+  "seconds": 9.5,
+  "ok": true
+ },
+ "types": {
+  "seconds": 9.6,
+  "ok": true
+ },
+ "packages": {
+  "seconds": 6.1,
+  "ok": true
+ },
+ "pkg-capabilities": {
+  "seconds": 53.2,
+  "ok": true
+ },
+ "editor": {
+  "seconds": 1.2,
+  "ok": true
+ },
+ "compiler": {
+  "seconds": 2.2,
+  "ok": true
+ },
+ "differential": {
+  "seconds": 75.3,
+  "ok": true
+ },
+ "conformance": {
+  "seconds": 229.5,
+  "ok": true
+ },
+ "security": {
+  "seconds": 60.2,
+  "ok": true
+ },
+ "security-matrix": {
+  "seconds": 0.2,
+  "ok": true
+ }
+}

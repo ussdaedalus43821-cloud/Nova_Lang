@@ -315,3 +315,7 @@ were read from their `action.yml` when this was written.
   `KeyboardInterrupt` to the same code (`_thread.interrupt_main`), because a
   piped test cannot send the signal and Windows has no portable equivalent;
   what turns the key press into the exception is the interpreter's, not ours.
+
+## Mutation test (on demand)
+
+`.github/workflows/mutation.yml` plants every small deliberate bug of the chosen areas, one at a time, and runs the quick tier against each, to find tests that would not notice a real bug. It runs a full run only when dispatched from the Actions tab, and changes no code. A pull request that changes the workflow or `mutation/*.py` runs a trial of one slice and six mutants. See `mutation/README.md`. It shares the account's runner limit with the checks above, so it caps itself at 14 runners.
