@@ -26,6 +26,10 @@ AST          ->  Interpreter (tree-walker) ->  a value        (up to 1.1.0;
 
 ## [Unreleased]
 
+### Added: mutation-test tooling
+
+- **`mutation/`**, the mutation-test tooling, and a **Mutation test** workflow that runs it on demand across GitHub runners (every mutant of the sandbox, step-limit and nesting code, shared out over 14 runners, with the score and the survivors in the job summary). It is not part of the pull request checks and changes no code. See `mutation/README.md`.
+
 ### Added: tests
 
 - **Tests for the 30 gaps the mutation test of 2026-11-17 found.** No behaviour changed. They cover the size pre-checks of `join`, `pad`, `replace_all` and `range`, the 4,000-digit and

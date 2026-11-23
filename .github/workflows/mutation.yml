@@ -1,0 +1,167 @@
+# NovaLang mutation test, on demand. See mutation/README.md.
+#
+# Plants every small deliberate bug ("mutant") of the chosen areas, one at a time, and runs the quick tier of tests/run_all.py against each. A mutant
+# that no test notices is a gap in the tests. The mutants are shared out over several runners (`slices`), and a last job merges the results and writes
+# the report to the job summary. Nothing here changes the code in the repository: each runner works on its own copy.
+#
+# A full run is hours of runner time, so it is not part of the pull request checks and is not scheduled: dispatch it from the Actions tab. The one
+# exception is a pull request that changes this file or the tooling: it runs a trial of one slice and six mutants, to show the workflow still works.
+#
+# Actions are pinned to commit SHAs (the tag is in the trailing comment); Dependabot keeps them current.
+
+name: Mutation test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mutation.yml"
+      - "mutation/*.py"
+  workflow_dispatch:
+    inputs:
+      areas:
+        description: "Areas to mutate, comma-separated (sandbox, steps, nesting, parser, vm, date). Every mutant of each area is run."
+        required: false
+        default: "sandbox,steps,nesting"
+      slices:
+        description: "Number of slices, one runner each"
+        required: false
+        default: "14"
+      only_slices:
+        description: "Run only these slices, comma-separated (e.g. 0). Empty runs them all. For a trial."
+        required: false
+        default: ""
+      per_slice_limit:
+        description: "Run only the first N mutants of each slice (0 = all). For a trial."
+        required: false
+        default: "0"
+      max_parallel:
+        description: "Most runners at once (a Free account has 20 for everything, pull request checks included)"
+        required: false
+        default: "14"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONFAULTHANDLER: "1"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      slices: ${{ steps.plan.outputs.slices }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Choose every mutant of the areas
+        id: plan
+        env:
+          AREAS: ${{ inputs.areas || 'sandbox,steps,nesting' }}
+          SLICES: ${{ inputs.slices || '14' }}
+          ONLY: ${{ github.event_name == 'pull_request' && '0' || inputs.only_slices }}
+        run: |
+          python mutation/generate.py --exhaustive "$AREAS" --out mutants_exhaustive.json
+          python - <<'PY'
+          import json, os
+          count = int(os.environ["SLICES"])
+          only = [int(x) for x in os.environ["ONLY"].split(",") if x.strip()]
+          chosen = only or list(range(count))
+          assert all(0 <= i < count for i in chosen), "only_slices must be below slices"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write("slices=" + json.dumps(chosen) + "\n")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants
+          path: mutants_exhaustive.json
+          retention-days: 30
+
+  run:
+    name: slice ${{ matrix.slice }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '14') }}
+      matrix:
+        slice: ${{ fromJSON(needs.plan.outputs.slices) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install NumPy (the examples station needs it)
+        run: python -m pip install numpy
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutants
+          path: mutation-input
+      - name: Run this slice
+        env:
+          SLICE: ${{ matrix.slice }}
+          SLICES: ${{ inputs.slices || '14' }}
+          LIMIT: ${{ github.event_name == 'pull_request' && '6' || inputs.per_slice_limit || '0' }}
+        run: |
+          mkdir -p mutation-output
+          python -u mutation/run_mutants.py --workers 4 --controls 1 --confirm --limit "$LIMIT" \
+            --mutants mutation-input/mutants_exhaustive.json --slice "$SLICE/$SLICES" \
+            --results "mutation-output/slice-$SLICE.jsonl"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: results-slice-${{ matrix.slice }}
+          path: mutation-output/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  report:
+    name: report
+    needs: [plan, run]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutants
+          path: mutation-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: results-slice-*
+          path: mutation-results
+          merge-multiple: true
+      - name: Merge and report
+        run: |
+          cat mutation-results/*.jsonl > mutation-results/all.jsonl
+          python mutation/report.py --markdown --mutants mutation-input/mutants_exhaustive.json --results mutation-results/all.jsonl | tee mutation-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-report
+          path: |
+            mutation-report.md
+            mutation-results/all.jsonl
+            mutation-input/mutants_exhaustive.json
+          retention-days: 90

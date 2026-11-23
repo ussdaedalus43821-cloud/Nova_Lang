@@ -9,3 +9,10 @@ coverage-output/
 docs/vision
 docs/governance
 docs/AI_WORKFLOW.md
+
+# mutation test: scratch copies, local results, generated mutant lists (mutation/results/station_times.json is kept)
+mutation/work/
+mutation/results/*.jsonl
+mutation/results/probes.json
+mutation/results/survivor_table.md
+mutation/mutants*.json
